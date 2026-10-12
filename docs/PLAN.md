@@ -372,7 +372,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **Acceptance:** `vp dev` shows a dark page titled "Synapse Horizon" in cyan and prints a `http://127.0.0.1:` URL. `vp lint`, `vp test`, `vp build` pass locally and in CI. `.node-version` matches `24.<minor>.<patch>` exactly, and CI's `node --version` equals it. The repo's Insights > Dependency graph > Dependabot tab shows no config error for `.github/dependabot.yml`.
 - **README:** Title, pitch, quick start, status line "Chunk 01 done". Image: `01-scaffold.png` (blank branded page).
 
-#### [~] 02. Browser matrix and screenshot pipeline
+#### [x] 02. Browser matrix and screenshot pipeline
 - **Goal:** Every later chunk can be smoke-tested in three browsers and photographed automatically.
 - **Depends on:** 01.
 - **Tasks:** Playwright with Chromium, WebKit, Firefox projects. Smoke test: page loads, no console errors. `scripts/shots.ts` + `shots.config.ts` with the URL contract above (`freeze`, `seed`, `view`). Add `shots` and `e2e` scripts, run with `vp run shots` / `vp run e2e`. CI job runs smoke in Chromium and Firefox. Add `e2e:local` (all three engines, plus later leak/perf/shots) for the Mac (eng review D6).
@@ -1194,7 +1194,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: Code quality — Q2, D5
   - Files: src/dashboard/, src/data/selectors
   - Verify: `@ts-expect-error` type test; Playwright audit
-- [ ] **T9 (P2, human: ~1h / CC: ~5min)** — tooling — Split CI vs `e2e:local`
+- [x] **T9 (P2, human: ~1h / CC: ~5min)** — tooling — Split CI vs `e2e:local`
   - Surfaced by: Test review — T1, D6
   - Files: .github/workflows/, playwright config, package scripts
   - Verify: CI green on Chromium + Firefox; `vp run e2e:local` on the Mac
@@ -1206,7 +1206,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: Test review — coverage diagram
   - Files: per chunk
   - Verify: each chunk's acceptance list
-- [ ] **T12 (P3, human: ~15min / CC: ~2min)** — tooling — Pin Node version and React ~19.3
+- [x] **T12 (P3, human: ~15min / CC: ~2min)** — tooling — Pin Node version and React ~19.3
   - Surfaced by: Scope Challenge — S2, S3
   - Files: package.json, .node-version
   - Verify: `vp check`; `node --version` matches pin in CI
@@ -1863,15 +1863,15 @@ System architecture (Section 1), data flow with shadow paths (Section 4 CLI requ
 
 Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratios assumed: scaffolding ~100x, features ~30x, tests ~50x human/CC.
 
-- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — sidecar/cli — Host gate and manifest-only serving with 5 tests
+- [x] **T1 (P1, human: ~2h / CC: ~10min)** — sidecar/cli — Host gate and manifest-only serving with 5 tests
   - Surfaced by: Section 3 — S-1, C6 (Q11)
   - Files: sidecar/cli.ts, sidecar/cli.test.ts
   - Verify: `vp test` Host 421/308, traversal 404, asset 200
-- [ ] **T2 (P2, human: ~4h / CC: ~30min)** — sidecar/cli, scripts — Error registry behaviour with 14 tests
+- [x] **T2 (P2, human: ~4h / CC: ~30min)** — sidecar/cli, scripts — Error registry behaviour with 14 tests
   - Surfaced by: Section 2 — C5 (Q10)
   - Files: sidecar/cli.ts, sidecar/cli.test.ts, scripts/build-bin.ts, scripts/build-bin.test.ts, scripts/shots.ts
   - Verify: `vp test` covers all 14 rows
-- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — tooling — Node 24 exact pin, dev host 127.0.0.1, SHA-pinned actions with guard, Dependabot with prefixes
+- [x] **T3 (P2, human: ~1h / CC: ~5min)** — tooling — Node 24 exact pin, dev host 127.0.0.1, SHA-pinned actions with guard, Dependabot with prefixes
   - Surfaced by: C7 (Q12), C8 (Q13), C9 (Q14), X2 (Q4)
   - Files: .node-version, vite.config.ts, .github/workflows/ci.yml, .github/dependabot.yml
   - Verify: chunk 01 acceptance; guard step fails on a tag ref
@@ -1883,15 +1883,15 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: C4 (Q8), spec review run 3
   - Files: none (GitHub ruleset); CONTRIBUTING.md
   - Verify: direct push refused; `fix:` release after ruleset succeeds
-- [ ] **T6 (P2, human: ~3h / CC: ~20min)** — build — `build:bin` with official Node 24, checksum check, generated sea-config, ad-hoc sign
+- [x] **T6 (P2, human: ~3h / CC: ~20min)** — build — `build:bin` with official Node 24, checksum check, generated sea-config, ad-hoc sign
   - Surfaced by: spec review runs 1-2, C9 (Q14)
   - Files: scripts/build-bin.ts, package.json
   - Verify: local binary curl 200, `--version`, localhost 308
-- [ ] **T7 (P3, human: ~30min / CC: ~5min)** — app — `app-version` meta tag asserted by smoke spec
+- [x] **T7 (P3, human: ~30min / CC: ~5min)** — app — `app-version` meta tag asserted by smoke spec
   - Surfaced by: Section 1 — A-2
   - Files: index.html or src/app, e2e/smoke.spec.ts
   - Verify: `vp run e2e`
-- [ ] **T8 (P3, human: ~30min / CC: ~5min)** — docs — Release runbook in CONTRIBUTING
+- [x] **T8 (P3, human: ~30min / CC: ~5min)** — docs — Release runbook in CONTRIBUTING
   - Surfaced by: Section 9 (Prime Directive 5)
   - Files: CONTRIBUTING.md
   - Verify: five runbook cases present
@@ -2198,23 +2198,23 @@ Conflict flags: both lanes touch `scripts/` and `package.json` scripts; keep scr
 
 Synthesized from this review's findings. Effort ratios: scaffolding ~100x, tests ~50x, features ~30x.
 
-- [ ] **T1 (P2, human: ~1h / CC: ~10min)** — sidecar — Split `server.ts` (createServer, checkHost, asset map, handler) from `cli.ts`; ESM/CJS lint rule; `--version` define
+- [x] **T1 (P2, human: ~1h / CC: ~10min)** — sidecar — Split `server.ts` (createServer, checkHost, asset map, handler) from `cli.ts`; ESM/CJS lint rule; `--version` define
   - Surfaced by: Scope Challenge D1; Section 2
   - Files: sidecar/server.ts, sidecar/cli.ts, sidecar/server.test.ts, sidecar/cli.test.ts, lint config
   - Verify: `vp check` fails on `import.meta` in sidecar/; `vp test`
-- [ ] **T2 (P2, human: ~30min / CC: ~5min)** — shots — sharp palette PNG and `toHaveScreenshot` repeat check
+- [x] **T2 (P2, human: ~30min / CC: ~5min)** — shots — sharp palette PNG and `toHaveScreenshot` repeat check
   - Surfaced by: Scope Challenge E2 (D2); Section 3
   - Files: scripts/shots.ts, package.json
   - Verify: `vp run shots` twice; image < 200 KB
-- [ ] **T3 (P2, human: ~1h / CC: ~10min)** — CI — `permissions: {}` per workflow, split release.yml into verify/release jobs, guard script with fixtures
+- [x] **T3 (P2, human: ~1h / CC: ~10min)** — CI — `permissions: {}` per workflow, split release.yml into verify/release jobs, guard script with fixtures
   - Surfaced by: Scope Challenge E3 (D3); Section 3 (C7 proof)
   - Files: .github/workflows/*.yml, scripts/check-workflows.ts, scripts/check-workflows.test.ts
   - Verify: `vp test`; guard fails on a tag ref fixture
-- [ ] **T4 (P3, human: ~5min / CC: ~1min)** — scaffold — `vp create` with `--no-agent --hooks --no-git`
+- [x] **T4 (P3, human: ~5min / CC: ~1min)** — scaffold — `vp create` with `--no-agent --hooks --no-git`
   - Surfaced by: Scope Challenge E4 (D4)
   - Files: repo root
   - Verify: no AGENTS.md/CLAUDE.md generated; pre-commit runs `vp check`
-- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — release — `.releaserc.json` unit test
+- [x] **T5 (P2, human: ~30min / CC: ~5min)** — release — `.releaserc.json` unit test
   - Surfaced by: Section 3 E5 (D5)
   - Files: scripts/releaserc.test.ts
   - Verify: `vp test` fails when a plugin is removed
