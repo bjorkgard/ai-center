@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -31,15 +31,42 @@ describe(".releaserc.json", () => {
       "@semantic-release/commit-analyzer",
       "@semantic-release/release-notes-generator",
       "@semantic-release/changelog",
-      "@semantic-release/npm",
+      "@semantic-release/exec",
       "@semantic-release/git",
       "@semantic-release/github",
-      "@semantic-release/exec",
     ]);
   });
 
-  test("bumps the version without publishing to npm", () => {
-    expect(options("@semantic-release/npm").npmPublish).toBe(false);
+  test("does not use the npm plugin (npm refuses under pnpm devEngines)", () => {
+    expect(names).not.toContain("@semantic-release/npm");
+  });
+
+  test("the exec prepareCmd runs scripts/set-version.ts with the next version", () => {
+    const prepareCmd = String(options("@semantic-release/exec").prepareCmd);
+    expect(prepareCmd).toContain("scripts/set-version.ts");
+    expect(prepareCmd).toContain("${nextRelease.version}");
+  });
+
+  test("the exec prepareCmd sets the version in package.json", () => {
+    const template = String(options("@semantic-release/exec").prepareCmd);
+    const prepareCmd = template.replace("${nextRelease.version}", "9.9.9");
+    const dir = mkdtempSync(join(tmpdir(), "releaserc-"));
+    try {
+      // semantic-release runs prepareCmd from the repo root; run it from a temp copy of the layout.
+      mkdirSync(join(dir, "scripts"));
+      copyFileSync(
+        new URL("./set-version.ts", import.meta.url),
+        join(dir, "scripts/set-version.ts"),
+      );
+      copyFileSync(new URL("../package.json", import.meta.url), join(dir, "package.json"));
+      execFileSync("sh", ["-c", prepareCmd], { cwd: dir });
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
+        version: string;
+      };
+      expect(pkg.version).toBe("9.9.9");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("commits package.json and CHANGELOG.md with a skip-ci message", () => {
