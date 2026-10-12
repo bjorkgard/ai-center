@@ -1,9 +1,26 @@
+import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
 
+const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+
+// Until chunk 27 adds the user menu, the version is exposed as a meta tag.
+const appVersionMeta = {
+  name: "app-version-meta",
+  transformIndexHtml: () => [
+    { tag: "meta", attrs: { name: "app-version", content: version }, injectTo: "head" as const },
+  ],
+};
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
+  test: {
+    exclude: ["e2e/**", "node_modules/**", "dist/**"],
+  },
   staged: {
     "*": "vp check --fix",
   },
@@ -36,5 +53,5 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
   },
-  plugins: lazyPlugins(() => [react(), tailwindcss()]),
+  plugins: lazyPlugins(() => [react(), tailwindcss(), appVersionMeta]),
 });

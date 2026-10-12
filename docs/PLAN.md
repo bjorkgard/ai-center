@@ -372,7 +372,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **Acceptance:** `vp dev` shows a dark page titled "Synapse Horizon" in cyan and prints a `http://127.0.0.1:` URL. `vp lint`, `vp test`, `vp build` pass locally and in CI. `.node-version` matches `24.<minor>.<patch>` exactly, and CI's `node --version` equals it. The repo's Insights > Dependency graph > Dependabot tab shows no config error for `.github/dependabot.yml`.
 - **README:** Title, pitch, quick start, status line "Chunk 01 done". Image: `01-scaffold.png` (blank branded page).
 
-#### [ ] 02. Browser matrix and screenshot pipeline
+#### [~] 02. Browser matrix and screenshot pipeline
 - **Goal:** Every later chunk can be smoke-tested in three browsers and photographed automatically.
 - **Depends on:** 01.
 - **Tasks:** Playwright with Chromium, WebKit, Firefox projects. Smoke test: page loads, no console errors. `scripts/shots.ts` + `shots.config.ts` with the URL contract above (`freeze`, `seed`, `view`). Add `shots` and `e2e` scripts, run with `vp run shots` / `vp run e2e`. CI job runs smoke in Chromium and Firefox. Add `e2e:local` (all three engines, plus later leak/perf/shots) for the Mac (eng review D6).
