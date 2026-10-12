@@ -35,7 +35,7 @@ export default defineConfig({
   webServer: {
     command: `vp build && vp preview --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
