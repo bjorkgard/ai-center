@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/bjorkgard/ai-center/compare/v0.2.0...v0.2.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deps:** bump the npm group across 1 directory with 3 updates ([#5](https://github.com/bjorkgard/ai-center/issues/5)) ([737c138](https://github.com/bjorkgard/ai-center/commit/737c138fa047e5b0d804c1ab8cfe9c68315407ea))
+
 # [0.2.0](https://github.com/bjorkgard/ai-center/compare/v0.1.0...v0.2.0) (2026-10-12)
 
 
