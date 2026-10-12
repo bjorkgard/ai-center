@@ -43,7 +43,17 @@ export default defineConfig({
       typeAware: true,
       typeCheck: true,
     },
+    overrides: [
+      {
+        files: ["sidecar/**"],
+        rules: {
+          "sidecar/no-import-meta": "error",
+          "sidecar/no-top-level-await": "error",
+        },
+      },
+    ],
     jsPlugins: [
+      { name: "sidecar", specifier: "./scripts/sidecar-lint-plugin.js" },
       {
         name: "vite-plus",
         specifier: "vite-plus/oxlint-plugin",
