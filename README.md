@@ -15,7 +15,7 @@ vp install
 vp dev
 ```
 
-`vp dev` serves the app on `http://127.0.0.1:5173`.
+`vp dev` serves the app on `http://localhost:5173`.
 
 ## Testing and screenshots
 
