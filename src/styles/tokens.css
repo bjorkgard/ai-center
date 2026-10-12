@@ -1,0 +1,71 @@
+@font-face {
+  font-family: "Geist";
+  src: url("../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Tailwind v4 theme: every token below is a CSS variable and a utility. */
+@theme {
+  /* Surfaces and accents */
+  --color-bg: #070a12;
+  --color-glass: rgb(255 255 255 / 0.06);
+  --color-glass-border: rgb(255 255 255 / 0.08);
+  --color-text: #e6ebf5;
+  --color-cyan: #22d3ee;
+  --color-claude: #f59e0b;
+  --color-codex: #d1fae5;
+  --color-error: #f87171;
+
+  /* Status palette (design D17): colour */
+  --color-status-idle: #6b7385;
+  --color-status-thinking: #a5b4fc;
+  --color-status-tool: #34d399;
+  --color-status-waiting-user: #fbbf24;
+  --color-status-error: #f87171;
+  --color-status-done: #475066;
+
+  /* Fonts */
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* Type scale (design D16) */
+  --text-caption: 12px;
+  --text-label: 13px;
+  --text-body: 14px;
+  --text-body-strong: 16px;
+  --text-title: 20px;
+  --text-kpi-small: 28px;
+  --text-kpi: 40px;
+
+  /* Spacing, 4 px base */
+  --spacing: 4px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-control: 6px;
+  --radius-panel: 10px;
+}
+
+/* Status palette (design D17): shape */
+:root {
+  --status-shape-idle: hollow-circle;
+  --status-shape-thinking: soft-pulse-dot;
+  --status-shape-tool: solid-dot;
+  --status-shape-waiting-user: beacon-triangle;
+  --status-shape-error: square;
+  --status-shape-done: check;
+}
