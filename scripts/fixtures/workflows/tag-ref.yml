@@ -1,0 +1,8 @@
+name: tag-ref
+on: pull_request
+permissions: {}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
