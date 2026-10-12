@@ -379,7 +379,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **Acceptance:** `vp run e2e` green in Chromium and Firefox in CI; `vp run e2e:local` green in all three engines on the Mac. `vp run shots` writes `docs/img/02-pipeline.png` under 200 KB. Running it twice gives images within a 0.5% pixel-diff threshold (eng review T2), checked with Playwright's built-in `toHaveScreenshot({ maxDiffPixelRatio: 0.005 })` rather than a custom diff.
 - **README:** "Testing and screenshots" section explaining `vp run e2e` and `vp run shots`.
 
-#### [ ] 02b. Versioning, release pipeline and downloadable build
+#### [~] 02b. Versioning, release pipeline and downloadable build
 - **Goal:** Every merged PR that changes behaviour produces a versioned GitHub Release with notes and a tag, and the single-executable build is proven on the Mac (D19). The 4-OS build matrix and binary upload land in chunk 14b, once the binary tails real logs (CEO C1).
 - **Depends on:** 02.
 - **Tasks:**
