@@ -12,7 +12,7 @@ Status legend per chunk: `[ ]` todo, `[~]` in progress, `[x]` accepted.
 | # | Decision | Source |
 |---|---|---|
 | D1 | All modern desktop browsers: Chrome, Safari, Firefox. WebGL perf budget applies to all three. Mobile out of scope. | Brief |
-| D2 | Vite+ (`vp`) + React + TypeScript (strict) + Tailwind CSS + Three.js. pnpm, Node 22 LTS. Vite+ bundled lint/format. | Brief, F1, F5 |
+| D2 | Vite+ (`vp`) + React + TypeScript (strict) + Tailwind CSS + Three.js. pnpm, Node 24 LTS (CEO C9; was 22, whose end of life 2027-04-30 would reach shipped binaries). Vite+ bundled lint/format. | Brief, F1, F5 |
 | D3 | Data source: raw Claude Code and Codex CLI JSONL logs, read by a local log server that runs as a Vite plugin inside `vp dev` (same origin as the app, one command). It tails files, parses them in Node, and streams normalised events over WebSocket. Drag-and-drop import uploads files to the same server for replay. A thin CLI entry serves the built app with the same plugin logic. Mock source for every chunk before logs connect. | Brief, A2, eng review D1 |
 | D4 | Live tail and replay (1x / 10x / 60x). Backfill last 24 h. Session ends after 30 min idle. | A3, A4 |
 | D5 | Project key = working directory path. Claude and Codex sessions in the same repo share one hall. | A5 |
@@ -28,8 +28,8 @@ Status legend per chunk: `[ ]` todo, `[~]` in progress, `[x]` accepted.
 | D15 | English UI, °C, kW, 24 h clock, local timezone. | D5 |
 | D16 | Privacy: current task truncated to 120 chars, paths outside the project redacted, secret patterns redacted at parse time, nothing leaves localhost (WebSocket origin + token check). | A12, eng review A1, D2 |
 | D17 | Cost = tokens x per-model price table in config, labelled `estimated`. | A7 |
-| D18 | Tests: Vitest (parsers, store, reconciler) and Playwright. GitHub Actions (ubuntu) from chunk 01 runs `vp check`, `vp test`, and Chromium + Firefox smoke. On the Mac, `vp run e2e:local` runs WebKit smoke, leak test, perf scenario and screenshots, and must pass before a chunk is ticked. One PR per chunk, squash-merged with a Conventional Commit title (checked in CI). | F3, F6, eng review D6, D19 |
-| D19 | Versioning and releases: semver in `package.json` is the single source of truth. Every PR merged to main runs semantic-release: the version is bumped from Conventional Commit types (fix = patch, feat = minor, `!`/BREAKING = major), CHANGELOG.md is updated, a `vX.Y.Z` tag is pushed and a GitHub Release is created. Merges with only docs/chore/test changes make no release. Each release attaches single-executable builds (Node SEA: log server + built web app in one binary) for macOS arm64, macOS x64, Linux x64 and Windows x64. Users download, run and get the app at localhost with no Node or dev setup. | Added 2026-10-12 (user request) |
+| D18 | Tests: Vitest (parsers, store, reconciler) and Playwright. GitHub Actions (ubuntu) runs `vp check` and `vp test` from chunk 01, Chromium + Firefox smoke from chunk 02, and the PR-title check from chunk 02b (CEO review). On the Mac, `vp run e2e:local` runs WebKit smoke, leak test, perf scenario and screenshots, and must pass before a chunk is ticked. One PR per chunk, squash-merged with a Conventional Commit title. | F3, F6, eng review D6, D19 |
+| D19 | Versioning and releases: semver in `package.json` is the single source of truth. Every PR merged to main runs semantic-release: the version is bumped from Conventional Commit types (fix = patch, feat = minor, `!`/BREAKING = major), CHANGELOG.md is updated, a `vX.Y.Z` tag is pushed and a GitHub Release is created. Merges with only docs/chore/test changes make no release. From chunk 14b on (CEO C1), each release attaches single-executable builds (Node SEA: log server + built web app in one binary) for macOS arm64, macOS x64, Linux x64 and Windows x64. Users download, run and get the app at localhost with no Node or dev setup. | Added 2026-10-12 (user request) |
 
 **Open decision (gates chunk 04 onward):** React Three Fiber vs direct Three.js. Settled by the spike in chunk 03.
 
@@ -125,16 +125,17 @@ One source switch (`mock | live | replay`) in a dev menu; the rest of the app ca
 
 ## 4. README and screenshot protocol (applies to every chunk)
 
-- Images live in `docs/img/NN-<slug>.png` (NN = chunk number), 1280x720 PNG, compressed under 200 KB.
+- Images live in `docs/img/NN-<slug>.png` (NN = chunk number), 1280x720 PNG, compressed under 200 KB: `scripts/shots.ts` quantizes each capture with `sharp(...).png({ palette: true, quality: 80, effort: 10 })` (`sharp` is a dev dependency, never in the SEA bundle; eng E2).
 - Captured by `vp run shots` (Playwright, Chromium), which opens the app with `?source=mock&scenario=steady&seed=1&freeze=1&view=<name>`. `freeze=1` stops the animation clock at a fixed time so images are reproducible.
 - Each chunk adds its view name(s) to `scripts/shots.config.ts`, so old images regenerate when the look changes.
+- Exception: `14b-release.png` shows a GitHub Release page, so it is captured by hand, not by `vp run shots`.
 - The README is rebuilt section by section. Every chunk's README step lists exactly what to add.
 
 README skeleton, grown over time:
 1. Title, one-line pitch, hero image (latest full-campus shot).
 2. Status: which chunks are done, link to this plan.
-3. Download and run: pick the build for your OS from GitHub Releases, run it, and the browser opens at `http://localhost:4317`. Includes first-run notes for unsigned binaries (macOS Gatekeeper, Windows SmartScreen) and the `--port`, `--no-open` and `--version` flags.
-4. Development setup (`vp install`, `vp dev`; the log server starts with the dev server; Node version pin; `vp run e2e:local` on a Mac).
+3. Download and run: pick the build for your OS from GitHub Releases, run it, and the browser opens at `http://127.0.0.1:7317` (CEO C2). Includes first-run notes for unsigned binaries (macOS Gatekeeper, Windows SmartScreen) and the `--port`, `--no-open` and `--version` flags.
+4. Development setup (`vp install`, `vp dev`; Node version pin; `vp run e2e:local` on a Mac; chunk 14 adds that the log server starts with the dev server).
 5. Contributing: link to CONTRIBUTING.md (branch and PR flow, Conventional Commit PR titles, what CI runs, chunk acceptance and screenshots, how releases happen).
 6. Data sources and privacy (where logs are read, what is redacted).
 7. Provenance legend (real / derived / estimated badges).
@@ -367,50 +368,62 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [ ] 01. Scaffold
 - **Goal:** Empty app runs, lints, tests, builds.
 - **Depends on:** none.
-- **Tasks:** Create the Vite+ React-TS project with pnpm. Enable TS strict. Add Tailwind CSS v4 with tokens for dark background, glass panel, cyan `#22D3EE`, Claude amber, Codex neutral, error red, plus the section 4b type/spacing/radius tokens and Geist Sans/Mono fonts (design D16), and the status colour/shape tokens (design D17). Add Vitest with one sample test. Folder layout: `src/{app,scene,dashboard,data,sim,config}`, `sidecar/`, `scripts/`, `docs/`. Add `.editorconfig`, `.nvmrc`. GitHub Actions: install, lint, typecheck, test, build.
-- **Acceptance:** `vp dev` shows a dark page titled "Synapse Horizon" in cyan. `vp lint`, `vp test`, `vp build` pass locally and in CI.
+- **Tasks:** Create the Vite+ React-TS project with pnpm: `vp create vite --no-interactive --package-manager pnpm --no-agent --hooks --no-git --directory . -- --template react-ts` (in a temp dir and copied over if `.` is refused). No generated agent files; the pre-commit `vp check` hook stays and CONTRIBUTING mentions it (eng E4). Enable TS strict. Add Tailwind CSS v4 with tokens for dark background, glass panel, cyan `#22D3EE`, Claude amber, Codex neutral, error red, plus the section 4b type/spacing/radius tokens and Geist Sans/Mono fonts (design D16), and the status colour/shape tokens (design D17). Add Vitest with one sample test. Folder layout: `src/{app,scene,dashboard,data,sim,config}`, `sidecar/`, `scripts/`, `docs/`. Add `.editorconfig`. Pin an exact Node version (`24.x.y`) with `vp env pin --target node-version 24.x.y` (without `--target`, Vite+ may write `devEngines` instead of `.node-version`); exact, so `build:bin` can look it up in nodejs.org `SHASUMS256.txt`. Set the Vite dev server host to `127.0.0.1` so `vp dev` serves the same origin the Origin check accepts (CEO C2, eng A1). GitHub Actions: `voidzero-dev/setup-vp` (Vite+ CI guide: the `v1` tag no longer updates), then install, lint, typecheck, test, build. Every `uses:` in `.github/workflows/` is a full 40-character commit SHA with a `# vX.Y.Z` comment; Dependabot updates them; a CI step fails if any `uses:` is not a SHA (CEO C7). Add `.github/dependabot.yml`: weekly `github-actions` and `npm` updates, grouped into one PR per ecosystem, `react`, `react-dom`, `@types/react` and `@types/react-dom` ignored for versions `>=19.4.0` (eng S3), titles pass the PR-title check: npm `dependencies` use `commit-message.prefix: "fix(deps)"` so shipped-library fixes cut a patch release; `prefix-development: "chore(deps)"` for devDependencies and `chore(deps)` for GitHub Actions cut none (CEO X2, C8).
+- **Acceptance:** `vp dev` shows a dark page titled "Synapse Horizon" in cyan and prints a `http://127.0.0.1:` URL. `vp lint`, `vp test`, `vp build` pass locally and in CI. `.node-version` matches `24.<minor>.<patch>` exactly, and CI's `node --version` equals it. The repo's Insights > Dependency graph > Dependabot tab shows no config error for `.github/dependabot.yml`.
 - **README:** Title, pitch, quick start, status line "Chunk 01 done". Image: `01-scaffold.png` (blank branded page).
 
 #### [ ] 02. Browser matrix and screenshot pipeline
 - **Goal:** Every later chunk can be smoke-tested in three browsers and photographed automatically.
 - **Depends on:** 01.
 - **Tasks:** Playwright with Chromium, WebKit, Firefox projects. Smoke test: page loads, no console errors. `scripts/shots.ts` + `shots.config.ts` with the URL contract above (`freeze`, `seed`, `view`). Add `shots` and `e2e` scripts, run with `vp run shots` / `vp run e2e`. CI job runs smoke in Chromium and Firefox. Add `e2e:local` (all three engines, plus later leak/perf/shots) for the Mac (eng review D6).
-- **Acceptance:** `vp run e2e` green in Chromium and Firefox in CI; `vp run e2e:local` green in all three engines on the Mac. `vp run shots` writes `docs/img/02-pipeline.png` under 200 KB. Running it twice gives images within a 0.5% pixel-diff threshold (eng review T2).
+- **Acceptance:** `vp run e2e` green in Chromium and Firefox in CI; `vp run e2e:local` green in all three engines on the Mac. `vp run shots` writes `docs/img/02-pipeline.png` under 200 KB. Running it twice gives images within a 0.5% pixel-diff threshold (eng review T2), checked with Playwright's built-in `toHaveScreenshot({ maxDiffPixelRatio: 0.005 })` rather than a custom diff.
 - **README:** "Testing and screenshots" section explaining `vp run e2e` and `vp run shots`.
 
 #### [ ] 02b. Versioning, release pipeline and downloadable build
-- **Goal:** Every merged PR that changes behaviour produces a versioned GitHub Release with builds a user can download and start without any dev setup (D19).
+- **Goal:** Every merged PR that changes behaviour produces a versioned GitHub Release with notes and a tag, and the single-executable build is proven on the Mac (D19). The 4-OS build matrix and binary upload land in chunk 14b, once the binary tails real logs (CEO C1).
 - **Depends on:** 02.
 - **Tasks:**
-  - **Version handling.** `package.json` `version` is the single source of truth. Vite injects it as `__APP_VERSION__`; the app shows it in the user menu, and the binary prints it with `--version`. `CHANGELOG.md` is generated.
-  - **PR discipline.** CI checks that the PR title is a Conventional Commit (`feat:`, `fix:`, `docs:`, ...), since squash-merge uses it as the commit message. Add a PR template with the chunk's acceptance checklist.
+  - **Version handling.** `package.json` `version` is the single source of truth. Vite injects it as `__APP_VERSION__`; until chunk 27 adds the user menu, the app renders it as `<meta name="app-version" content="X.Y.Z">` (the chunk 02 smoke spec asserts it equals `package.json`); chunk 27 shows it in the user menu. The binary prints it with `--version`. `CHANGELOG.md` is generated. Seed version (CEO C3): before the 02b PR merges, `package.json` is `0.1.0` and `main` carries the tag `v0.1.0`, so `feat:` gives 0.2.0, 0.3.0 and so on; 1.0.0 happens only through a deliberate `feat!:` or BREAKING commit (documented in CONTRIBUTING).
+  - **PR discipline.** CI checks (on `pull_request` with types opened, edited, synchronize; never `pull_request_target`, CEO C7) that the PR title is a Conventional Commit (`feat:`, `fix:`, `docs:`, ...), since squash-merge uses it as the commit message. Add a PR template with the chunk's acceptance checklist.
   - **Release workflow** (`.github/workflows/release.yml`, on push to `main`):
+    - Checkout with `fetch-depth: 0` (semantic-release needs full history and tags). `concurrency: { group: release, cancel-in-progress: false, queue: max }` so quick merges never race on the tag or the release commit and no waiting run is cancelled (the default queue holds one pending run). Merges that land while a release runs still ship together in the next version: each run checks out its own merge SHA, and semantic-release skips a run whose SHA is behind `main`, so the newest run releases every unreleased commit.
     1. Run `vp check` and `vp test`.
-    2. Run semantic-release with the commit-analyzer, release-notes, changelog, npm (version bump only, no publish), git and github plugins. It writes the release commit `chore(release): X.Y.Z [skip ci]`, tags `vX.Y.Z` and creates the GitHub Release.
-    3. A build matrix runs only when a release was made.
-    - Permissions: `contents: write`. If `main` is protected, allow the release bot to push the release commit.
+    2. Run semantic-release with the commit-analyzer, release-notes, changelog, npm (version bump only, no publish), git, github and exec plugins. The exec plugin's `successCmd` writes `published=true` and `version=X.Y.Z` to `$GITHUB_OUTPUT`; the job exposes both as outputs (used by chunk 14b). It writes the release commit `chore(release): X.Y.Z [skip ci]`, tags `vX.Y.Z` and creates the GitHub Release.
+    3. No binaries yet: the build matrix and upload are added in chunk 14b (CEO C1).
+    - Permissions (eng E3): every workflow file opens with `permissions: {}`. In `release.yml`, steps 1 and 2 are two jobs: `verify` (`vp check`, `vp test`; `contents: read`) and `release` (`needs: verify`; semantic-release; `contents: write`, `issues: write`, `pull-requests: write`). In `ci.yml`, check/test/build/smoke jobs get `contents: read`; `pr-title.yml` gets `pull-requests: read`. The C7 guard step also fails when a workflow has no top-level `permissions:` key.
+    - `main` protection (CEO C4): a repository ruleset on `main` requires a PR, the CI checks and the PR-title check, and blocks force pushes. The GitHub Actions app is on the bypass list so the `chore(release)` commit can push. Unverified: whether a personal-account repo can list the Actions app as a bypass actor; if not, use a deploy key that is on the bypass list and pass it to `actions/checkout` (`ssh-key`). Deploy-key fallback must also set semantic-release `repositoryUrl` to the SSH URL, or it pushes over HTTPS with `GITHUB_TOKEN` and the ruleset refuses it. Order: seed tag `v0.1.0` → merge 02b (first `release.yml` run, `main` still open) → create the ruleset naming the exact required check names from the CI and PR-title jobs of a PR run (the 02b PR itself; `release.yml` runs only on push to `main`, so its jobs must never be required) → run the ruleset acceptance check. Acceptance below proves whichever bypass is used.
+  - **Serve script** `vp run serve`: runs `vp build`, then runs the bundled CLI (the same CommonJS bundle `build:bin` makes, step 2 below) with plain `node` against `dist/`, so no TypeScript runner is needed (same flags as the binary).
+  - **Release config test (eng E5):** `scripts/releaserc.test.ts` in `vp test` asserts `branches: ["main"]`, plugin order (commit-analyzer, release-notes, changelog, npm with `npmPublish: false`, git, github, exec), that each plugin `require.resolve`s, and that the exec `successCmd` writes `published` and `version`.
+  - **Workflow guard (C7, E3 proof):** `scripts/check-workflows.ts` (run in `ci.yml`) with `scripts/check-workflows.test.ts` fixtures: a `uses:` tag ref fails, a workflow without top-level `permissions:` fails, a valid file passes.
   - **Local release script** `vp run release:dry`: runs semantic-release in `--dry-run` so you can see the next version and notes before merging.
-  - **Server entry** `sidecar/cli.ts`: serves the built app from embedded assets on `127.0.0.1:4317` and opens the default browser.
-    - Flags: `--port`, `--no-open`, `--version`, `--help`.
-    - If the port is busy, try the next 10 ports and print the chosen URL.
+  - **Server split (eng D1):** `sidecar/server.ts` exports `createServer({ port, assets })` with `checkHost()`, manifest lookup and the request handler, and has no argv, process or browser code; `sidecar/cli.ts` handles flags, listen-with-retry, opening the browser and signals. Chunk 14's plugin imports `checkHost` from `server.ts`, so the Host gate exists once. Tests: `sidecar/server.test.ts` (C6 gate, manifest, handler) and `sidecar/cli.test.ts` (flags, ports, open, signals).
+  - **Server entry** `sidecar/cli.ts`: serves the built app from embedded assets on `127.0.0.1:7317` and opens the default browser at `http://127.0.0.1:<port>`; the same `127.0.0.1` string is used in the README and is the only host the Origin check accepts (CEO C2; 4317 is the OpenTelemetry collector port). Requests whose `Host` is `localhost:<port>` get a 308 redirect to `http://127.0.0.1:<port>` with the same path, so a hand-typed `localhost` URL still works. The Origin check accepts exactly `http://127.0.0.1:<port actually bound>`, including after the busy-port fallback. Host gate (CEO C6): only `Host: 127.0.0.1:<bound port>` is served; `localhost:<port>` gets the 308 above; any other Host gets 421 and one stderr line (method, path, Host). Files are served only from a manifest built at startup (the SEA asset list, or a walk of `dist/`); request paths are looked up in that manifest and never joined to a disk path. Chunk 14's WebSocket and import endpoints sit behind the same Host gate. Asset source: when `node:sea` `isSea()` is true, files come from embedded SEA assets; otherwise from `dist/` on disk.
+    - Flags: `--port`, `--no-open`, `--version`, `--help`. `--version` comes from an esbuild `define` of `package.json`'s version at bundle time (a SEA binary has no `package.json` to read).
+    - `sidecar/server.ts` stays loadable as ESM (Vite plugin) and as CJS (SEA bundle): no `import.meta`, no top-level await; a `no-restricted-syntax` lint rule on `MetaProperty` and top-level `await` in `sidecar/` makes `vp check` fail otherwise (eng review).
+    - If the port is busy, try the next 10 ports and print the chosen URL. Busy is detected from the `listen` error (`EADDRINUSE`), never by probing first.
+    - Failure behaviour: every row of the Section 2 error registry in the CEO review record is required (CEO C5), each with a Vitest case in `sidecar/server.test.ts`, `sidecar/cli.test.ts` or `scripts/build-bin.test.ts` (fetch and child processes mocked). Port tests bind ephemeral ports (`listen(0)`) and occupy them on purpose, never fixed ports, so parallel CI jobs cannot collide.
     - In Phase 0 it serves the app only; chunk 14 adds the log watcher and WebSocket to this same entry.
   - **Single executable build** `vp run build:bin`:
     1. `vp build` builds the web app.
     2. The CLI is bundled to one CommonJS file, with only pure-JS dependencies so nothing native has to be embedded. That means chokidar v4 (no fsevents) and `ws`.
-    3. The `dist/` files are embedded as SEA assets (`sea-config.json`).
-    4. The SEA blob is injected into a copy of the pinned Node binary with `postject`.
+    3. `build:bin` generates `sea-config.json` from the `dist/` listing on every run (SEA assets must be named one by one, and Vite file names carry content hashes), then embeds them.
+    4. The SEA blob is injected with `postject` into a copy of the official nodejs.org binary for the pinned Node version, downloaded by the script and checked against nodejs.org `SHASUMS256.txt` (never the local `node`, which may be a Homebrew or shared-library build).
     5. On macOS: remove the signature, inject, then ad-hoc sign (`codesign --sign -`); Apple Silicon will not run the binary otherwise.
-    - Output names: `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows), plus `SHA256SUMS.txt`.
-  - **Build matrix:** macos-14 (arm64), macos-13 (x64), ubuntu-latest (x64), windows-latest (x64). Each runner builds with its own Node binary (no cross-compiling) and uploads to the release.
-  - **CONTRIBUTING.md:** branch naming, one PR per chunk, Conventional Commit PR titles, what CI runs vs `vp run e2e:local` on the Mac, updating README and screenshots per chunk, how releases and versions happen, and that only maintainers merge to `main`.
+    - Output names: `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows).
+  - **Build matrix:** moved to chunk 14b (CEO C1). In 02b, `vp run build:bin` runs on the Mac only.
+  - **CONTRIBUTING.md:** branch naming, one PR per chunk, Conventional Commit PR titles, what CI runs vs `vp run e2e:local` on the Mac, updating README and screenshots per chunk, how releases and versions happen, and that only maintainers merge to `main`. Release runbook section (Prime Directive 5, CEO Section 9): (1) bad release: revert the PR and merge it as `fix: revert <title>`, which ships a patch; never delete or move a published tag; (2) bad binaries (from 14b): `gh release edit vX.Y.Z --prerelease` and add a warning to the notes, then ship the fix; (3) tag pushed but GitHub Release missing: `gh release create vX.Y.Z --notes-file <notes from CHANGELOG>`; (4) release job red on push refusal: check the ruleset bypass (C4), re-run the job; (5) Dependabot PR fails CI: close it, pin the old version with an ignore rule, open an issue.
 - **Acceptance:**
   - `vp run release:dry` prints the next version and release notes from the commits since the last tag.
-  - A `docs:`-only PR merges with no release.
-  - A `feat:` PR merges and produces a minor bump, a tag, a CHANGELOG entry and a GitHub Release with 4 binaries and `SHA256SUMS.txt`.
-  - In each matrix job, a smoke step starts the binary with `--no-open --port 4400`. `curl http://127.0.0.1:4400/` returns 200 with the app HTML, and `--version` prints the tag version.
-  - On your Mac, the downloaded arm64 binary starts after the Gatekeeper right-click > Open step and serves the app. A machine with no Node installed runs it (checked once on a clean VM or a user account without Node).
+  - With the `v0.1.0` seed tag in place, a `feat:` PR merges and produces a minor bump (0.2.0), a tag, a CHANGELOG entry and a GitHub Release with notes (no binaries until 14b).
+  - After that release, a `docs:`-only PR merges with no release.
+  - On your Mac, `vp run build:bin` produces an arm64 binary; started with `--no-open --port 4400`, `curl http://127.0.0.1:4400/` returns 200 with the app HTML and `--version` prints the `package.json` version.
+  - Opening `http://localhost:4400/` on that binary redirects to `http://127.0.0.1:4400/`.
   - A PR with a non-conventional title fails the title check.
-- **README:** Add the sections "Download and run" (per-OS steps, unsigned-binary first-run notes: macOS right-click > Open or `xattr -d com.apple.quarantine <file>`, Windows SmartScreen "More info > Run anyway", flags), "Development setup" and "Contributing" (short, linking CONTRIBUTING.md), plus "Versioning and releases". Add a release badge. Image: `02b-release.png` (screenshot of the first GitHub Release page with the 4 assets), captured manually and stored in `docs/img/`.
+  - `vp test` covers all 14 rows of the Section 2 error registry (CEO C5).
+  - Host gate and manifest tests (CEO C6): `Host: evil.example:7317` gets 421; `Host: localhost:7317` gets 308; `/../package.json`, `/%2e%2e/package.json` and `/assets/../../x` get 404; a known asset gets 200.
+  - A direct push to `main` from your account is refused by the ruleset.
+  - After the ruleset exists, a `fix:` PR merges and its `chore(release)` push and `vX.Y.Z` tag succeed (proves the bypass).
+- **README:** Add the sections "Development setup" and "Contributing" (short, linking CONTRIBUTING.md), plus "Versioning and releases". Add a release badge. "Download and run" and image `02b-release.png` move to chunk 14b (CEO C1).
 
 ### Phase 1: Rendering spike (gate)
 
@@ -507,10 +520,26 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 
 #### [ ] 14. Log server plugin: watcher and WebSocket stream
 - **Goal:** The dev server itself tails real log folders and streams to the app (eng review D1).
-- **Depends on:** 11.
+- **Depends on:** 11, 02b (extends `sidecar/cli.ts` and uses `vp run build:bin`).
 - **Tasks:** `sidecar/plugin.ts` Vite plugin (`configureServer`) plus the existing `sidecar/cli.ts` from chunk 02b (the release binary entry), which gains the same watcher and WebSocket logic: config file with log roots (defaults `~/.claude/projects`, `~/.codex/sessions`), chokidar watch, per-file byte offset tailing (handles partial lines and file rotation), 24 h backfill, WebSocket endpoint on the dev-server origin, heartbeat. Reject WebSocket upgrades and `POST /api/import` whose `Origin` is not the app origin, and require a per-run random token injected into the served page (eng review A1). At this stage it streams raw line counts per file only (parsers come next). Backfilled events carry `backfill: true`; they update counts silently and never toast or announce (eng re-review E4); test: a backfill containing 20 errors raises 0 toasts and 0 live announcements (G13). Server sends backfill progress `{done, total}` files and the pill shows "Catching up n/N files" (design D10). Events are sent in batches (up to 500 per message) so a 24 h backfill does not flood the socket (eng review P3). Server keeps a per-file byte-offset cursor; on reconnect the client sends its last cursor and the server resumes from it (eng review Q1). App shows a connection pill (connected / reconnecting / off). When no log files are found, show the first-run card from section 4b (design D9). When the server is down, show the amber banner under the top bar (design D11).
-- **Acceptance:** Appending a line to a watched file shows up in the app within 1 s. Restarting `vp dev` shows "reconnecting" in an open tab, then recovers without duplicates. A test page on another origin (e.g. `http://127.0.0.1:<other port>`) cannot open the WebSocket or call the import endpoint; a request without the token is refused. Server refuses non-localhost connections. Unit tests for the tailer with partial-line, truncated-file and rotated-file fixtures (G1). The release binary (chunk 02b) built from this chunk tails real logs too: the CI smoke test opens the WebSocket with the injected token and receives a heartbeat. Log roots resolve with `os.homedir()` on macOS, Linux and Windows. Backfill skips files with mtime older than 24 h without reading them (G2). Restarting `vp dev` with a tab open gives identical token totals (G4). A missing or unreadable log root shows its reason in the pill and does not crash (G5).
+- **Acceptance:** Appending a line to a watched file shows up in the app within 1 s. Restarting `vp dev` shows "reconnecting" in an open tab, then recovers without duplicates. A test page on another origin (e.g. `http://127.0.0.1:<other port>`) cannot open the WebSocket or call the import endpoint; a request without the token is refused. A WebSocket upgrade with `Host: evil.example:<port>` is refused by `checkHost` under both `vp dev` and the binary (eng review, C6 proof). Server refuses non-localhost connections. Unit tests for the tailer with partial-line, truncated-file and rotated-file fixtures (G1). The local `vp run build:bin` binary built from this chunk tails real logs too; the CI matrix smoke that opens the WebSocket with the injected token is added in chunk 14b. Log roots resolve with `os.homedir()` on macOS, Linux and Windows. Backfill skips files with mtime older than 24 h without reading them (G2). Restarting `vp dev` with a tab open gives identical token totals (G4). A missing or unreadable log root shows its reason in the pill and does not crash (G5).
 - **README:** Quick start notes that `vp dev` also starts the log watcher; `vp run serve` for the built app. "Data sources and privacy" section: what is read, localhost only.
+
+#### [ ] 14b. Downloadable builds for 4 platforms
+- **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1).
+- **Depends on:** 02b, 14.
+- **Tasks:**
+  - **Build matrix** in `release.yml`: `needs: release`, `if: needs.release.outputs.published == 'true'`, and checks out the new tag `v${{ needs.release.outputs.version }}` (not the merge SHA, whose `package.json` still has the old version). Runners: macos-15 (arm64; `macos-14` is removed on 2026-11-02), macos-15-intel (x64; `macos-13` was retired 2025-12-04, and GitHub drops x64 macOS when the macOS 15 image retires in fall 2027), ubuntu-latest (x64), windows-latest (x64). Each runner builds with its own official Node binary (no cross-compiling) via `vp run build:bin` and uploads to the release. Output names `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows).
+  - **Job order per OS:** build → smoke (acceptance below) → attest → upload. A failed smoke uploads nothing for that OS.
+  - **Partial failure:** the matrix sets `fail-fast: false`, so one failed OS does not cancel the others. If any matrix job fails, the checksums job does not run, and a final step (`if: failure()`) builds the missing-OS list from `gh release view --json assets` and edits the release notes to start with "Incomplete: builds missing for <os list>". Re-running the failed job fills it in; the checksums job, once it runs with all 4 binaries present, removes that prefix.
+  - **Checksums job** after the matrix: downloads all 4 binaries from the release, writes `SHA256SUMS.txt` and uploads it.
+  - **Provenance (CEO X1):** each binary gets `actions/attest-build-provenance` (job-level permissions on the matrix jobs: `contents: write`, `id-token: write`, `attestations: write`; set per job, because workflow-level permissions would replace `contents: write` and the upload would fail with 403). Repo is public, so this is free.
+- **Acceptance:**
+  - A `feat:` PR merges and produces a GitHub Release with 4 binaries and `SHA256SUMS.txt`.
+  - In each matrix job, a smoke step starts the binary with `--no-open --port 4400`. `curl http://127.0.0.1:4400/` returns 200 with the app HTML, `--version` prints the tag version, and the WebSocket accepts the injected token and sends a heartbeat.
+  - `gh attestation verify <binary> --repo bjorkgard/ai-center` passes for every binary.
+  - On your Mac, the downloaded arm64 binary starts after the Gatekeeper first-run step (macOS 15+: System Settings > Privacy & Security > Open Anyway, or `xattr -d com.apple.quarantine <file>`) and serves the app. A machine with no Node installed runs it (checked once on a clean VM or a user account without Node).
+- **README:** Add "Download and run" (per-OS steps, unsigned-binary first-run notes: macOS 15 and later removed the right-click > Open bypass, so use System Settings > Privacy & Security > Open Anyway after the first blocked launch, or `xattr -d com.apple.quarantine <file>`; Windows SmartScreen "More info > Run anyway", flags, `gh attestation verify`). Image: `14b-release.png` (screenshot of the first GitHub Release page with the 4 assets), captured manually and stored in `docs/img/`.
 
 #### [ ] 15. Claude Code parser
 - **Goal:** Claude JSONL lines become AgentEvents.
@@ -697,13 +726,13 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 01 → 02 → 02b (release) ; 02 → 03 (gate) → 04a → 04b → 05 → 06 → 07 → 08 → 09
                                          └→ 10
 01 → 11 → 12 → 13 → 15 → 16 → 17        (data track, parallel to 04-10)
-     11 → 14 ─────┘
+     11 → 14 ─────┘ ; 02b → 14 ; 14 → 14b (downloads)
 10 + 13 → 18;  13 → 19;  18 + 19 → 20 → 21 → 22 → 23
 23 → 24 → 25, 26;  25 → 27 → 28, 29(+26), 30, 31 → 32(+29), 33
 27 → 34 → 35 → 36 → 37
 ```
 
-The data track (11-17) can run alongside world building (04-10) in a separate branch or worktree, since they share no files after chunk 01.
+The data track (11-17) can run alongside world building (04-10) in a separate branch or worktree, since they share no files after chunk 01, except `sidecar/cli.ts` from 02b, which chunk 14 extends.
 
 ---
 
@@ -712,9 +741,10 @@ The data track (11-17) can run alongside world building (04-10) in a separate br
 | Risk | Why it matters | Mitigation | Settled in |
 |---|---|---|---|
 | R3F vs vanilla | Gates every scene chunk | Measured spike with churn test, ADR | 03 |
-| Unsigned binaries | macOS Gatekeeper and Windows SmartScreen warn or block on first run | README first-run steps; ad-hoc signing on macOS so arm64 runs; Apple Developer ID notarisation is a later option | 02b |
-| Native modules in the single executable | SEA cannot load native addons such as fsevents | Pure-JS dependencies only (chokidar v4, `ws`), checked by the per-OS smoke test | 02b, 14 |
-| Release bot vs protected `main` | The release commit push fails | Allow the release bot in branch protection, or skip committing the version and derive it from the tag | 02b |
+| Unsigned binaries | macOS Gatekeeper and Windows SmartScreen warn or block on first run | README first-run steps; ad-hoc signing on macOS so arm64 runs; Apple Developer ID notarisation is a later option | 02b, 14b |
+| x64 macOS runners end (fall 2027, when the macOS 15 image retires) | No native x64 Mac build host | Before then, inject into the darwin-x64 Node binary on an arm64 runner and smoke-test under Rosetta (Rosetta on hosted runners unverified) | 14b, revisit 2027 |
+| Native modules in the single executable | SEA cannot load native addons such as fsevents | Pure-JS dependencies only (chokidar v4, `ws`), checked by the per-OS smoke test | 02b, 14, 14b |
+| Release bot vs protected `main` | The release commit push fails | `main` ruleset with the release bot on the bypass list (CEO C4); tag-only versioning rejected because it breaks D19 | 02b |
 | Instanced perf in Safari/Firefox | Safari WebGL and Firefox compositing are the slowest paths | InstancedMesh everywhere, shared materials, draw-call budget test, quality tiers | 03, 07, 36 |
 | Bloom and `backdrop-filter` cost | Both expensive over a live WebGL canvas, worst in Firefox | Auto-disable below 45 fps, solid panel fallback | 04, 27, 36 |
 | Look drifts from the approved mockup, or reads as generic neon | Art style is the identity | Lock lighting rig and material library to variant-B-2 early (design D14), compare screenshot to mockup at 04 and 08 | 04, 08 |
@@ -1062,7 +1092,7 @@ Disabled (`codex_reviews` = disabled). No outside or native second reviewer ran;
 
 ### NOT in scope
 
-- Node version change (S2): F6/F1 kept at Node 22 LTS as approved; chunk 01 only pins it. Revisit if you want Node 24 LTS.
+- Node version change (S2): F6/F1 kept at Node 22 LTS as approved; chunk 01 only pins it. Revisit if you want Node 24 LTS. (Superseded 2026-10-12 by CEO C9: Node 24 LTS.)
 - Real GPU in CI: deferred by D6; perf and screenshots stay on the Mac.
 - Mobile, auth, multi-user: out of scope per brief.
 
@@ -1092,7 +1122,7 @@ Data path after D1, A1, A3 and Q1:
 
 ```
 log files ─► tailer (mtime filter, per-file cursor) ─► parser (facts only, redaction D2)
-           ─► batch ≤500 ─► WS (Origin + token, A1) ─► store: incremental aggregates
+           ─► batch ≤500 ─► WS (Host gate C6 + Origin + token, A1) ─► store: incremental aggregates
            ─► store clock (live|replay) drives idle end, status, waiting (A3) ─► scene + panels
 ```
 
@@ -1480,19 +1510,760 @@ COVERAGE: 9/9 new flows have a planned test (all PLANNED, none built)
 
 ### Post-review addition (2026-10-12)
 
-Chunk 02b and decision D19 (versioning, semantic-release on every merge, single-executable builds for 4 platforms, README and CONTRIBUTING sections) were added after the reviews, at the user's request. Choices made by the user: single executable, macOS + Linux + Windows, auto release on every merge. No review has covered 02b yet; re-run `/plan-eng-review` to include it.
+Chunk 02b and decision D19 (versioning, semantic-release on every merge, single-executable builds for 4 platforms, README and CONTRIBUTING sections) were added after the reviews, at the user's request. Choices made by the user: single executable, macOS + Linux + Windows, auto release on every merge. No review had covered 02b before the Phase 0 CEO review below (2026-10-12); `/plan-eng-review` has still not covered it.
+
+## CEO review record: Phase 0 (/plan-ceo-review, 2026-10-12)
+
+Target: Phase 0 (chunks 01, 02, 02b) of `docs/PLAN.md`, branch `phase-0-tooling`, base `main` at `3432124`. Reviewer: Claude (in-host). Review depth: implementation-ready, Phase 0 only. Design doc `nathanael-main-design-20261012-synapse-horizon.md` is an earlier copy of this plan; this file supersedes it. First review to cover 02b.
+
+### 0A. Premise
+
+- Real problem: every later chunk needs a repeatable build, test and screenshot loop, and the user wants versioned downloadable builds (D19).
+- Phase 0 ships no product. Its only user-visible output is a blank branded page. Chunk 03 (rendering spike) is the real gate, and it depends on 02, not on 02b (section 6: `01 → 02 → 02b ; 02 → 03`).
+- 02b is the largest and riskiest chunk in Phase 0: semantic-release, a 4-OS CI matrix, Node SEA injection, macOS signing. Until chunk 14 the binary serves a static page with no data.
+- Do-nothing cost of delaying the binary matrix: none for users (there are none yet). Cost of building it now: CI iteration on 4 runners before anything is worth downloading.
+
+### 0B. Existing code leverage
+
+Repo holds only `README.md` and `docs/` (`git log origin/main`: 4 commits, no code). Reuse is dependencies and tools: `vp create` (template scaffold, verified `vp create --help`), `vp env pin` (writes `.node-version`, `.nvmrc`, or `devEngines`; verified `vp env pin --help`), `voidzero-dev/setup-vp` action for CI (Vite+ CI guide), semantic-release, Playwright, Node SEA + postject.
+
+Reality rows:
+- REALITY: premise-table finding unverified=1 (Node 24 SEA asset API on all 4 OS, not probed) docs/PLAN.md:398
+- REALITY: already-done pass `git log origin/main` shows docs only, no Phase 0 files docs/PLAN.md:367
+- REALITY: surface-check finding runner label `macos-13` retired 2025-12-04 (GitHub changelog 2025-09-19), replacement `macos-15-intel`; `vp env pin` exists so `.nvmrc` should come from it; `setup-vp` needed in CI docs/PLAN.md:404
+- REALITY: binding-decisions pass D18, D19, eng R10 (Q6 A) honoured; `gstack-decision-search` returned none for this branch docs/PLAN.md:31
+- REALITY: numbers finding port 4317 is the OTLP/gRPC default and the port Claude Code's monitoring guide tells users to run a collector on; 200 KB image cap and 0.5% diff are [estimated] docs/PLAN.md:393
+- REALITY: deferred-asks pass every D19 item maps to 02b docs/PLAN.md:32
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; plan rule is one PR per chunk, so Phase 0 is 3 PRs docs/PLAN.md:31
+
+### 0C. Dream state
+
+```text
+  CURRENT STATE              PHASE 0                          12-MONTH IDEAL
+  docs only, no code   --->  scaffold + CI + 3-browser  --->  one-click download that opens a live
+                             smoke + screenshots +            campus of your real agents; every
+                             versioned releases               merge ships a trusted build
+```
+
+Phase 0 moves toward the ideal. The open question is ordering, not direction.
+
+### Decision ledger (CEO, Phase 0)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C1 02b timing (Claude) | D19 (user, 2026-10-12); section 6 shows 02b off the 03 critical path; docs/PLAN.md:381-413 | B: 02b keeps versioning, PR checks, semantic-release, CONTRIBUTING, CLI, local `build:bin` on the Mac; 4-OS matrix and binary upload move to new chunk 14b | none | approved | Q1 answer "Split: release now, 4-OS matrix with log server (recommended)", 2026-10-12; scope: timing of the 4-OS matrix only, D19 otherwise unchanged; applied to D19, chunks 02b, 14, 14b, sections 6 and 7 |
+| C2 default port (Claude) | README item 3 and 02b CLI use 4317, docs/PLAN.md:137,396; 4317 is the OTLP/gRPC default and Claude Code's monitoring guide sets collectors to `localhost:4317`; README opens `localhost` while CLI binds `127.0.0.1` (Origin check, eng A1) | 7317 on `127.0.0.1` everywhere | none (was 4317, mixed host strings) | approved | Q6 answer "7317 on 127.0.0.1 (recommended)", 2026-10-12; scope: default port and host string; applied to README item 3 and 02b CLI |
+| C3 first release version (Claude) | D19; no tags exist (`git tag -l` empty); semantic-release starts at 1.0.0 with no tag; 02b acceptance expects "minor bump" | seed tag `v0.1.0` before 02b merges | none (was: first release 1.0.0) | approved | Q7 answer "Seed tag v0.1.0 (recommended)", 2026-10-12; scope: starting version and 02b acceptance order; applied to 02b |
+| C4 release push to `main` (Claude) | 02b and risk table leave protected-main open, docs/PLAN.md:391; `main` is unprotected today (`gh api .../branches/main/protection` 404, rulesets `[]`); CONTRIBUTING says only maintainers merge | ruleset on `main` (PR, CI, title check, no force push) with GitHub Actions bypass; deploy-key fallback | none | approved | Q8 answer "Ruleset + Actions bypass (recommended)", 2026-10-12; scope: release push and `main` protection; applied to 02b and risk table |
+| C5 Phase 0 error handling (Claude, Section 2) | Prime Directives 1-2; chunk 02b CLI, `build:bin`, shots have no failure behaviour; docs/PLAN.md chunk 02b | Section 2 registry required, 14 Vitest cases | none | approved | Q10 answer "Adopt registry + tests (recommended)", 2026-10-12; scope: Phase 0 CLI, build:bin, release, shots failure behaviour and their tests; applied to 02b |
+| C6 CLI Host check + asset map (Claude, Section 3) | D16 "nothing leaves localhost"; eng A1 Origin/token only covers WebSocket and import (chunk 14); 02b CLI serves files with no Host check; `dist/` mode can join request paths to disk | Host allowlist (`127.0.0.1:<port>`; `localhost:<port>` 308; else 421) + manifest-only serving + 5 tests | none | approved | Q11 answer "Host allowlist + file manifest (recommended)", 2026-10-12; scope: CLI HTTP serving in 02b and the gate chunk 14 endpoints sit behind; applied to 02b |
+| C7 CI action pinning (Claude, Section 3) | release.yml holds `contents: write`, 14b adds `id-token: write`; X2 Dependabot approved | full commit SHA pins with version comment + guard step; title check on `pull_request` | none (was: exact version tags) | approved | Q12 answer "SHA pins + pull_request (recommended)", 2026-10-12; scope: all workflow `uses:` lines and the title-check trigger; applied to 01 and 02b |
+| C8 Dependabot commit prefix (Claude, Section 4) | X2 (Q4) approved `chore(deps):` for all updates; `chore` cuts no release (D19), so runtime dependency fixes (`ws`, chokidar, later) never reach a binary | runtime deps `fix(deps):`, dev deps and actions `chore(deps):` | none (was: all `chore(deps):`) | approved | Q13 answer "fix(deps) for runtime deps (recommended)", 2026-10-12; scope: Dependabot commit prefixes only, rest of X2 (Q4) unchanged; applied to 01 |
+| C9 Node major for pin and binaries (Claude, Section 10) | D2 "Node 22 LTS" (F1), eng S2 deferred a Node 24 switch; new evidence: D19 binaries embed the Node runtime, so its EOL reaches users. Node 22 end of life 2027-04-30, Node 24 2028-04-30 [from Node release schedule, not re-checked live] | Node 24 LTS for pin, CI, `build:bin` and 14b | none (was: Node 22) | approved | Q14 answer "Node 24 LTS (recommended)", 2026-10-12; scope: Node major in D2 and chunk 01 pin, flowing to CI and binaries; supersedes eng S2 deferral; applied to D2, 01 |
+
+### Answered decision C1 (Q1)
+Answer: B, "Split: release now, 4-OS matrix with log server (recommended)", 2026-10-12.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Version source, `__APP_VERSION__`, `--version` | D19 approved | 02b | 02b | 02b | later chunk |
+| PR-title check, PR template, CONTRIBUTING.md | D18, D19 approved | 02b | 02b | 02b | later chunk |
+| semantic-release: tag, CHANGELOG, GitHub Release on merge | D19 approved | 02b | 02b | 02b | later chunk |
+| `sidecar/cli.ts` serving built app | D19 approved | 02b | 02b | 02b (local) | later chunk |
+| Local `vp run build:bin` on the Mac (proves SEA works) | D19 approved | 02b | 02b | 02b | later chunk |
+| 4-OS CI build matrix attaching binaries to each release | D19 approved | 02b | 02b | new chunk 14b, after log server | later chunk |
+| Releases before 14b carry binaries | D19 approved | yes | yes | no, notes and tag only | no releases |
+| Factual fixes (runner label, Gatekeeper, port) | at Q1 time pending; since resolved (runner and Gatekeeper applied as corrections, port by C2) | - | - | - | - |
+
+Question: Q1 — C1: When should the 4-platform downloadable build land?
+Project/branch/task: Synapse Horizon, branch phase-0-tooling, Phase 0 chunk 02b.
+ELI10: Chunk 02b sets up automatic version numbers and also builds a download for Mac, Linux and Windows on every release. Until chunk 14 that download only shows an empty page, because the log reader does not exist yet. The 4-platform build is the slowest, most fiddly part of Phase 0, and nothing else waits for it: the rendering spike (chunk 03) only needs chunk 02.
+Stakes if we pick wrong: Build it now and days go into CI debugging for an empty download; push it all later and packaging surprises land when the log server is also new.
+Recommendation: B because it proves the single-file build works on your Mac now and moves only the 4-runner matrix to when a download is worth having.
+Note: options differ in kind, not coverage — no completeness score.
+Net: early proof of packaging plus fast path to the spike, versus full release automation before any product exists.
+Header: 02b timing
+A) Keep 02b as written
+Everything in 02b stays in Phase 0: versioning, release notes, CLI, local build and the 4-OS matrix on every release. Effort L (human ~2 days / CC ~1.5h, plus CI wait time), risk medium. ✅ D19 is delivered exactly as you asked it, with downloads from the first release ✅ Packaging problems on Windows and Intel Mac surface while the code is tiny ❌ Slowest chunk in Phase 0, debugged on 4 runners, for a binary that shows an empty page until chunk 14
+B) Split: release now, 4-OS matrix with log server (recommended)
+02b keeps versioning, PR checks, semantic-release, CONTRIBUTING, the CLI and a local `vp run build:bin` proven on your Mac. The 4-OS CI matrix and binary upload move to a new chunk 14b right after the log server. Effort M (human ~1 day / CC ~45 min), risk low. ✅ SEA packaging is still proven early on your Mac, so the pure-JS rule is tested from day one ✅ Spike chunk 03 starts sooner; the matrix is built once the binary does real work ❌ Releases before 14b have notes and tags but no downloads, a temporary change to D19
+C) Move all of 02b after chunk 14
+No versioning or releases until the log server exists; Phase 0 is only 01 and 02. Effort S now (zero implementation work in Phase 0), risk medium later. ✅ Shortest path to the rendering spike, Phase 0 shrinks to two chunks ✅ Release work happens once, against a binary that already tails real logs ❌ Conventional Commit discipline and changelog start late, so early history is unversioned
+
+### Mode
+
+SELECTIVE EXPANSION, chosen by the user over the recommended SCOPE REDUCTION (Q2, 2026-10-12). Applies to all later sections. Hold-scope checks: about 28 planned files [estimated], one new service (`sidecar/cli.ts`); no deferral proposed beyond C1. Invariants: D18 CI split (eng R10), D19 except the C1 timing change.
+
+### Cherry-pick candidates (all answered)
+
+| ID | Proposal | Effort | Risk | Status |
+|---|---|---|---|---|
+| X1 | Build provenance attestations on release binaries (`actions/attest-build-provenance`), README shows `gh attestation verify` | S | low | ACCEPTED (Q3, 2026-10-12) into chunk 14b |
+| X2 | Dependabot for GitHub Actions and npm, so the exact-pinned `setup-vp` and dev tools stay current | S | low | ACCEPTED (Q4, 2026-10-12) into chunk 01 |
+| X3 | `vp run doctor`: checks Node pin, Playwright browsers incl. WebKit, `gh` auth, and prints the fix for each miss | S | low | DEFERRED (Q5, 2026-10-12) to TODOS.md |
+
+Rejected without asking (breaks an approved contract): update check in the binary that calls GitHub on start. D16 says nothing leaves localhost.
+
+### Scope document approval
+
+Q9 (2026-10-12): "Approve and continue (recommended)". Accepts the working plan and CEO summary as of this point; open unknowns stay listed as reviewer concerns.
+
+Spec review loop: 3 refuter runs, scores 5, 7, 7. 39 issues found; 32 confirmed fixed by a later run; 7 from run 3 fixed and checked by Claude line by line (issues verified: 7 of 7); spec not re-verified after those fixes.
+
+### 0I. Temporal interrogation (Phase 0)
+
+```text
+  HOUR 1 (foundations):  `vp create` React-TS template, `vp env pin 24.x.y`, Tailwind v4 + tokens,
+                         dev host 127.0.0.1, CI with setup-vp exact pin, Dependabot.        [chunk 01]
+  HOUR 2-3 (core logic): Playwright 3 projects, smoke spec, shots script + URL contract,
+                         e2e vs e2e:local split (eng R10).                                   [chunk 02]
+  HOUR 4-5 (integration): seed tag v0.1.0, semantic-release + exec outputs, PR-title check,
+                         CLI server (port fallback, redirect, Host/Origin), build:bin with
+                         official Node + postject + ad-hoc codesign, ruleset after merge.     [chunk 02b]
+  HOUR 6+ (polish/tests): CLI unit tests, release:dry, CONTRIBUTING, README sections.         [chunk 02b]
+```
+
+What will surprise the implementer:
+- `postject` on macOS needs the signature removed first (`codesign --remove-signature`), then `--macho-segment-name NODE_SEA`, then ad-hoc sign; on Windows no signing step.
+- SEA bundles must be CommonJS: shared server code used by both the Vite plugin (ESM) and the CLI bundle must avoid `import.meta` and top-level await.
+- The ruleset's required checks must come from PR-run job names, not `release.yml`.
+
+Feasibility blockers: none found. Unverified: Actions app as ruleset bypass actor on a personal repo (deploy-key fallback written in); Node 24 SEA assets on all 4 OS (proved per OS in 14b).
+
+Effort: 01 human ~4h / CC ~20 min; 02 human ~4h / CC ~20 min; 02b human ~1 day / CC ~45 min [estimated, scaffolding ratio ~100x, features ~30x].
+
+### Section 1: Architecture
+
+```text
+ developer Mac                         GitHub
+ vp dev (127.0.0.1) -> Vite app        PR -> ci.yml (check, test, build, Chromium+Firefox smoke), pr-title.yml
+ vp run e2e:local (3 engines, shots)   merge -> release.yml (concurrency: release)
+ vp run build:bin                         -> check, test -> semantic-release -> tag, CHANGELOG commit (ruleset bypass), Release
+   vp build -> dist/                      -> outputs published/version -> [14b: matrix -> smoke -> attest -> upload -> SHA256SUMS]
+   esbuild sidecar/cli.ts -> CJS
+   gen sea-config.json from dist/
+   official node + postject + codesign -> synapse-horizon-<v>-<os>-<arch>
+ user -> binary -> 127.0.0.1:7317 (localhost:* -> 308) -> embedded assets (isSea) | dist/
+```
+
+- A-1 [P3] Shared server code must run in the ESM Vite plugin and the CJS SEA bundle (no `import.meta`, no top-level await). Factual constraint of the approved approach; recorded in 0I.
+- A-2 [P3] (confidence 9/10) docs/PLAN.md chunk 02b "the app shows it in the user menu": the user menu arrives in chunk 27, so Phase 0 had no visible version. Sequencing correction, applied: `<meta name="app-version">` until 27, asserted by the 02 smoke spec.
+- SPOF: semantic-release on `main` (blocks releases only). Rollback: revert PR, `fix:` release. Value test: CHANGELOG, Releases and attestations are user-requested (D19, Q3).
+
+### Section 2: Error & Rescue Map (adopted, C5 / Q10)
+
+The plan names happy paths for the CLI, `build:bin`, release and shots but no failure behaviour. Proposed registry:
+
+```text
+  CODEPATH                    | WHAT CAN GO WRONG                     | ERROR
+  ----------------------------|---------------------------------------|---------------------------
+  cli: parse flags            | unknown flag, --port not 1-65535      | UsageError
+  cli: listen                 | port busy (incl. race with 2nd copy)  | EADDRINUSE
+                              | all 11 ports busy                     | PortsExhausted
+                              | port < 1024 without rights            | EACCES
+  cli: startup self-check     | index.html missing (SEA or dist/)     | IncompleteBuild
+  cli: open browser           | no opener (headless Linux, SSH)       | OpenFailed
+  cli: request                | unknown /assets/* path                | NotFound
+                              | handler throws                        | Error (uncaught in handler)
+  cli: SIGINT/SIGTERM         | open sockets                          | -
+  build:bin: fetch node       | network error / 5xx                   | FetchError
+                              | SHASUMS256 mismatch                   | ChecksumMismatch
+  build:bin: postject/codesign| tool missing or non-zero exit         | ToolFailed
+  release: semantic-release   | push refused (ruleset), GitHub 5xx    | job failure
+  shots                       | console error, image > 200 KB         | ShotFailed
+
+  ERROR            | RESCUED | ACTION                                         | USER SEES
+  -----------------|---------|------------------------------------------------|-----------------------------------
+  UsageError       | Y       | print usage, exit 2                            | "unknown flag --x" + help
+  EADDRINUSE       | Y       | listen on next port (detect on listen, no probe)| "7317 busy, using 7318" + URL
+  PortsExhausted   | Y       | exit 1                                         | "ports 7317-7327 busy; use --port"
+  EACCES           | Y       | exit 1                                         | "no permission for port N"
+  IncompleteBuild  | Y       | exit 1 before listening                        | "build is incomplete: index.html missing"
+  OpenFailed       | Y       | warn, keep serving                             | "open this URL: http://127.0.0.1:7317"
+  NotFound         | Y       | 404; other non-asset paths get index.html      | 404 for bad asset only
+  handler Error    | Y       | 500, log method+path+stack to stderr, serve on | 500 for that request only
+  SIGINT/SIGTERM   | Y       | close server, exit 0                           | "stopped"
+  FetchError       | Y       | retry 3x (1s, 2s, 4s), then exit 1             | URL tried + last error
+  ChecksumMismatch | Y       | delete file, exit 1, no retry                  | expected vs actual hash
+  ToolFailed       | Y       | exit 1 with tool stderr                        | which step failed
+  release failure  | Y       | job fails, GitHub emails; runbook (Section 9)  | red run, no tag or partial tag
+  ShotFailed       | Y       | exit 1 naming view and reason                  | "view home: 236 KB > 200 KB"
+```
+No catch-alls: the request handler catches per request only, never process-wide.
+
+### Section 3: Security & threat model
+
+| Threat | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| S-1 DNS rebinding + path traversal on CLI reads local files incl. `~/.claude` | Low-Med | High | C6 (Q11): Host allowlist + manifest-only serving + tests |
+| S-2 Mutable action tags in workflows with `contents: write` / `id-token: write`; `pull_request_target` title check | Low | High | C7 (Q12): SHA pins + guard step; `pull_request` trigger |
+| Vite dev server rebinding | Low | Med | OK: dev host 127.0.0.1 and Vite's default `allowedHosts` |
+| Unsigned binary tampering | Low | High | OK: X1 attestations (14b) |
+| Secrets | - | - | OK: `GITHUB_TOKEN` only; deploy key (C4 fallback) as repo secret |
+
+### Section 4: Data flow and interaction edge cases
+
+Release flow under concurrent merges (invariant: every behaviour-changing merge lands in some release, none twice):
+
+```text
+  time   merge M1 run            merge M2 run              shared: main HEAD / tags
+  t0     start, analyse M1                                 HEAD=M1, last tag v0.2.0
+  t1                             queued (concurrency)       HEAD=M2
+  t2     semantic-release sees local behind remote -> "won't publish", exits 0
+  t3                             start, analyse M1+M2       
+  t4                             tag v0.3.0, push commit    HEAD=release commit, tag v0.3.0
+  alt    if M3 arrives at t1.5: with `queue: max` both wait; M2 run skips (behind main), M3 run analyses M1+M2+M3
+```
+Mechanism: `concurrency: release` with `queue: max` (one running, the rest queued FIFO, none cancelled; PR #1 review) plus semantic-release's behind-remote check. Order M2-before-M1 cannot happen: runs start in push order. Regression proof: the 02b acceptance merges are sequential; concurrent case is not automated (GitHub-side behaviour) and relies on the two documented mechanisms.
+
+CLI request flow: `INPUT (Host, path) -> Host gate -> decodeURI once -> manifest lookup -> bytes`. Shadow paths: bad Host 421; malformed percent-encoding 400; `..`, `%2e%2e`, double-encoded 404 (not in manifest); missing manifest entry for non-asset path -> index.html; asset 404; handler throw 500 (Section 2). Tested by C5 and C6 cases.
+
+| Interaction | Edge case | Handled | How |
+|---|---|---|---|
+| start binary twice | both pick 7317 | Y | `EADDRINUSE` on listen, second moves to 7318 (C5) |
+| open `localhost:7317` | Origin mismatch later | Y | 308 to `127.0.0.1` (C2) |
+| close browser tab | server keeps running | Y | by design; Ctrl+C stops (C5 SIGINT row) |
+| headless/SSH start | no browser | Y | prints URL (C5 OpenFailed) |
+| Dependabot runtime bump | no release | Y | `fix(deps)` prefix (C8) |
+
+C8 (Q13) applied: runtime dependency updates cut a patch release.
+
+### Section 5: Code quality
+
+- Q-1 [P3] CLI request handler must stay at or under 5 branches: split into `checkHost()`, `resolveAsset()` and `serve()`. Implementation guidance within C5/C6, no behaviour change.
+- Q-2 [P3] Shots URL contract (`source`, `scenario`, `seed`, `freeze`, `view`) exists before any of those features; the Phase 0 app must ignore unknown params rather than validate them, so 02 does not fake features. No decision.
+- No duplicated behaviour (no code exists yet).
+
+### Section 6: Test review
+
+```text
+  NEW ITEM                         TYPE         HAPPY                         FAILURE                         EDGE
+  chunk 01 page + tokens           E2E smoke    title, cyan, meta version     console error fails smoke       -
+  CLI flags                        unit         --version, --help             bad flag exit 2                 --port 0/65536
+  CLI listen                       unit         binds 127.0.0.1:<port>        all 11 busy exit 1              race: 2 starts
+  CLI Host gate + manifest (C6)    unit         asset 200                     foreign Host 421                %2e%2e, /../, double-encoded
+  CLI localhost redirect (C2)      unit         308 same path                 -                               query string kept
+  build:bin node fetch             unit(mock)   checksum ok                   mismatch, 3x 5xx                -
+  build:bin output                 local manual curl 200, --version           -                               -
+  release flow                     live (02b)   v0.2.0 tag + notes            docs-only no release            fix: after ruleset (bypass)
+  PR title check                   live (02b)   feat: passes                  "Update stuff" fails            edited title re-runs
+  action SHA guard (C7)            CI step      all SHAs pass                 tag ref fails                   -
+  shots                            local        image < 200 KB                > 200 KB fails                  2 runs within 0.5% diff
+```
+Assertions (no_claim): CLI unit tests mock no network but run real `http`, no_claim=SEA asset path (proved by local build:bin and 14b smoke); build:bin fetch tests mock fetch, no_claim=real nodejs.org availability; release flow is proved only by live merges, no_claim=concurrent-merge behaviour (Section 4).
+2am Friday test: the 14b clean-machine run of a downloaded binary. Hostile QA: rebinding request with `Host: attacker:7317` (C6 test). Chaos: kill the release job after tag push (runbook item 3).
+Flakiness: shots pixel diff (approved 0.5% threshold); port tests use ephemeral ports (applied). Pyramid: unit-heavy, two live checks; fine.
+
+### Section 7: Performance
+
+- Binary size about 100-120 MB per OS [estimated: Node 24 runtime plus a few MB of assets], 4 per release from 14b. No decision; noted in README "Known limits" at 14b.
+- CLI startup: manifest walk of `dist/` (tens of files) [estimated < 50 ms]. Release workflow re-runs `vp check`/`vp test` already run on the PR; accepted cost for a protected tag.
+- No issues requiring a decision.
+
+### Section 8: Observability
+
+- CLI: one startup line (version, URL, `sea` or `dist` mode); one line per 421 and 500 (method, path, Host); port fallback line. All in C5/C6.
+- Release: GitHub run log plus failure email; semantic-release prints "no release" reason in the log. No dashboard needed for a single-maintainer tool. No gaps requiring a decision.
+
+### Section 9: Deployment and rollout
+
+- Rollout order per chunk: PR CI green, `vp run e2e:local` on the Mac, squash-merge, release job, (14b) matrix.
+- Rollback: release runbook added to CONTRIBUTING (Prime Directive 5, required launch scope, applied to 02b): revert as `fix:`, never move tags, prerelease-flag bad binaries, recreate a missing Release, ruleset push failures, failing Dependabot PRs.
+- Post-release check: 02b acceptance (tag, notes, CHANGELOG); 14b smoke and attestation verify.
+- Feature flags: none needed; no runtime behaviour to toggle in Phase 0.
+
+### Section 10: Long-term trajectory
+
+- Reversibility 4/5: semantic-release, Dependabot and the CLI are swappable; published tags and version numbers are permanent.
+- Debt: x64 macOS runner end (fall 2027, risk row added); deploy-key fallback unverified; Node 26 move before 2028-04-30 for long-lived downloads.
+- C9 (Q14) applied: Node 24 LTS replaces 22 (binaries embed the runtime; 22 ends 2027-04-30).
+- Platform potential: the CLI's Host gate and manifest serving are the base chunk 14 builds on; the release pipeline serves every later chunk.
+- Retrospective on cherry-picks: X1 and X2 fit; X2 needed the C8 refinement; X3 deferral blocks nothing.
+
+### Section 11: Design and UX
+
+Phase 0 UI is one blank branded page (chunk 01) plus a hidden version meta tag. Tokens, fonts and colours come from the design review (D16, D17). States: no loading, empty or error states exist yet. Findings: none. Full design coverage already exists (`/plan-design-review`, 2026-10-12).
+
+### Approval readiness
+
+Checked rows and answers: C1 (Q1), X1 (Q3), X2 (Q4), X3 deferred (Q5), C2 (Q6), C3 (Q7), C4 (Q8), scope documents (Q9), C5 (Q10), C6 (Q11), C7 (Q12), C8 (Q13), C9 (Q14). Mode: Q2 (SELECTIVE EXPANSION, user choice; not a remedy approval). Required work without a new choice, each citing its contract: spec-review corrections (D19 behaviour, runner retirement, Gatekeeper path), A-2 version meta (D19 `__APP_VERSION__`), release runbook (Prime Directive 5), ephemeral-port tests (C5), stale diagram fix (C6). Every plan edit maps to one of these; no unanswered remedy is in the plan.
+
+Approval readiness: PASS
+
+### NOT in scope
+
+- Deferred: `vp run doctor` (X3, Q5); in TODOS.md, trigger is a second contributor or a fresh-machine setup.
+- Rejected: binary update check against GitHub (breaks D16; not asked).
+- Rejected by user choice: SCOPE REDUCTION mode (Q2); Node 22 (Q14); exact-tag action pins (Q12).
+- Moved, not cut: 4-OS binary matrix and "Download and run" README to chunk 14b (C1, Q1).
+
+### What already exists
+
+Repo holds `README.md`, `docs/PLAN.md`, `.gitignore`; no code. Reused tools: `vp create`, `vp env pin` (verified by `--help`), `voidzero-dev/setup-vp`, semantic-release plugins, Playwright, Node SEA + `postject`, `actions/attest-build-provenance`, Dependabot. Nothing is rebuilt.
+
+### Dream state delta
+
+After Phase 0: scaffold, CI, 3-engine smoke, screenshots, versioned releases, a CLI that serves only its own files on its own address, and a SEA binary proven on the Mac. Still missing from the 12-month ideal: live data (chunks 11-17), downloads for all 4 platforms (14b), the campus itself (03-10).
+
+### Error and rescue registry
+
+See "Section 2: Error & Rescue Map (adopted, C5 / Q10)": 14 codepath rows, all rescued, all with a named user message and a test.
+
+### Failure modes registry
+
+```text
+  CODEPATH                 | FAILURE MODE                  | RESCUED? | TEST?        | USER SEES?                  | LOGGED?
+  -------------------------|-------------------------------|----------|--------------|-----------------------------|--------
+  cli listen               | port busy / race / exhausted  | Y        | Y (unit)     | fallback line / exit msg    | Y
+  cli Host gate (C6)       | rebinding Host                | Y        | Y (unit)     | 421                         | Y
+  cli asset lookup (C6)    | traversal, unknown asset      | Y        | Y (unit)     | 404                         | N (by design)
+  cli handler              | throw                         | Y        | Y (unit)     | 500 for that request        | Y
+  cli startup              | incomplete build              | Y        | Y (unit)     | exit msg                    | Y
+  cli open browser         | no opener                     | Y        | Y (unit)     | URL printed                 | Y
+  build:bin fetch          | network / checksum            | Y        | Y (unit)     | URL + error / hashes        | Y
+  build:bin tools          | postject/codesign fail        | Y        | Y (unit)     | failing step                | Y
+  release.yml              | push refused, GitHub 5xx      | Y        | live only    | red run + email; runbook    | Y
+  release.yml              | concurrent merges             | Y        | N (GitHub)   | none needed (Section 4)     | Y
+  14b matrix               | one OS fails                  | Y        | live only    | "Incomplete: ..." notes     | Y
+  shots                    | console error, size           | Y        | Y            | view + reason               | Y
+```
+CRITICAL GAPS: 0. (S-1 was one; closed by C6, pending implementation.)
+
+### Scope expansion decisions
+
+From `~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-12-phase-0-tooling.md`:
+- Accepted: X1 provenance attestations (14b), X2 Dependabot (01).
+- Deferred: X3 `vp run doctor` (TODOS.md).
+- Skipped: binary update check.
+
+### Diagrams produced
+
+System architecture (Section 1), data flow with shadow paths (Section 4 CLI request flow), concurrency schedule (Section 4), test map (Section 6), error flow (Section 2 registry), deployment sequence and rollback (Section 9 and CONTRIBUTING runbook), temporal sequence (0I). State machine: none new (CLI is stateless per request).
+
+### Stale diagram audit
+
+- Section 3 architecture picture: accurate (log server as Vite plugin).
+- Section 6 dependency summary: updated (02b -> 14, 14 -> 14b).
+- Eng review "Data path" diagram: was stale (no Host gate); fixed to show C6.
+- Eng review hall lifecycle diagram: unaffected.
+
+### Reality rows
+
+- REALITY: premise-table finding unverified=3 (Node 24 SEA assets on 4 OS; Actions app as ruleset bypass on personal repo; Rosetta on hosted runners) docs/PLAN.md:528
+- REALITY: already-done pass `git log origin/main` shows docs only; no Phase 0 files docs/PLAN.md:367
+- REALITY: surface-check finding `macos-13` retired, `vp env pin` and `setup-vp` verified, port 4317 = OTLP; all applied docs/PLAN.md:397
+- REALITY: binding-decisions finding D2 Node 22 reopened with new evidence and changed to 24 (Q14); D18, D19, eng R10 honoured docs/PLAN.md:15
+- REALITY: numbers finding binary size, startup time and effort figures are [estimated]; Node EOL dates from third-party trackers, not schedule.json docs/PLAN.md:528
+- REALITY: deferred-asks pass every D19 item maps to 02b or 14b; X3 in TODOS.md docs/PLAN.md:394
+- REALITY: pr-count pass no ship policy; one PR per chunk gives 3 PRs for Phase 0 (01, 02, 02b) docs/PLAN.md:371
+
+## Implementation Tasks (CEO review, Phase 0)
+
+Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratios assumed: scaffolding ~100x, features ~30x, tests ~50x human/CC.
+
+- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — sidecar/cli — Host gate and manifest-only serving with 5 tests
+  - Surfaced by: Section 3 — S-1, C6 (Q11)
+  - Files: sidecar/cli.ts, sidecar/cli.test.ts
+  - Verify: `vp test` Host 421/308, traversal 404, asset 200
+- [ ] **T2 (P2, human: ~4h / CC: ~30min)** — sidecar/cli, scripts — Error registry behaviour with 14 tests
+  - Surfaced by: Section 2 — C5 (Q10)
+  - Files: sidecar/cli.ts, sidecar/cli.test.ts, scripts/build-bin.ts, scripts/build-bin.test.ts, scripts/shots.ts
+  - Verify: `vp test` covers all 14 rows
+- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — tooling — Node 24 exact pin, dev host 127.0.0.1, SHA-pinned actions with guard, Dependabot with prefixes
+  - Surfaced by: C7 (Q12), C8 (Q13), C9 (Q14), X2 (Q4)
+  - Files: .node-version, vite.config.ts, .github/workflows/ci.yml, .github/dependabot.yml
+  - Verify: chunk 01 acceptance; guard step fails on a tag ref
+- [ ] **T4 (P2, human: ~2h / CC: ~15min)** — release — Seed tag, fetch-depth, concurrency, exec outputs, `pull_request` title check
+  - Surfaced by: C3 (Q7), C7 (Q12), spec review run 1
+  - Files: .github/workflows/release.yml, .github/workflows/pr-title.yml, .releaserc.json, package.json
+  - Verify: `vp run release:dry`; 02b acceptance merges
+- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — repo settings — `main` ruleset after 02b merge, bypass proof
+  - Surfaced by: C4 (Q8), spec review run 3
+  - Files: none (GitHub ruleset); CONTRIBUTING.md
+  - Verify: direct push refused; `fix:` release after ruleset succeeds
+- [ ] **T6 (P2, human: ~3h / CC: ~20min)** — build — `build:bin` with official Node 24, checksum check, generated sea-config, ad-hoc sign
+  - Surfaced by: spec review runs 1-2, C9 (Q14)
+  - Files: scripts/build-bin.ts, package.json
+  - Verify: local binary curl 200, `--version`, localhost 308
+- [ ] **T7 (P3, human: ~30min / CC: ~5min)** — app — `app-version` meta tag asserted by smoke spec
+  - Surfaced by: Section 1 — A-2
+  - Files: index.html or src/app, e2e/smoke.spec.ts
+  - Verify: `vp run e2e`
+- [ ] **T8 (P3, human: ~30min / CC: ~5min)** — docs — Release runbook in CONTRIBUTING
+  - Surfaced by: Section 9 (Prime Directive 5)
+  - Files: CONTRIBUTING.md
+  - Verify: five runbook cases present
+- [ ] **T9 (P2, human: ~1 day / CC: ~1h)** — release (chunk 14b) — Gated 4-OS matrix, tag checkout, fail-fast off, checksums job, job-level permissions, attestations, Gatekeeper README
+  - Surfaced by: C1 (Q1), X1 (Q3), spec review runs 1-3
+  - Files: .github/workflows/release.yml, README.md
+  - Verify: chunk 14b acceptance
+
+### Completion summary
+
+```text
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | docs-only repo; 02b never reviewed; macos-13|
+  |                      | retired; 4317 = OTLP port; main unprotected |
+  | Step 0               | C1 split 02b/14b; X1, X2 in; X3 deferred;   |
+  |                      | C2 port, C3 seed tag, C4 ruleset            |
+  | Section 1  (Arch)    | 2 issues found (A-1, A-2)                   |
+  | Section 2  (Errors)  | 14 error paths mapped, 0 GAPS after C5      |
+  | Section 3  (Security)| 2 issues found, 2 High impact (C6, C7)      |
+  | Section 4  (Data/UX) | 5 edge cases mapped, 0 unhandled (C8)       |
+  | Section 5  (Quality) | 2 issues found (P3 guidance)                |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps                    |
+  | Section 7  (Perf)    | 0 issues found                              |
+  | Section 8  (Observ)  | 0 gaps found                                |
+  | Section 9  (Deploy)  | 1 risk flagged (runbook, applied)           |
+  | Section 10 (Future)  | Reversibility: 4/5, debt items: 3 (+C9)     |
+  | Section 11 (Design)  | 0 issues                                    |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (5 items)                           |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 14 rows, 0 CRITICAL GAPS                    |
+  | Failure modes        | 12 total, 0 CRITICAL GAPS                   |
+  | TODOS.md updates     | 1 item (X3)                                 |
+  | Scope proposals      | 3 proposed, 2 accepted (EXP + SEL)          |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex disabled (config); none ran           |
+  | Lake Score           | 4/4 recommendations chose complete option   |
+  | Diagrams produced    | 7 (arch, flow, schedule, tests, errors,     |
+  |                      | deploy/rollback, temporal)                  |
+  | Stale diagrams found | 1 (eng data path; fixed)                    |
+  | Unresolved decisions | 0                                           |
+  | Reality rows         | 7/7 rows, 3 unverified                      |
+  +====================================================================+
+```
+
+### Unresolved decisions
+
+None. Open verifications (not decisions): ruleset bypass actor on a personal repo, Node 24 SEA on 4 OS, Rosetta on hosted runners.
+
+## Eng review record: Phase 0 (/plan-eng-review, 2026-10-12)
+
+Target: `docs/PLAN.md` Phase 0 (chunks 01, 02, 02b) and chunk 14b, branch `phase-0-tooling`, base commit `3432124` plus uncommitted CEO review edits. Reviewer: Claude (in-host). Settled input: CEO decisions C1-C9 and X1-X3 (Q1-Q14). Design doc: `docs/designs/phase-0-tooling.md` (the promoted CEO summary; consistent with this plan). Question numbers D1+ below are this review's own sequence.
+
+### Scope Challenge
+
+- Existing solutions: `vp create` (template), `vp env pin`, `setup-vp`, semantic-release + `@semantic-release/exec` 7.1.0, Playwright `toHaveScreenshot` (built-in pixel diff with `maxDiffPixelRatio`), Node SEA with `--experimental-sea-config` + `postject` 1.0.0-alpha.6 on Node 24 (`--build-sea` exists only from Node 25.5; CJS entry is the safe choice on 24), esbuild via Vite's toolchain for the CJS bundle.
+- Complexity: about 28 planned files [estimated], 2 new services (CLI server, `build:bin`). Gate tripped; no feature cuts proposed (scope just settled by CEO C1-C9).
+- TODOS.md: only X3 doctor (deferred); nothing blocks Phase 0.
+- Distribution: covered (02b releases, 14b binaries for 4 OS, attestations).
+
+Scope record: feature answers: none proposed (scope settled by CEO Q1-Q14); structure: B, Smaller arrangement (D1, answered 2026-10-12); accepted scope: Phase 0 + 14b as amended by CEO C1-C9, with `sidecar/server.ts` (Host gate, manifest, handler; imported by chunk 14 plugin) split from `sidecar/cli.ts` (flags, listen, open, signals); pending remedies: E2, E3, E4.
+
+Scope Challenge result: scope accepted as-is (smaller arrangement preserves the feature list).
+
+Scope Challenge findings:
+- E2 [P2] (confidence: 6/10) docs/PLAN.md:128 "1280x720 PNG, compressed under 200 KB." No compression tool is named. Medium confidence, verify this is actually an issue: a lossless 1280x720 PNG of a lit 3D scene with bloom is usually several hundred KB [estimated, not measured]; the Phase 0 blank page will pass, later chunks may not. Pending: E2.
+- E3 [P2] (confidence: 8/10) docs/PLAN.md:393 "Permissions: `contents: write`." Granted at workflow level, so the check and test jobs also get write access, and the semantic-release job runs third-party npm plugins with it. Pending: E3.
+- E4 [P3] (confidence: 8/10) docs/PLAN.md:371 "Create the Vite+ React-TS project with pnpm." `vp create --help` shows `--agent <NAME>` (writes AGENTS.md, CLAUDE.md), `--hooks` ("default in non-interactive mode") and `--git`; the plan does not say which, so a non-interactive run can add hooks and agent files nobody chose. Pending: E4.
+
+## Decision ledger (eng review, Phase 0)
+
+### E2: Screenshot size cap and compression
+Finding: E2, P2, confidence 6/10, docs/PLAN.md:128, Claude (in-host)
+Plan baseline: section 4 protocol (original proposal, carried by eng review 1 and design review): 1280x720 PNG under 200 KB; ShotFailed on > 200 KB approved in CEO C5 (Q10).
+Runtime evidence: unknown; no shots exist. Size of 3D-scene PNGs is an estimate.
+Comparison grid:
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E2 compression | none named | `sharp` palette PNG (quantized, dev dependency) | WebP lossy via `sharp`, files `.webp` | none; lossless PNG |
+| 200 KB cap | approved (section 4, C5) | kept | kept | kept; ShotFailed fires loudly if exceeded, revisit then |
+| C5 ShotFailed row | approved | unchanged | unchanged | unchanged |
+| E3, E4 | pending | pending | pending | pending |
+Question D2:
+D2 — E2: How should README screenshots stay under 200 KB?
+Project/branch/task: Synapse Horizon, phase-0-tooling, chunk 02 screenshot pipeline (`scripts/shots.ts`).
+ELI10: Every chunk adds a 1280x720 screenshot to the README, capped at 200 KB. The plan never says how images get that small. The blank Phase 0 page will be tiny, but a glowing 3D campus saved as plain PNG is likely several hundred KB, so from about chunk 04 the shots script would start failing. Medium confidence: this is an estimate, not a measurement.
+Stakes if we pick wrong: Shots start failing mid-project and someone raises the cap or hand-compresses images under time pressure.
+Recommendation: A because it keeps PNG and the 200 KB rule as approved, and quantized PNG keeps flat UI and glow readable at that size.
+Note: options differ in kind, not coverage — no completeness score.
+Net: one dev dependency now versus a predictable failure later or a format change.
+Header: E2 shots
+Options:
+A) Quantized PNG via sharp (recommended)
+`scripts/shots.ts` passes each capture through `sharp(...).png({ palette: true, quality: 80, effort: 10 })`; the cap and ShotFailed stay as approved. `sharp` is a dev dependency only (prebuilt binaries; never in the SEA bundle). Effort S (human ~30 min / CC ~5 min), risk low. ✅ Keeps `.png` and the 200 KB cap exactly as the protocol says ✅ Quantization handles dark backgrounds and glow well at this size ❌ Adds a native dev dependency that must install on the Mac and CI
+B) WebP via sharp
+Shots saved as `.webp` (lossy, quality 80) under 200 KB; section 4 and every README image path change from `.png` to `.webp`. Effort S (human ~1h / CC ~10 min), risk low. ✅ Smallest files, lots of room under the cap ✅ GitHub renders WebP in README files ❌ Changes the approved PNG protocol and every image name in the plan
+C) Lossless PNG, revisit on failure
+No compressor; Playwright PNGs as captured. When a shot exceeds 200 KB, ShotFailed stops the run and the cap or format is decided then. Effort S (zero implementation work now), risk medium. ✅ No new dependency in Phase 0 ✅ Failure is loud and names the view and size ❌ Likely forces this same decision mid-project, around chunk 04
+
+State: approved
+Actual answer: A) Quantized PNG via sharp (recommended), answered D2 2026-10-12
+Accepted scope: `scripts/shots.ts` quantizes captures with `sharp` palette PNG (quality 80, effort 10); `sharp` dev dependency only; 200 KB cap and C5 ShotFailed unchanged. Applied to section 4.
+History: none
+
+### E3: Workflow token permissions
+Finding: E3, P2, confidence 8/10, docs/PLAN.md:393, Claude (in-host)
+Plan baseline: chunk 02b "Permissions: `contents: write`." (D19 contract); 14b job-level permissions for the matrix (CEO spec fix); C7 SHA pins (Q12).
+Runtime evidence: no workflows exist yet; repo default token permission not probed.
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| E3 token scope | `contents: write` at workflow level in release.yml; ci.yml and pr-title.yml unspecified | every workflow starts with `permissions: {}`; jobs grant only what they use (check/test/build/smoke: `contents: read`; semantic-release job: `contents: write`, `issues: write`, `pull-requests: write`; pr-title: `pull-requests: read`; 14b matrix as already approved) | keep as planned |
+| C7 SHA pins | approved (Q12) | unchanged | unchanged |
+| 14b job-level permissions | approved (CEO spec fix) | unchanged | unchanged |
+| E4 | pending | pending | pending |
+Question D3:
+D3 — E3: Give each CI job only the token rights it needs?
+Project/branch/task: Synapse Horizon, phase-0-tooling, chunks 01 and 02b workflows.
+ELI10: GitHub hands every workflow job a token. The plan gives the release workflow write access to the repo at the top level, so every job in it gets write access, including the test job that runs whatever is in the code. Starting each workflow with no rights and granting per job means only the one job that tags and pushes can write. It is a few lines of YAML per workflow.
+Stakes if we pick wrong: A compromised test dependency running in the release workflow could push to `main` or move tags.
+Recommendation: A because least privilege per job is a few lines and makes C7's pinning count for every job, not just some.
+Completeness: A=10/10, B=6/10
+Net: a few YAML lines versus write access for jobs that only read.
+Header: E3 perms
+Options:
+A) Per-job least privilege (recommended)
+Every workflow file opens with `permissions: {}`. Jobs grant only what they use: check, test, build and smoke get `contents: read`; the semantic-release job gets `contents: write`, `issues: write`, `pull-requests: write` (for release comments); pr-title gets `pull-requests: read`; the 14b matrix keeps its approved grants. The C7 guard step also fails if a workflow lacks a top-level `permissions:` key. Effort S (human ~30 min / CC ~5 min), risk low. ✅ Only the release job can write to the repo or create tags ✅ The guard step stops a new workflow from silently getting default rights ❌ A new job that forgets its grant fails with a 403 until fixed
+B) Keep as planned
+`contents: write` at the top of release.yml; other workflows use the repo default. Effort S (zero implementation work), risk medium. ✅ Fewer lines in each workflow ✅ No 403 surprises when jobs are added ❌ Test and build jobs in release.yml hold write access they never use
+
+State: approved
+Actual answer: A) Per-job least privilege (recommended), answered D3 2026-10-12
+Accepted scope: `permissions: {}` at the top of every workflow; per-job grants as listed in option A (release.yml split into `verify` read job and `release` write job); C7 guard also checks for a top-level `permissions:` key. Applied to chunk 02b.
+History: none
+
+### E4: `vp create` flags for the scaffold
+Finding: E4, P3, confidence 8/10, docs/PLAN.md:371, Claude (in-host)
+Plan baseline: chunk 01 "Create the Vite+ React-TS project with pnpm." (original proposal).
+Runtime evidence: `vp create --help` (vp v1.0.0, run 2026-10-12): `--agent <NAME>` "Write coding agent instructions to AGENTS.md, CLAUDE.md, etc.", `--no-agent`, `--hooks` "Set up pre-commit hooks (default in non-interactive mode)", `--no-hooks`, `--git`/`--no-git`, `--package-manager`, `--no-interactive`.
+Comparison grid:
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E4 agent files | unspecified | `--no-agent` | `--no-agent` | `--agent claude` (vp writes CLAUDE.md/AGENTS.md) |
+| pre-commit hooks | unspecified (default on when non-interactive) | `--hooks` (vp's pre-commit check) | `--no-hooks` (CI only) | `--hooks` |
+| git init | repo exists | `--no-git` | `--no-git` | `--no-git` |
+| command | unspecified | `vp create vite --no-interactive --package-manager pnpm --no-agent --hooks --no-git --directory . -- --template react-ts` (run in a temp dir and copy if `.` is refused) | same with `--no-hooks` | same with `--agent claude` |
+Question D4:
+D4 — E4: Which `vp create` options should the scaffold use?
+Project/branch/task: Synapse Horizon, phase-0-tooling, chunk 01 scaffold.
+ELI10: The scaffold command can quietly add two things nobody chose. Run non-interactively, `vp create` installs pre-commit hooks by default. It can also write generic AI-agent instruction files (CLAUDE.md, AGENTS.md) into the repo. The plan doesn't say, so the result depends on whoever runs it. Picking now makes chunk 01 repeatable.
+Stakes if we pick wrong: Surprise hooks block commits, or a generic CLAUDE.md starts steering every agent session in this repo.
+Recommendation: A because a pre-commit `vp check` catches lint and type errors before CI, and agent instructions should be written on purpose, not generated.
+Note: options differ in kind, not coverage — no completeness score.
+Net: local commit checks plus no generated agent files, versus CI-only checks or vp's generic agent files.
+Header: E4 scaffold
+Options:
+A) No agent files, keep hooks (recommended)
+Chunk 01 runs `vp create vite --no-interactive --package-manager pnpm --no-agent --hooks --no-git --directory . -- --template react-ts` (temp dir and copy if `.` is refused); CONTRIBUTING notes the pre-commit check. Effort S (human ~5 min / CC ~1 min), risk low. ✅ Lint and type errors stop at commit time, before a CI round trip ✅ No generated CLAUDE.md or AGENTS.md overriding how you set up agents ❌ Commits take a few seconds longer while `vp check` runs
+B) No agent files, no hooks
+Same command with `--no-hooks`; CI is the only gate. Effort S (human ~5 min / CC ~1 min), risk low. ✅ Fastest commits, nothing runs locally ✅ No generated agent files ❌ Lint and type errors are found only after pushing
+C) Let vp write agent files
+Same as A plus `--agent claude`, keeping vp's generated CLAUDE.md/AGENTS.md. Effort S (human ~5 min / CC ~1 min), risk medium. ✅ Agents get vp-specific command hints from day one ✅ Hooks as in A ❌ Generic instructions you did not write start steering agent sessions in this repo
+
+State: approved
+Actual answer: A) No agent files, keep hooks (recommended), answered D4 2026-10-12
+Accepted scope: chunk 01 scaffold command with `--no-interactive --package-manager pnpm --no-agent --hooks --no-git`; CONTRIBUTING notes the pre-commit check. Applied to chunk 01.
+History: none
+
+### Section 1: Architecture (eng)
+
+- [P2] (confidence: 8/10) docs/PLAN.md chunk 02b "Chunk 14's WebSocket and import endpoints sit behind the same Host gate": Vite's `allowedHosts` covers only HTTP routes Vite serves; a plugin `upgrade` listener bypasses it. Required proof of C6 (Q11), applied: chunk 14 acceptance tests a foreign-Host WebSocket upgrade under `vp dev` and the binary.
+- [P3] (confidence: 7/10) Asset loading: one `Map<path, bytes>` built at startup in SEA and `dist/` modes. Guidance within C6; no behaviour change.
+Dispositions: first applied (C6 proof); second recorded as guidance.
+
+### Section 2: Code quality (eng)
+
+- [P3] (confidence: 8/10) `sidecar/server.ts` dual ESM/CJS loading: lint rule in `sidecar/` against `import.meta` and top-level await. Required proof of the approved CJS SEA approach, applied to 02b.
+- [P3] (confidence: 8/10) CLI `--version` via esbuild `define` of the `package.json` version. Factual correction, applied to 02b.
+Dispositions: both applied; no new choices.
+
+### E5: Release config check before merge
+Finding: E5, P2, confidence 7/10, docs/PLAN.md chunk 02b "Local release script `vp run release:dry`", Claude (in-host)
+Plan baseline: `vp run release:dry` run by hand (D19, chunk 02b); no automated check of `.releaserc.json` on PRs.
+Runtime evidence: none (no config exists). A broken config is first seen on `main` after merge, when `release.yml` fails and the merged change ships no release.
+Comparison grid:
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E5 release config check | manual `release:dry` | Vitest `scripts/releaserc.test.ts`: loads `.releaserc.json`, asserts `branches: ["main"]`, plugin order (commit-analyzer, release-notes, changelog, npm with `npmPublish: false`, git, github, exec), each plugin `require.resolve`s, exec `successCmd` writes `published` and `version` | PR job running `semantic-release --dry-run --no-ci --branches $GITHUB_HEAD_REF` when release files change | keep manual `release:dry` |
+| E3 permissions | approved (D3) | unchanged | job needs `contents: read`; github plugin's push-permission check may fail with a read token (unverified) | unchanged |
+Question D5:
+D5 — E5: Check the release config automatically before merge?
+Project/branch/task: Synapse Horizon, phase-0-tooling, chunk 02b semantic-release config.
+ELI10: The release setup lives in one config file. If someone breaks it (a typo, a missing plugin, wrong order), nothing notices until after the merge. Then the release job on `main` goes red and that merge ships no version. A small unit test can load the config and check the parts we rely on, on every PR, in under a second.
+Stakes if we pick wrong: A broken release config is found only after merge, so a feature lands with no release and needs a follow-up fix.
+Recommendation: A because it catches the realistic breakages in milliseconds on every PR, with no tokens and no GitHub calls.
+Completeness: A=9/10, B=8/10, C=4/10
+Net: a 30-line unit test versus finding release breakage after merge.
+Header: E5 release
+Options:
+A) Config unit test (recommended)
+`scripts/releaserc.test.ts` in `vp test`: asserts branches, plugin list and order, `npmPublish: false`, each plugin resolves, and the exec `successCmd` writes `published` and `version`. Effort S (human ~30 min / CC ~5 min), risk low. ✅ Runs on every PR inside the normal test job, no token needed ✅ Pins exactly the settings 14b and the C3 seed version depend on ❌ Does not run semantic-release itself, so a plugin runtime bug still shows only on `main`
+B) PR dry-run job
+A PR job runs `semantic-release --dry-run --no-ci --branches $GITHUB_HEAD_REF` when `.releaserc.json`, `release.yml` or `package.json` change. Effort M (human ~1h / CC ~10 min), risk medium. ✅ Exercises the real tool, catching runtime errors too ✅ Shows the would-be version in the PR log ❌ The github plugin checks push rights and may fail with the read-only PR token (unverified)
+C) Keep manual release:dry
+Run `vp run release:dry` by hand before merging release changes. Effort S (zero implementation work), risk medium. ✅ Nothing new to maintain ✅ Full real run when you remember it ❌ Relies on memory; a forgotten run means breakage shows on `main`
+
+State: approved
+Actual answer: A) Config unit test (recommended), answered D5 2026-10-12
+Accepted scope: `scripts/releaserc.test.ts` with the assertions in option A, run by `vp test`. Applied to chunk 02b.
+History: none
+
+### Section 3: Test review (eng)
+
+```text
+CODE PATHS                                              USER FLOWS
+[+] sidecar/server.ts                                   [+] Download and run binary
+  ├── checkHost()  [★★★ PLANNED] 421/308/ok (C6)          ├── [★★★ PLANNED] start, curl 200, --version [→E2E]
+  ├── asset map    [★★★ PLANNED] traversal, %2e%2e (C6)   ├── [★★ PLANNED] localhost redirect
+  └── handler      [★★★ PLANNED] 404/SPA/500 (C5)         └── [★★ PLANNED] port busy fallback message
+[+] sidecar/cli.ts                                      [+] Contributor flow
+  ├── flags        [★★★ PLANNED] bad flag, port range     ├── [★★ PLANNED] PR title rejected (live)
+  ├── listen+retry [★★★ PLANNED] race, exhausted, EACCES  ├── [★★ PLANNED] feat merge → v0.2.0 (live)
+  └── open/signals [★★ PLANNED] OpenFailed, SIGINT        └── [★★ PLANNED] fix after ruleset → bypass (live)
+[+] scripts/build-bin.ts                                [+] Screenshots
+  ├── fetch node   [★★★ PLANNED] 5xx retry, checksum      ├── [★★ PLANNED] < 200 KB via sharp (E2)
+  └── postject/sign[★★ PLANNED] tool failure              └── [★★ PLANNED] repeat within 0.5% (toHaveScreenshot)
+[+] scripts/check-workflows.ts [★★★ PLANNED] tag ref, no permissions key (C7, E3)
+[+] .releaserc.json            [★★★ PLANNED] scripts/releaserc.test.ts (E5)
+[+] chunk 01 page              [★★ PLANNED] smoke + app-version meta (CEO A-2)
+
+COVERAGE (planned): 21/21 paths | GAPS: 0 after E5 and required proofs
+```
+- Required proof carried forward (no question): workflow guard script with fixture tests (C7 Q12, E3 D3); `toHaveScreenshot({ maxDiffPixelRatio: 0.005 })` for the repeat-run check (eng review 1, T2).
+- E5 (D5): release config unit test, approved and applied.
+- Dropped (fails value bar): automated Dependabot config schema check; the chunk 01 manual Insights check covers the only realistic regression.
+- Test Plan artifact: `~/.gstack/projects/bjorkgard-ai-center/nathanael-phase-0-tooling-eng-review-test-plan-20261012-212606.md`.
+Dispositions: E5 approved; two required proofs applied; one proposal dropped.
+
+### Section 4: Performance (eng)
+
+No issues found. Requests are map lookups on assets loaded once at startup (tens of files, a few MB [estimated]); no per-request disk access. Playwright browsers are not cached in CI, following Playwright's CI guidance (restore time comparable to download). Binary size about 100-120 MB per OS [estimated].
+
+### Outside voice (eng)
+
+Disabled (`codex_reviews` = disabled); logged as skipped. No outside or native second reviewer ran in this eng review.
+
+### TODOS.md (eng)
+
+No new TODO proposals. Existing X3 (doctor) unchanged.
+
+### Approval readiness (eng)
+
+Checked: D1 structure (Smaller arrangement), E2 (D2 A), E3 (D3 A), E4 (D4 A), E5 (D5 A). Required proof or factual corrections without new choices: chunk 14 foreign-Host WebSocket test (C6, Q11), `sidecar/` ESM/CJS lint rule (approved CJS SEA approach), `--version` via esbuild define (factual), workflow guard tests (C7, E3), `toHaveScreenshot` repeat check (eng T2). CEO C1-C9 carried unchanged.
+
+Approval readiness: PASS
+
+### NOT in scope (eng)
+
+- PR dry-run of semantic-release (E5 option B): not chosen; config unit test instead.
+- Dependabot config schema check: dropped, low value.
+- `vp run doctor`: deferred earlier (CEO X3, TODOS.md).
+
+### What already exists (eng)
+
+No code in the repo. Reused: `vp create`, `vp env pin`, `setup-vp`, semantic-release plugins incl. `@semantic-release/exec` 7.1.0, Playwright `toHaveScreenshot`, `sharp` 0.35.5 (dev), Node 24 SEA + `postject` 1.0.0-alpha.6, `actions/attest-build-provenance`. Nothing rebuilt; the Host gate is written once in `sidecar/server.ts` and imported by chunk 14 (D1).
+
+### Diagrams (eng)
+
+Architecture (Section 1 above), test coverage map (Section 3). Inline ASCII diagram required at the top of `sidecar/server.ts`: request flow `Host gate → decode → asset map → 200 | SPA | 404 | 500`.
+
+### Failure modes (eng)
+
+| Path | Realistic failure | Test / handling | User sees |
+|---|---|---|---|
+| server.ts Host gate | rebinding Host | unit (C6) | 421 |
+| plugin WS upgrade (chunk 14) | bypasses Vite host check | chunk 14 acceptance test | refused upgrade |
+| cli listen | two copies start together | unit (C5) | fallback port line |
+| build:bin | corrupted Node download | unit (C5) | hash mismatch message |
+| release.yml | broken `.releaserc.json` | unit (E5) | red PR, not red `main` |
+| workflows | new job with tag ref or no permissions | guard + unit | red PR |
+| shots | 3D frame > 200 KB | sharp quantize (E2) + ShotFailed | view and size |
+
+Critical gaps: 0.
+
+### Worktree parallelization strategy
+
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| 01 scaffold, CI, Dependabot | root config, `src/`, `.github/` | — |
+| 02 Playwright, smoke, shots | `e2e/`, `scripts/` | 01 |
+| 02b-a release pipeline | `.github/workflows/`, `.releaserc.json`, `scripts/` (releaserc, check-workflows) | 02 |
+| 02b-b server + CLI | `sidecar/` | 01 |
+| 02b-c build:bin | `scripts/` (build-bin), `package.json` | 02b-b |
+
+Parallel lanes: Lane A: 01 → 02 → 02b-a. Lane B: 02b-b → 02b-c (after 01).
+Execution order: build 01; then launch A (02, then 02b-a) and B (02b-b, 02b-c) in parallel worktrees; merge as one 02b PR (one PR per chunk).
+Conflict flags: both lanes touch `scripts/` and `package.json` scripts; keep script files separate and merge `package.json` by hand.
+
+## Implementation Tasks (eng review, Phase 0)
+
+Synthesized from this review's findings. Effort ratios: scaffolding ~100x, tests ~50x, features ~30x.
+
+- [ ] **T1 (P2, human: ~1h / CC: ~10min)** — sidecar — Split `server.ts` (createServer, checkHost, asset map, handler) from `cli.ts`; ESM/CJS lint rule; `--version` define
+  - Surfaced by: Scope Challenge D1; Section 2
+  - Files: sidecar/server.ts, sidecar/cli.ts, sidecar/server.test.ts, sidecar/cli.test.ts, lint config
+  - Verify: `vp check` fails on `import.meta` in sidecar/; `vp test`
+- [ ] **T2 (P2, human: ~30min / CC: ~5min)** — shots — sharp palette PNG and `toHaveScreenshot` repeat check
+  - Surfaced by: Scope Challenge E2 (D2); Section 3
+  - Files: scripts/shots.ts, package.json
+  - Verify: `vp run shots` twice; image < 200 KB
+- [ ] **T3 (P2, human: ~1h / CC: ~10min)** — CI — `permissions: {}` per workflow, split release.yml into verify/release jobs, guard script with fixtures
+  - Surfaced by: Scope Challenge E3 (D3); Section 3 (C7 proof)
+  - Files: .github/workflows/*.yml, scripts/check-workflows.ts, scripts/check-workflows.test.ts
+  - Verify: `vp test`; guard fails on a tag ref fixture
+- [ ] **T4 (P3, human: ~5min / CC: ~1min)** — scaffold — `vp create` with `--no-agent --hooks --no-git`
+  - Surfaced by: Scope Challenge E4 (D4)
+  - Files: repo root
+  - Verify: no AGENTS.md/CLAUDE.md generated; pre-commit runs `vp check`
+- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — release — `.releaserc.json` unit test
+  - Surfaced by: Section 3 E5 (D5)
+  - Files: scripts/releaserc.test.ts
+  - Verify: `vp test` fails when a plugin is removed
+- [ ] **T6 (P2, human: ~30min / CC: ~5min)** — chunk 14 — Foreign-Host WebSocket upgrade test under `vp dev` and binary
+  - Surfaced by: Section 1 (C6 proof)
+  - Files: sidecar/plugin.ts tests (chunk 14)
+  - Verify: chunk 14 acceptance
+
+### Unresolved decisions (eng)
+
+None.
+
+### Completion summary (eng)
+
+- Step 0: Scope Challenge — scope accepted as-is (smaller arrangement, D1)
+- Reality rows: 7/7 applicable rows emitted, 2 unverified premises
+- Architecture Review: 2 issues found
+- Code Quality Review: 2 issues found
+- Test Review: diagram produced, 3 gaps identified (all closed: E5 + 2 required proofs)
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to user
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (config)
+- Parallelization: 2 lanes, 2 parallel / 3 sequential steps
+- Lake Score: 1/2 (D3 picked its 10/10 option; D5's best option scored 9/10)
+
+Reality rows (eng):
+- REALITY: premise-table finding unverified=2 (3D PNG size estimate; github plugin token behaviour in PR dry-run) docs/PLAN.md:128
+- REALITY: already-done pass `git log origin/main` shows docs only docs/PLAN.md:371
+- REALITY: surface-check finding `vp create` flags verified via `--help` (E4); `--build-sea` is Node 25.5+, so Node 24 keeps `--experimental-sea-config` + postject docs/PLAN.md:371
+- REALITY: binding-decisions pass CEO C1-C9 honoured; none reopened docs/PLAN.md:15
+- REALITY: numbers finding binary size, asset size and effort are [estimated] docs/PLAN.md:128
+- REALITY: deferred-asks pass X3 stays in TODOS.md; nothing else deferred docs/PLAN.md:396
+- REALITY: pr-count pass one PR per chunk (01, 02, 02b); lanes merge into the 02b PR docs/PLAN.md:399
 
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via `/plan-eng-review`, `/plan-design-review` | Independent 2nd opinion | 3 | disabled | design phase used a native Claude subagent: 15 findings |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | ISSUES OPEN | 15 issues, 0 critical gaps (latest run); first run 26 issues |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 3 proposals, 2 accepted, 1 deferred |
+| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` | Independent 2nd opinion | 2 | disabled | `codex_reviews` disabled; no completed external review |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 3 | ISSUES OPEN | 7 issues, 0 critical gaps (this run: Phase 0 + 14b; all mapped to tasks, 0 unresolved) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (on main) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex disabled for every plan-review and design phase; only the design phase ran a native Claude subagent (in-host, not outside coverage).
-- **VERDICT:** No review CLEAR. Every eng and design finding is accepted and mapped into the plan; issues_open means mapped work, not failure. Eng review required.
+- **OUTSIDE COVERAGE:** codex disabled by config for both the CEO and eng reviews on this branch (logged as skipped/disabled). The CEO spec loop used a native Claude refuter subagent (in-host, not outside coverage).
+- **VERDICT:** CEO CLEARED. Eng review ISSUES OPEN means 7 findings mapped to tasks T1-T6 with 0 unresolved decisions and 0 critical gaps; eng review required status per dashboard rules.
 
 NO UNRESOLVED DECISIONS
