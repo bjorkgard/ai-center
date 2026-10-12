@@ -233,6 +233,20 @@ describe("signals", () => {
     await expect(fetch(`http://127.0.0.1:${free}/`)).rejects.toThrow();
   });
 
+  test("a second signal during shutdown is ignored, not left to the default handler", async () => {
+    const free = await occupy(0);
+    await new Promise((resolve) => occupied.pop()!.close(resolve));
+    const s = await serve(["--port", String(free), "--no-open"]);
+    s.signals.emit("SIGINT");
+    // With no listener left, a real process would be killed by this second SIGINT.
+    expect(s.signals.listenerCount("SIGINT")).toBeGreaterThan(0);
+    s.signals.emit("SIGINT");
+    s.signals.emit("SIGTERM");
+    expect(await s.done).toBe(0);
+    expect(s.out.filter((line) => line === "stopped")).toHaveLength(1);
+    expect(s.signals.listenerCount("SIGINT")).toBe(0);
+  });
+
   test("startup line has the version, URL and mode", async () => {
     const free = await occupy(0);
     await new Promise((resolve) => occupied.pop()!.close(resolve));

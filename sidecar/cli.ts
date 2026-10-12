@@ -79,7 +79,7 @@ export interface Io {
   openUrl: (url: string) => Promise<void>;
   createServer: typeof createServer;
   /** Where SIGINT and SIGTERM are heard. */
-  signals: Pick<EventEmitter, "once">;
+  signals: Pick<EventEmitter, "on" | "off">;
   version: string;
   onListening?: (port: number) => void;
 }
@@ -170,15 +170,23 @@ export async function run(argv: string[], io: Io = defaultIo()): Promise<number>
   io.onListening?.(port);
 
   const stopped = new Promise<number>((resolve) => {
+    // Handlers stay attached until shutdown finishes: a second signal (e.g. Ctrl-C delivered
+    // to both `vp run serve` and this child) must be ignored, not fall through to Node's
+    // default handler, which would kill the process mid-shutdown.
+    let stopping = false;
     const stop = () => {
+      if (stopping) return;
+      stopping = true;
       server.close(() => {
+        io.signals.off("SIGINT", stop);
+        io.signals.off("SIGTERM", stop);
         io.stdout("stopped");
         resolve(0);
       });
       server.closeAllConnections();
     };
-    io.signals.once("SIGINT", stop);
-    io.signals.once("SIGTERM", stop);
+    io.signals.on("SIGINT", stop);
+    io.signals.on("SIGTERM", stop);
   });
 
   if (options.open) {
