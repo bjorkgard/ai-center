@@ -34,6 +34,7 @@ export function parseArgs(argv: string[]): Options {
   const options: Options = { port: DEFAULT_PORT, open: true, version: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--" && i === 0) continue;
     if (arg === "--no-open") options.open = false;
     else if (arg === "--version") options.version = true;
     else if (arg === "--help") options.help = true;
@@ -149,7 +150,9 @@ export async function run(argv: string[], io: Io = defaultIo()): Promise<number>
 
   const result = await listenWithRetry(options.port, assets, io);
   if (result.kind === "exhausted") {
-    io.stderr(`ports ${options.port}-${options.port + EXTRA_PORTS} busy; use --port`);
+    io.stderr(
+      `ports ${options.port}-${Math.min(65535, options.port + EXTRA_PORTS)} busy; use --port`,
+    );
     return 1;
   }
   if (result.kind === "failed") {

@@ -118,6 +118,19 @@ export async function downloadNodeArchive(opts: {
   return { archive, dirName, windows };
 }
 
+/** Always re-extracts from the verified archive, so a tampered earlier extract is never reused. */
+export function extractNode(
+  archive: string,
+  member: string,
+  cacheDir: string,
+  run: RunTool,
+): string {
+  const binary = join(cacheDir, member);
+  rmSync(binary, { force: true });
+  step("extract node", run, "tar", ["-xf", archive, "-C", cacheDir, member]);
+  return binary;
+}
+
 function listFiles(dir: string, prefix = ""): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -169,9 +182,7 @@ async function main(): Promise<void> {
     fetchFn: fetch,
   });
   const member = windows ? `${dirName}/node.exe` : `${dirName}/bin/node`;
-  const officialNode = join(cacheDir, member);
-  if (!existsSync(officialNode))
-    step("extract node", runTool, "tar", ["-xf", archive, "-C", cacheDir, member]);
+  const officialNode = extractNode(archive, member, cacheDir, runTool);
 
   // The blob is made by the official binary (never the local node), before its signature is touched.
   step("generate SEA blob", runTool, officialNode, ["--experimental-sea-config", seaConfig]);

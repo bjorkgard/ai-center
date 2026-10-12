@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
+import { pathToFileURL } from "node:url";
 import { chromium, type Browser } from "@playwright/test";
 import sharp from "sharp";
 import { maxBytes, viewport, viewUrl, views } from "./shots.config.ts";
 
-class ShotFailed extends Error {}
+export class ShotFailed extends Error {}
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
 
@@ -20,12 +21,35 @@ function freePort(): Promise<number> {
   });
 }
 
-async function portInUse(port: number): Promise<boolean> {
+export async function portInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = createServer();
     probe.once("error", () => resolve(true));
     probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(false)));
   });
+}
+
+export function checkBuildIdentity(base: string, html: string, want: string): void {
+  const meta = html.match(/<meta[^>]*name="app-version"[^>]*content="([^"]*)"/)?.[1];
+  if (meta !== want || !html.includes("<title>Synapse Horizon</title>")) {
+    throw new ShotFailed(
+      `${base} is not this build (app-version ${meta ?? "missing"}, want ${want})`,
+    );
+  }
+}
+
+export function checkConsole(name: string, errors: string[]): void {
+  if (errors.length > 0) throw new ShotFailed(`view ${name}: console error: ${errors[0]}`);
+}
+
+export function checkSize(name: string, png: Buffer): void {
+  if (png.length > maxBytes) {
+    throw new ShotFailed(`view ${name}: ${png.length} bytes > ${maxBytes} bytes`);
+  }
+}
+
+export async function ensurePortFree(port: number): Promise<void> {
+  if (await portInUse(port)) throw new ShotFailed(`port ${port} is already in use`);
 }
 
 async function waitForServer(base: string, exited: () => string | undefined): Promise<void> {
@@ -35,13 +59,7 @@ async function waitForServer(base: string, exited: () => string | undefined): Pr
     try {
       const res = await fetch(base);
       if (res.ok) {
-        const html = await res.text();
-        const meta = html.match(/<meta[^>]*name="app-version"[^>]*content="([^"]*)"/)?.[1];
-        if (meta !== version || !html.includes("<title>Synapse Horizon</title>")) {
-          throw new ShotFailed(
-            `${base} is not this build (app-version ${meta ?? "missing"}, want ${version})`,
-          );
-        }
+        checkBuildIdentity(base, await res.text(), version);
         return;
       }
     } catch (err) {
@@ -54,7 +72,7 @@ async function waitForServer(base: string, exited: () => string | undefined): Pr
 
 async function main(): Promise<void> {
   const port = process.env.SHOTS_PORT ? Number(process.env.SHOTS_PORT) : await freePort();
-  if (await portInUse(port)) throw new ShotFailed(`port ${port} is already in use`);
+  await ensurePortFree(port);
   const base = `http://127.0.0.1:${port}`;
   const server = spawn(
     "vp",
@@ -95,11 +113,9 @@ async function main(): Promise<void> {
       await page.evaluate("document.fonts.ready");
       const raw = await page.screenshot();
       await page.close();
-      if (errors.length > 0) throw new ShotFailed(`view ${name}: console error: ${errors[0]}`);
+      checkConsole(name, errors);
       const png = await sharp(raw).png({ palette: true, quality: 80, effort: 10 }).toBuffer();
-      if (png.length > maxBytes) {
-        throw new ShotFailed(`view ${name}: ${png.length} bytes > ${maxBytes} bytes`);
-      }
+      checkSize(name, png);
       out.push({ file, png });
     }
     for (const { file, png } of out) {
@@ -112,7 +128,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err instanceof ShotFailed ? `ShotFailed: ${err.message}` : err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err instanceof ShotFailed ? `ShotFailed: ${err.message}` : err);
+    process.exit(1);
+  });
+}

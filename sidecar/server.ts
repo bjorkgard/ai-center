@@ -21,8 +21,13 @@ export type HostVerdict = "serve" | "redirect" | "reject";
 
 /** Host gate (CEO C6): only 127.0.0.1:<bound port> is served; localhost:<port> is redirected. */
 export function checkHost(hostHeader: string | undefined, boundPort: number): HostVerdict {
-  if (hostHeader === `127.0.0.1:${boundPort}`) return "serve";
-  if (hostHeader === `localhost:${boundPort}`) return "redirect";
+  // Browsers drop the port from Host when it is the scheme default.
+  if (hostHeader === `127.0.0.1:${boundPort}` || (boundPort === 80 && hostHeader === "127.0.0.1")) {
+    return "serve";
+  }
+  if (hostHeader === `localhost:${boundPort}` || (boundPort === 80 && hostHeader === "localhost")) {
+    return "redirect";
+  }
   return "reject";
 }
 

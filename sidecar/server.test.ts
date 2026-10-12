@@ -53,6 +53,13 @@ describe("checkHost", () => {
     expect(checkHost("evil.example:7317", 7317)).toBe("reject");
     expect(checkHost(undefined, 7317)).toBe("reject");
   });
+
+  test("on port 80 the Host header may omit the port", () => {
+    expect(checkHost("127.0.0.1", 80)).toBe("serve");
+    expect(checkHost("localhost", 80)).toBe("redirect");
+    expect(checkHost("127.0.0.1", 7317)).toBe("reject");
+    expect(checkHost("evil.example", 80)).toBe("reject");
+  });
 });
 
 describe("host gate", () => {

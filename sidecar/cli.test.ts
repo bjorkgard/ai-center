@@ -99,6 +99,13 @@ describe("flags (UsageError)", () => {
     expect(() => parseArgs(["--port"])).toThrow(UsageError);
   });
 
+  test("ignores a leading -- separator (vp run serve -- --no-open)", () => {
+    expect(parseArgs(["--", "--no-open", "--port", "4400"])).toMatchObject({
+      open: false,
+      port: 4400,
+    });
+  });
+
   test("accepts the port range edges and --port=n", () => {
     expect(parseArgs(["--port", "1"]).port).toBe(1);
     expect(parseArgs(["--port", "65535"]).port).toBe(65535);
@@ -131,6 +138,21 @@ describe("listen", () => {
     const h = harness();
     expect(await run(["--port", String(first), "--no-open"], h.io)).toBe(1);
     expect(h.err).toEqual([`ports ${first}-${first + 10} busy; use --port`]);
+  });
+
+  test("PortsExhausted near the top clamps the range to 65535", async () => {
+    const h = harness({
+      createServer: () => {
+        const fake = new EventEmitter() as unknown as Server;
+        (fake as unknown as { listen: () => void }).listen = () =>
+          queueMicrotask(() =>
+            fake.emit("error", Object.assign(new Error("busy"), { code: "EADDRINUSE" })),
+          );
+        return fake as never;
+      },
+    });
+    expect(await run(["--port", "65530", "--no-open"], h.io)).toBe(1);
+    expect(h.err).toEqual(["ports 65530-65535 busy; use --port"]);
   });
 
   test("EACCES: exits 1 naming the port", async () => {

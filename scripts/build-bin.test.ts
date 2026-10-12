@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
@@ -7,6 +7,7 @@ import {
   ChecksumMismatch,
   downloadNodeArchive,
   expectedHash,
+  extractNode,
   FetchError,
   fetchBytes,
   nodeTarget,
@@ -143,5 +144,27 @@ describe("ToolFailed", () => {
 
   test("a zero exit passes", () => {
     expect(() => step("ok", () => ({ status: 0, stderr: "" }), "true", [])).not.toThrow();
+  });
+});
+
+describe("extractNode", () => {
+  test("removes a previously extracted binary and re-extracts from the verified archive", () => {
+    const cacheDir = tmp();
+    const member = "node-v1-darwin-arm64/bin/node";
+    mkdirSync(join(cacheDir, "node-v1-darwin-arm64/bin"), { recursive: true });
+    writeFileSync(join(cacheDir, member), "tampered");
+    let existedAtExtract: boolean | undefined;
+    const run = vi.fn(() => {
+      existedAtExtract = existsSync(join(cacheDir, member));
+      return { status: 0, stderr: "" };
+    });
+    expect(extractNode("a.tar.gz", member, cacheDir, run)).toBe(join(cacheDir, member));
+    expect(existedAtExtract).toBe(false);
+    expect(run).toHaveBeenCalledWith("tar", ["-xf", "a.tar.gz", "-C", cacheDir, member]);
+  });
+
+  test("a failing extract names the step", () => {
+    const run = () => ({ status: 2, stderr: "tar: bad archive" });
+    expect(() => extractNode("a", "m", tmp(), run)).toThrow(/build step "extract node" failed/);
   });
 });

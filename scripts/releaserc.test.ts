@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createRequire } from "node:module";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -64,9 +67,19 @@ describe(".releaserc.json", () => {
   });
 
   test("the exec successCmd writes published and version to GITHUB_OUTPUT", () => {
-    const successCmd = String(options("@semantic-release/exec").successCmd);
-    expect(successCmd).toContain("published=true");
-    expect(successCmd).toContain("version=${nextRelease.version}");
-    expect(successCmd).toContain("$GITHUB_OUTPUT");
+    const template = String(options("@semantic-release/exec").successCmd);
+    // semantic-release substitutes ${nextRelease.version} (lodash template) before running in sh.
+    const successCmd = template.replace("${nextRelease.version}", "1.2.3");
+    const dir = mkdtempSync(join(tmpdir(), "releaserc-"));
+    try {
+      const output = join(dir, "out");
+      execFileSync("sh", ["-c", successCmd], { env: { ...process.env, GITHUB_OUTPUT: output } });
+      expect(readFileSync(output, "utf8").split("\n").filter(Boolean)).toEqual([
+        "published=true",
+        "version=1.2.3",
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
