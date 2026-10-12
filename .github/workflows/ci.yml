@@ -57,3 +57,16 @@ jobs:
           node-version-file: .node-version
           cache: true
       - run: vp run check:workflows
+
+  smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        with:
+          node-version-file: .node-version
+          cache: true
+      - run: vp exec playwright install --with-deps chromium firefox
+      - run: vp run e2e
