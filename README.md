@@ -1,1 +1,1 @@
-# ai-center
+# Synapse Horizon
