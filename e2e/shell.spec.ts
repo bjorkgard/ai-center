@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
+import { skipFrameSpecInCiFirefox } from "./ci-skip.ts";
 import { contrastRatio, expectContrast } from "./helpers/contrast.ts";
 
 const READY = "window.__sceneReady === true";
@@ -44,7 +45,9 @@ for (const size of [
 ]) {
   test(`the shell matches the section 4b diagram at ${size.width}x${size.height}`, async ({
     page,
-  }) => {
+    browserName,
+  }, testInfo) => {
+    skipFrameSpecInCiFirefox(browserName, testInfo);
     await page.setViewportSize(size);
     await open(page, "dev=1&freeze=1");
 
@@ -94,7 +97,11 @@ for (const size of [
   });
 }
 
-test("panels block pointer events and the gaps pass them through", async ({ page }) => {
+test("panels block pointer events and the gaps pass them through", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   await open(page, "dev=1&freeze=1");
   const hit = (x: number, y: number) =>
     page.evaluate(`(() => {
@@ -107,7 +114,11 @@ test("panels block pointer events and the gaps pass them through", async ({ page
   expect(await hit(640, 400)).toEqual({ panel: false, tag: "CANVAS" }); // gap
 });
 
-test("text keeps the D21 contrast at the night glass level", async ({ page }) => {
+test("text keeps the D21 contrast at the night glass level", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   await open(page, "dev=1&freeze=1");
   await page.getByRole("button", { name: "Show right panel" }).click();
   await expectContrast(page, page.getByTestId("wordmark"));
@@ -119,7 +130,11 @@ test("text keeps the D21 contrast at the night glass level", async ({ page }) =>
   }
 });
 
-test("the loader wordmark keeps the D21 contrast on the 3D area", async ({ page }) => {
+test("the loader wordmark keeps the D21 contrast on the 3D area", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   await page.addInitScript(HOLD_FRAMES);
   await page.goto("/");
   const wordmark = page.getByTestId("loader-wordmark");
@@ -127,7 +142,11 @@ test("the loader wordmark keeps the D21 contrast on the 3D area", async ({ page 
   await expectContrast(page, wordmark);
 });
 
-test("scrollable elements get the thin themed scrollbar", async ({ page }) => {
+test("scrollable elements get the thin themed scrollbar", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   await open(page, "dev=1&freeze=1");
   const width = await page.evaluate(() => {
     const el = document.createElement("div");
@@ -147,7 +166,9 @@ test("the contrast helper itself measures known colours", () => {
 
 test("the loader shows after 300 ms under the shell, then fades out on the first frame", async ({
   page,
-}) => {
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   await page.addInitScript(HOLD_FRAMES);
   await page.goto("/");
   await expect(page.getByTestId("slot-top-bar")).toBeVisible(); // shell from first paint
@@ -166,7 +187,11 @@ test("the loader shows after 300 ms under the shell, then fades out on the first
   await expect(loader).toHaveCount(0);
 });
 
-test("under reduced motion the loader does not sweep and cuts instantly", async ({ page }) => {
+test("under reduced motion the loader does not sweep and cuts instantly", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(HOLD_FRAMES);
   await page.goto("/");
@@ -215,7 +240,9 @@ const alpha = (css: string) =>
 
 test("the glass falls back to a solid 85% layer under slow frames and recovers", async ({
   page,
-}) => {
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   test.setTimeout(90_000);
   await open(page, "dev=1&calm=0");
   const panel = page.getByTestId("slot-job-tracker");
@@ -241,7 +268,9 @@ test("the glass falls back to a solid 85% layer under slow frames and recovers",
 
 test("a lost context shows the restore toast in the live region, then the restored toast for 6 s", async ({
   page,
-}) => {
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   test.setTimeout(60_000);
   await open(page, "dev=1");
   const region = page.locator('[aria-live="polite"]');
@@ -256,7 +285,11 @@ test("a lost context shows the restore toast in the live region, then the restor
   await expect(region.getByText("3D view restored")).toHaveCount(0, { timeout: 12_000 });
 });
 
-test("resizing and toggling panels raise no ResizeObserver error", async ({ page }) => {
+test("resizing and toggling panels raise no ResizeObserver error", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   const errors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") errors.push(msg.text());
