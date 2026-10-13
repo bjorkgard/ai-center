@@ -115,7 +115,10 @@ async function main(): Promise<void> {
       const raw = await page.screenshot();
       await page.close();
       checkConsole(name, errors);
-      const png = await sharp(raw).png({ palette: true, quality: 80, effort: 10 }).toBuffer();
+      // No dithering: it stipples flat faces. Quality 100 keeps bloom gradients from banding.
+      const png = await sharp(raw)
+        .png({ palette: true, quality: 100, effort: 10, dither: 0 })
+        .toBuffer();
       checkSize(name, png);
       out.push({ file, png });
     }
