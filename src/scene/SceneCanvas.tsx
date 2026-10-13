@@ -2,7 +2,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, ToneMapping } from "@react-three/postprocessing";
 import type { EffectComposer as EffectComposerImpl } from "postprocessing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MeshStandardMaterial, type WebGLRenderer } from "three";
+import { Vector3, type WebGLRenderer } from "three";
 import type { AppParams } from "../app/params.ts";
 import { useStore, type QualityTier } from "../app/store/index.ts";
 import {
@@ -17,7 +17,12 @@ import { installSceneDev } from "./devHooks.ts";
 import { DrawCallCounter } from "./drawCalls.ts";
 import { createRenderDriver, type RenderDriver } from "./loop/driver.ts";
 import { createFrameMonitor } from "./loop/monitor.ts";
+import { Ground } from "./Ground.tsx";
+import { LightRig } from "./LightRig.tsx";
+import { LookDevScene } from "./LookDev.tsx";
+import { LOOKDEV_FRAMING } from "./lookdevFraming.ts";
 import { MarkPass } from "./MarkPass.ts";
+import { MATERIALS } from "./materials.ts";
 import { applyRendererSettings, pixelRatio, qualitySettings, RENDER } from "./render.ts";
 import { logScene } from "./sceneLog.ts";
 import { reportSceneFailure } from "./failure.ts";
@@ -70,37 +75,26 @@ class SceneControl {
   }
 }
 
-// Test scene for 04a: a cube on a ground plane with a faint grid, one neutral light
-// and one temporary neutral material. 04c brings the rig and the material library.
+// Test scene: a cube on the ground, on library materials under the shared rig.
 function TestScene({ shadows }: { shadows: boolean }) {
-  const material = useMemo(
-    () => new MeshStandardMaterial({ color: "#1f2535", roughness: 0.9, metalness: 0 }),
-    [],
-  );
-  useEffect(() => () => material.dispose(), [material]);
   return (
     <>
-      <directionalLight
-        color={RENDER.light.color}
-        intensity={RENDER.light.intensity}
-        position={[6, 10, 4]}
-        castShadow={shadows}
-        shadow-mapSize={[RENDER.shadow.mapSize, RENDER.shadow.mapSize]}
-        shadow-bias={RENDER.light.shadowBias}
-        shadow-camera-left={-12}
-        shadow-camera-right={12}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
-      />
-      <mesh position={[0, 0.8, 0]} material={material} castShadow receiveShadow>
+      <LightRig shadows={shadows} />
+      <mesh position={[0, 0.8, 0]} material={MATERIALS.slate} castShadow receiveShadow>
         <boxGeometry args={[1, 1.6, 1]} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} material={material} receiveShadow>
-        <planeGeometry args={[40, 40]} />
-      </mesh>
-      <gridHelper args={[40, 40, "#2a3550", "#2a3550"]} position={[0, 0.01, 0]} />
+      <Ground />
     </>
   );
+}
+
+// Reports the content's own mount and unmount effects, so a remount can wait for the real commit.
+function MountSignal({ onMount, onUnmount }: { onMount: () => void; onUnmount: () => void }) {
+  useEffect(() => {
+    onMount();
+    return onUnmount;
+  }, [onMount, onUnmount]);
+  return null;
 }
 
 // `gen` is read once at mount, so the probe shows which build is live.
@@ -253,6 +247,15 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
         composerGen: control.composerGen,
       }),
       toggleProjection: () => rig.toggle(),
+      lights: () => {
+        const counts: Record<string, number> = {};
+        scene.traverse((object) => {
+          if ((object as { isLight?: boolean }).isLight) {
+            counts[object.type] = (counts[object.type] ?? 0) + 1;
+          }
+        });
+        return counts;
+      },
     };
     setSceneProbe(probe);
 
@@ -272,7 +275,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
       driverRef.current = null;
       onReady(false);
     };
-  }, [advance, gl, rig, params.calm, params.freeze, control, onReady]);
+  }, [advance, gl, scene, rig, params.calm, params.freeze, control, onReady]);
 
   return null;
 }
@@ -283,13 +286,26 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
 
   const quality = useStore((s) => s.quality);
   const settings = qualitySettings(quality);
-  const [rig] = useState(() =>
-    createCameraRig({ width: window.innerWidth, height: window.innerHeight }),
-  );
+  const lookdev = params.view === "lookdev";
+  const [rig] = useState(() => {
+    const created = createCameraRig({ width: window.innerWidth, height: window.innerHeight });
+    if (lookdev) {
+      created.setFraming({
+        target: new Vector3(...LOOKDEV_FRAMING.target),
+        zoom: LOOKDEV_FRAMING.zoom,
+      });
+    }
+    return created;
+  });
   const [control] = useState(() => new SceneControl());
   const [composer, setComposer] = useState(INITIAL_COMPOSER);
   const [thrown, setThrown] = useState<string | null>(null);
   const [composerBoom, setComposerBoom] = useState(false);
+  const [contentMounted, setContentMounted] = useState(true);
+  const mountWaiter = useRef<(() => void) | null>(null);
+  const unmountWaiter = useRef<(() => void) | null>(null);
+  const onContentMount = useCallback(() => mountWaiter.current?.(), []);
+  const onContentUnmount = useCallback(() => unmountWaiter.current?.(), []);
 
   const bloom = settings.bloom && !composer.failed;
   useEffect(() => control.setExpectComposer(bloom), [control, bloom]);
@@ -305,6 +321,14 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
       throwInScene: setThrown,
       throwInFrame: (message) => control.setFrameThrow(message),
       throwInComposer: () => setComposerBoom(true),
+      remountContent: async () => {
+        const unmounted = new Promise<void>((resolve) => (unmountWaiter.current = resolve));
+        setContentMounted(false);
+        await unmounted;
+        const mounted = new Promise<void>((resolve) => (mountWaiter.current = resolve));
+        setContentMounted(true);
+        await mounted;
+      },
     });
   }, [params.dev, control]);
 
@@ -326,7 +350,16 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
           onRestored={onRestored}
         />
         <SceneContentBoundary stopDriver={() => control.stopDriver()}>
-          <TestScene shadows={settings.shadows} />
+          {contentMounted && (
+            <>
+              {lookdev ? (
+                <LookDevScene shadows={settings.shadows} />
+              ) : (
+                <TestScene shadows={settings.shadows} />
+              )}
+              <MountSignal onMount={onContentMount} onUnmount={onContentUnmount} />
+            </>
+          )}
           {thrown !== null && <Thrower message={thrown} />}
         </SceneContentBoundary>
         {bloom && (

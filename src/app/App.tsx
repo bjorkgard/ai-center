@@ -21,6 +21,9 @@ export function App() {
     setReady(value);
   }, []);
 
+  // The look-dev view is the bare vignette: no shell, HUD, loader or toasts (CEO C17).
+  const lookdev = params.view === "lookdev";
+
   useEffect(() => watchReducedMotion((value) => useStore.getState().setReducedMotion(value)), []);
 
   return (
@@ -35,8 +38,8 @@ export function App() {
           className={`pointer-events-none absolute inset-0 bg-bg ${backdrop === "dim" ? "opacity-60" : ""}`}
         />
       )}
-      <Loader ready={ready} />
-      <Shell />
+      {!lookdev && <Loader ready={ready} />}
+      {!lookdev && <Shell />}
       <div
         data-testid="safe-area"
         className="pointer-events-none absolute"
@@ -48,9 +51,9 @@ export function App() {
         }}
       >
         <CardLayer />
-        {params.dev && <PerfHud frozen={params.freeze} />}
+        {params.dev && !lookdev && <PerfHud frozen={params.freeze} />}
       </div>
-      <ToastHost />
+      {!lookdev && <ToastHost />}
     </main>
   );
 }

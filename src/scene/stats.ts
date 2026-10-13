@@ -22,6 +22,8 @@ export interface SceneStats {
 export interface SceneProbe {
   read(): SceneStats;
   toggleProjection(): void;
+  // Lights in the scene by three.js type, e.g. { HemisphereLight: 1 }.
+  lights(): Record<string, number>;
 }
 
 let probe: SceneProbe | null = null;
