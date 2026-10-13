@@ -184,4 +184,5 @@ Known follow-ons, whichever integration is picked (CEO RW12):
 - The 4x stress level is not the chunk 36 scene.
 - The M1 Air-class check belongs to chunk 36 (CEO C11); this ADR measures on an M1 Max.
 - Delete the spike views in chunk 04a, with the `spike-*` entry in `scripts/shots.config.ts` and any dependency this ADR rejects. `docs/img/03-spike.png` stays as a static image.
+- The product renderer may differ from the race settings above. Phase 2 CEO review C16 (`docs/PLAN.md`) sets `powerPreference: "default"`, a 60 fps cap and a 30 fps calm mode for chunk 04a.
 - Bloom costs about 6.3 to 6.6 ms of median GPU time and about 10.5 to 10.7 ms of p95 GPU time per frame at 4x on the M1 Max in Chrome (R3F 1.55 to 8.13 ms median, vanilla 1.69 to 7.95 ms; informational, single browser). Relevant to the D10 bloom auto-disable and to the chunk 36 M1 Air check.

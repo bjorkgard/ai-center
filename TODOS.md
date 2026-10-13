@@ -15,3 +15,11 @@
   - Trigger to pick up: before chunk 14 starts.
   - Effort: S (human ~1h / CC ~10 min).
   - Depends on: none.
+
+- **P3: Startup quality probe** (deferred by /plan-ceo-review C18, 2026-10-13, Phase 2 review)
+  - What: before the loader fades, render about 1 s of frames at the high tier, discard the shader-compile frames, pick high, medium or low, and remember the pick per browser in localStorage (try/catch); the 04a frame monitor (CEO S-RW5) keeps adjusting at runtime. Fake-clock unit tests: interval-to-tier mapping, compile frames ignored, blocked storage.
+  - Why deferred: the stutter it prevents lasts about 2 s (the frame monitor's drop window) and has not been measured on target hardware; the probe also lengthens D10's loader, which is approved to end at the first frame.
+  - Context: chunk 04a quality tier object and frame monitor, chunk 36 auto tiering, `docs/PLAN.md` "CEO review record: Phase 2", C18.
+  - Trigger to pick up: chunk 36's M1 Air-class runs show a visible stutter in the first seconds after launch.
+  - Effort: S (human ~2h / CC ~10 min).
+  - Depends on: chunk 04a frame monitor.
