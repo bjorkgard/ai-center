@@ -23,7 +23,13 @@ export default defineConfig({
     },
     {
       name: "firefox",
-      use: { ...devices["Desktop Firefox"], viewport: { width: 1280, height: 720 } },
+      use: {
+        ...devices["Desktop Firefox"],
+        viewport: { width: 1280, height: 720 },
+        // Headless Firefox on GPU-less CI runners blocks software WebGL by default
+        // (CEO S-RW30); force it on so the scene can draw.
+        launchOptions: { firefoxUserPrefs: { "webgl.force-enabled": true } },
+      },
       testIgnore: /repeat\.spec\.ts/,
     },
     {
