@@ -3,6 +3,9 @@ import { PerfHud } from "../scene/PerfHud.tsx";
 import { SceneCanvas } from "../scene/SceneCanvas.tsx";
 import { CardLayer } from "../scene/cards/CardLayer.tsx";
 import { backdropFor } from "../scene/cards/select.ts";
+import { Loader } from "../ui/Loader.tsx";
+import { Shell } from "../ui/Shell.tsx";
+import { ToastHost } from "../ui/ToastHost.tsx";
 import { loadParams } from "./params.ts";
 import { watchReducedMotion } from "./reducedMotion.ts";
 import { useStore } from "./store/index.ts";
@@ -20,17 +23,6 @@ export function App() {
 
   useEffect(() => watchReducedMotion((value) => useStore.getState().setReducedMotion(value)), []);
 
-  // Until 04b's layout shell measures the panels, the safe area is the whole viewport.
-  useEffect(() => {
-    const fill = () =>
-      useStore
-        .getState()
-        .setSafeArea({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight });
-    fill();
-    window.addEventListener("resize", fill);
-    return () => window.removeEventListener("resize", fill);
-  }, []);
-
   return (
     <main
       className="relative h-full overflow-hidden bg-bg"
@@ -43,7 +35,10 @@ export function App() {
           className={`pointer-events-none absolute inset-0 bg-bg ${backdrop === "dim" ? "opacity-60" : ""}`}
         />
       )}
+      <Loader ready={ready} />
+      <Shell />
       <div
+        data-testid="safe-area"
         className="pointer-events-none absolute"
         style={{
           left: safeArea.x,
@@ -55,6 +50,7 @@ export function App() {
         <CardLayer />
         {params.dev && <PerfHud frozen={params.freeze} />}
       </div>
+      <ToastHost />
     </main>
   );
 }

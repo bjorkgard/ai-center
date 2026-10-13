@@ -15,3 +15,85 @@ body {
   font-size: var(--text-body);
   font-variant-numeric: tabular-nums;
 }
+
+/* Browser surfaces themed from the palette (design D21). */
+:root {
+  color-scheme: dark;
+  caret-color: var(--color-cyan);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3550 transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-cyan) 30%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a3550;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* GlassPanel (design D18, DR7): the blur sits on the panel, the two layers inside it. */
+.glass-panel {
+  backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* Scene loader (DR2): a 160 px cyan bar sweeping across its own 160 px window. */
+@keyframes loader-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Toast enter and exit over --dur-ui (DR9); the reduced variants only fade. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes toast-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

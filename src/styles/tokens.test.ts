@@ -20,3 +20,9 @@ test("tokens define the motion durations, the one easing and the secondary text 
   expect(css).toContain("--color-text-2: #a3acbd;");
   expect(css).toContain("--color-text-3: #8a93a6;");
 });
+
+test("tokens define the glass tint at 8% white and its border at 12% white", () => {
+  const css = readFileSync(new URL("./tokens.css", import.meta.url), "utf8");
+  expect(css).toContain("--color-glass: rgb(255 255 255 / 0.08);");
+  expect(css).toContain("--color-glass-border: rgb(255 255 255 / 0.12);");
+});
