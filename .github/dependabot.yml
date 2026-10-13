@@ -28,3 +28,14 @@ updates:
         versions: [">=19.4.0"]
       - dependency-name: "@types/react-dom"
         versions: [">=19.4.0"]
+      # Peer ranges (ADR 0001): postprocessing 6.39.5 needs three >=0.168.0 <0.187.0;
+      # @react-three/postprocessing 3.2.0 needs postprocessing ^6.36.0. pnpm only warns on a
+      # peer mismatch and the spike smoke is skipped in CI, so hold three, @types/three and
+      # postprocessing here. Lift the three rules when postprocessing widens its three range;
+      # lift the postprocessing rule when @react-three/postprocessing widens its postprocessing range.
+      - dependency-name: three
+        versions: [">=0.187.0"]
+      - dependency-name: "@types/three"
+        versions: [">=0.187.0"]
+      - dependency-name: postprocessing
+        versions: [">=7.0.0"]

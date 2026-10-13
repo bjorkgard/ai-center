@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     await waitForServer(base, () => exitMsg);
     browser = await chromium.launch();
     const context = await browser.newContext({ viewport });
-    for (const { name, file } of views) {
+    for (const { name, file, ready } of views) {
       const page = await context.newPage();
       const errors: string[] = [];
       page.on("console", (msg) => {
@@ -111,6 +111,7 @@ async function main(): Promise<void> {
       page.on("pageerror", (err) => errors.push(err.message));
       await page.goto(viewUrl(base, name));
       await page.evaluate("document.fonts.ready");
+      if (ready) await page.waitForFunction(ready, undefined, { timeout: 30_000 });
       const raw = await page.screenshot();
       await page.close();
       checkConsole(name, errors);

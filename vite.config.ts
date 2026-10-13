@@ -5,6 +5,10 @@ import { defineConfig, lazyPlugins } from "vite-plus";
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
 
+const installedVersion = (name: string) =>
+  (JSON.parse(readFileSync(`node_modules/${name}/package.json`, "utf8")) as { version: string })
+    .version;
+
 // Until chunk 27 adds the user menu, the version is exposed as a meta tag.
 const appVersionMeta = {
   name: "app-version-meta",
@@ -17,6 +21,8 @@ const appVersionMeta = {
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    __THREE_VERSION__: JSON.stringify(installedVersion("three")),
+    __R3F_VERSION__: JSON.stringify(installedVersion("@react-three/fiber")),
   },
   test: {
     exclude: ["e2e/**", "node_modules/**", "dist/**"],
@@ -63,6 +69,14 @@ export default defineConfig({
   },
   server: {
     host: "localhost",
+  },
+  // Cross-origin isolation gives performance.now() 5-20 us steps instead of
+  // 0.1-1 ms; the spike bench refuses a coarser timer (ADR 0001, eng E6).
+  preview: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
   },
   plugins: lazyPlugins(() => [react(), tailwindcss(), appVersionMeta]),
 });

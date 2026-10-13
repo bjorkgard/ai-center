@@ -31,6 +31,14 @@ the console stays clean. A repeat-run spec captures the same view twice and asse
 images agree within a 0.5% pixel diff. `vp run shots` fails with `ShotFailed` (exit 1) if a
 page logs a console error or an image is over 200 KB.
 
+The spike spec (`e2e/spike.spec.ts`) opens both render-spike views at 1x and 4x load and checks they draw the same scene. It runs under `vp run e2e:local` and is skipped when `CI` is set.
+
+## Architecture
+
+How three.js is integrated into the app: React Three Fiber (R3F), chosen by ADR 0001 from 48 measured passes under a decision rule written before the runs. See [docs/adr/0001-render-integration.md](docs/adr/0001-render-integration.md).
+
+![Render spike: 12 halls, 192 racks, 3,072 LEDs](docs/img/03-spike.png)
+
 ## Contributing
 
 Branches are `chunk/NN-slug`, with one pull request per chunk and a Conventional Commit title. See [CONTRIBUTING.md](CONTRIBUTING.md).
