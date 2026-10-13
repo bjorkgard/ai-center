@@ -151,7 +151,7 @@ README skeleton, grown over time:
 
 ## 4b. Screen and design spec (design review, 2026-10-12)
 
-Visual reference: approved mockup `/Users/nathanael/.gstack/projects/bjorkgard-ai-center/designs/main-dashboard-20261012/variant-B-2.png` for both layout and look (design D5, D14, D28). Where the image differs from this text, the text wins: no glyphs on cooling towers, and provenance marks sit top-right of the number (D19). Every decision below cites its design-review question.
+Visual reference: approved mockup `/Users/nathanael/.gstack/projects/bjorkgard-ai-center/designs/main-dashboard-20261012/variant-B-2.png` (compressed copy in the repo at `docs/designs/variant-B-2.png` from chunk 04c, CEO C17) for both layout and look (design D5, D14, D28). Where the image differs from this text, the text wins: no glyphs on cooling towers, and provenance marks sit top-right of the number (D19). Every decision below cites its design-review question.
 
 ### Screen layout (design D5)
 
@@ -175,6 +175,7 @@ Minimum supported window 1280x720. All gutters 16px.
 ```
 
 - Tab strip expands upward to at most 40vh; while expanded it hides the job tracker.
+- Slot sizes (Phase 2 design review DR10, from mockup variant-B-2 [estimated]): KPI tiles 168x120 px with a 12 px gap; job tracker 536x112 px, 16 px above the tab strip; the same sizes at 1280x720 and 1920x1080, where the 3D area takes the extra space.
 - The store keeps a `safeArea` rect (canvas minus visible panels). Area presets and `cameraRig.glideTo` frame targets inside it, so a selected object is never behind a panel (chunks 05, 25).
 
 ### Visual hierarchy (design D6)
@@ -210,13 +211,14 @@ Minimum supported window 1280x720. All gutters 16px.
 
 ### Failure states (design D11)
 
-- WebGL unavailable: a full-viewport glass card reads "Your browser could not start 3D (WebGL)." with a link to browser help. Panels and the table still render from the store.
+- WebGL unavailable: a glass card reads "Your browser could not start 3D (WebGL)." with a link to browser help. Panels and the table still render from the store. (Phase 2 design review DR3: the card uses the same layout as the scene-error card, about 420 px wide, centred in the `safeArea` rather than full-viewport, with the body "Turn on hardware acceleration, then reload.", an outlined Reload button and a "How to turn on hardware acceleration" link to the detected browser's help page; Safari and unknown browsers get "Update your browser and system, then reload." instead (DR16).)
 - WebGL context lost: restore automatically and show a toast, "Restoring 3D view".
 - Log server down (at load or later): a persistent amber banner under the top bar reads "Log server not running. Start it with `vp dev`". It hides itself on reconnect.
 
 ### Toasts and search (design D12)
 
 - Toasts sit bottom-right above the tab strip, at most 3 visible, newest on top.
+  - Anatomy (Phase 2 design review DR9): a `GlassPanel` 320 px wide, 12 px vertical and 16 px horizontal padding, 10 px radius, 14 px Geist Sans body in `--color-text`, a 16 px leading icon (spinner while restoring, the status shape otherwise), 8 px between stacked toasts, enter and exit over `--dur-ui` with the D20 easing (fade only under reduced motion) [values estimated].
   - Normal toasts auto-dismiss after 6 s; error toasts stay until acknowledged.
   - Overflow collapses into "+N more alerts", which opens the alert list.
 - Search opens a dropdown under the field; it also opens on Cmd+K / Ctrl+K and `/`.
@@ -265,7 +267,7 @@ Time horizons: 5 s visceral (step 2), 5 min behavioural (steps 3-6), long-term r
 
 ### Material and glow (design D14)
 
-The approved mockup sets the look, not only the layout. The look is a low-poly isometric campus in realistic dark slate/concrete materials, warm window and LED points, and glowing cyan `#22D3EE` fibre lines with bloom. Everything is still built in code, with no external models. This replaces the brief's "toy-like clay" wording. Chunks 04 and 08 compare a frozen screenshot against variant-B-2.
+The approved mockup sets the look, not only the layout. The look is a low-poly isometric campus in realistic dark slate/concrete materials, warm window and LED points, and glowing cyan `#22D3EE` fibre lines with bloom. Everything is still built in code, with no external models. This replaces the brief's "toy-like clay" wording. Chunks 04c and 08 compare a frozen screenshot against variant-B-2 (04c after CEO C22).
 
 ### Tool-call rows (design D15)
 
@@ -325,16 +327,24 @@ Defined in chunk 01 as CSS variables in `src/styles/tokens.css` and mapped into 
   - removes the lightning flash.
 - Chunk 04 adds the tokens and the flag. Every animated chunk checks both modes in its acceptance.
 
+### Glass panel (design D18)
+
+- `GlassPanel` is the one panel surface: backdrop blur, a constant 8% white tint, a 1 px border at 12% white, 10 px radius (D16).
+- Under the tint sits a dark underlay in `--color-bg` whose alpha comes from the D21 lookup (CEO C21).
+- Blur: `backdrop-filter: blur(16px) saturate(140%)` [estimated] (Phase 2 design review DR7).
+- When the frame monitor reports slow frames (under 45 fps at the 60 fps cap), the panel falls back to a solid 85% dark fill and returns when frames recover. The fallback replaces only the dark layer with `rgb(7 10 18 / 0.85)`, keeps the 8% tint and the 12% border, and crossfades over `--dur-ui` (instant under reduced motion) (DR7).
+- Chunk 04b builds it; every later panel uses it.
+
 ### Contrast and browser surfaces (design D21)
 
 - Panel text is at least 4.5:1; large numerals (28 px and up) are at least 3:1. Both are measured against the rendered pixels behind the panel.
-- Glass fill steps from 8% up to 72% dark when the scene is bright. The level comes from a lookup on the known day/night phase and weather (night 8%, dusk 30%, day 60%, day + heatwave 72%), with no GPU pixel readback (eng re-review D2).
+- Glass fill steps from 8% up to 72% dark when the scene is bright. The level comes from a lookup on the known day/night phase and weather (night 8%, dusk 30%, day 60%, day + heatwave 72%), with no GPU pixel readback (eng re-review D2). Read as two layers (CEO C21): every panel keeps design D18's 8% white tint, and a dark underlay in `--color-bg` takes the level from the lookup: night 0% (the night 8% is the white tint), dusk 30%, day 60%, day + heatwave 72%.
 - A Playwright check in forced-day and forced-night samples text against its backdrop on KPI tiles, panels and the table.
 - Browser surfaces are themed from the palette: 2 px cyan focus ring with 2 px offset, `::selection` cyan at 30%, thin dark scrollbars, cyan caret.
 
 ### Keyboard and screen-reader access (design D22)
 
-- Tab order: top bar, KPI tiles, right panel, job tracker, tab strip and table.
+- Tab order: top bar, 3D view (the focusable canvas, chunk 05), KPI tiles, right panel, job tracker, tab strip and table (3D view placed after the top bar by the Phase 2 design review DR12).
 - Table rows and search results are the keyboard path into the scene:
   - Up/Down moves between rows; Enter selects the object in the scene and glides to it.
   - Esc deselects and returns focus to the canvas.
@@ -445,32 +455,56 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 
 ### Phase 2: Scene foundation
 
-#### [ ] 04a. Scene foundation: canvas, camera, lights, materials
-- **Goal:** One persistent 3D canvas with the final look language (split from 04, eng re-review D1).
+#### [ ] 04a. Scene core: canvas, render loop, store, camera, failure handling
+- **Goal:** One persistent 3D canvas with its render loop, store, parameters and failure handling, shown on a test cube (split from 04, eng re-review D1; split again into 04a and 04c, CEO C22).
 - **Depends on:** 03 (decision).
-- **Tasks:** Full-viewport canvas behind a DOM overlay layer. Orthographic isometric camera (true iso angles), perspective toggle that keeps framing. Lighting rig: hemisphere + one directional with soft shadow plus low night fill, tuned to match the approved mockup (design D14). Material library `scene/materials.ts`: dark concrete/slate building greys, warm window and rack-LED emissives, accent cyan emissive for fibre lines (bloom), vendor colours, shared instances only (no per-mesh materials). Ground plane with subtle grid. Dev perf HUD (fps, draw calls, triangles, `renderer.info`). Quality tier object (high/medium/low) controlling shadows, bloom, pixel ratio. Motion tokens and a `reducedMotion` store flag from `prefers-reduced-motion` (section 4b, design D20). WebGL-unavailable card and context-lost auto-restore with toast (section 4b, design D11).
-- **Acceptance:** Test cube and ground render in all three browsers. Toggle switches ortho/perspective without jump. Perf HUD shows under 10 draw calls. Forcing WebGL off (test flag) shows the WebGL card; `WEBGL_lose_context` triggers restore and the toast (design D11). `reducedMotion` flag follows the OS setting. Smoke test checks canvas exists and no WebGL errors.
-- **README:** Image `04a-scene.png`. One line on the art direction.
+- **Tasks:** Full-viewport canvas behind a DOM overlay layer, showing a test cube on a plain ground plane with a temporary neutral material and one light (04c brings the final rig and materials). Orthographic isometric camera (true iso angles), perspective toggle that keeps framing: a perf HUD button under `dev=1` triggers it here and the `P` camera key in chunk 05; on a toggle the controls rebind to the new camera and any glide in flight is cancelled with the current framing kept (CEO S-RW39), and in perspective the camera distance is clamped to the range that matches the ortho zoom range; 04a defines both ranges in `src/scene/camera.ts` and chunk 05's controls clamp to them (CEO S-RW26). Dev perf HUD (fps, draw calls, triangles, `renderer.info`), placed at the top-right of the `safeArea` with an 8 px inset, Geist Mono 12 px with tabular numerals, a solid fill with no blur, and not counted in the `safeArea` (design-review DR11). Quality tier (high/medium/low) controlling shadows, bloom, pixel ratio: the tier lives in the store `ui` slice and `qualitySettings(tier)` is a table in `src/scene/render.ts` (eng D1). Motion tokens and a `reducedMotion` store flag from `prefers-reduced-motion` (section 4b, design D20). WebGL-unavailable card, plain in 04a with the D11 text (04b gives it the glass look, CEO C15), laid out like the scene-error card and centred in the `safeArea` with the body "Turn on hardware acceleration, then reload.", an outlined Reload button and a "How to turn on hardware acceleration" link to the detected browser's help page (design-review DR3); Safari has no hardware-acceleration setting [unverified], so Safari and unknown browsers get "Update your browser and system, then reload." with a link to that browser's WebGL help, the browser picked from its user-agent name with a unit test per branch (design-review DR16), and context-lost auto-restore that sets the store `webgl` state to `restoring`, then `ok` (section 4b, design D11); the "Restoring 3D view" toast comes with 04b's toast host (CEO C15).
+- **Acceptance:** Test cube and ground render in all three browsers. Toggle switches ortho/perspective without jump. Perf HUD (`?dev=1`) shows under 10 scene draw calls, with post-processing draw calls shown separately (CEO S-RW4). Forcing WebGL off (`?webgl=0`) shows the plain WebGL card with the D11 text; that spec waits on the card, not on the ready signal (CEO S-RW19). `WEBGL_lose_context` sets the store `webgl` state to `restoring`, then back to `ok` after restore, and the scene renders again (design D11; the toast is checked in 04b, CEO C15). Losing the context with no restore shows the WebGL card after 10 s (CEO S-RW10). A scene component that throws shows the scene-error card, not the WebGL card (CEO C23); both cards are `role="alert"` regions and do not move focus, and "Copy error details" puts the message, the last 20 `[scene]` lines, the app version and the user agent on the clipboard (design-review DR14). `reducedMotion` flag follows the OS setting. The 60 fps cap is proven by fake-clock unit tests at 60, 75, 90, 120 and 144 Hz, since headless Chromium drives rAF at 60 Hz; with `?dev=1`, Chromium renders 31 or fewer frames per second after 5 s without input (CEO C16, S-RW12, S-RW29). Smoke test checks canvas exists and no WebGL errors; `e2e/smoke.spec.ts` drops its heading check, since the canvas replaces the placeholder page. CI's Chromium and Firefox jobs create a WebGL2 context, or the S-RW30 fallback is in place.
+- **README:** Image `04a-core.png` (test cube with the perf HUD), captured by a shots entry that adds `dev=1` to the section 4 URL; `scripts/shots.config.ts` gains an optional extra-query field per entry. Under `freeze=1` the HUD shows draw calls, triangles and `renderer.info` counts and reads "frozen" in place of fps (CEO S-RW32).
+- **Store (CEO S-RW1):** add `zustand` and create the app store (`src/app/store/index.ts`, one file per slice) with a `ui` slice (`src/app/store/ui.ts`): `reducedMotion`, `quality`, `webgl` (`ok`, `unavailable` or `restoring`), `sceneError` (null or a message, C23) and, from 04b, `safeArea`. Chunk 11 adds its data slices to this same store (D11), so chunk 11 now depends on 04a.
+- **App parameters (CEO S-RW2):** generalise the spike's allowlist parser into `src/app/params.ts`, read in production builds, because Playwright and `vp run shots` run `vp build` and `vp preview` (`playwright.config.ts:37`). `dev=1` shows the perf HUD and, from chunk 05, the dev menu; `webgl=0` forces the WebGL card; `calm=0` keeps the 60 fps cap (C16); `view` (including `lookdev` from 04c, C17), `source`, `scenario`, `seed` and `freeze` follow the section 4 contract. An unknown value falls back with one console warning naming the parameter. Unit tests cover each parameter.
+- **Promote, then delete the spike (CEO S-RW3):** move `RENDER`, `applyRendererSettings`, the inner composer error boundary pattern (`src/spike/r3f/View.tsx:336-347`), the draw-call counter and the shared-material dispose-event guard, with their tests, from `src/spike/` into `src/scene/` (`guardComposer` served only the vanilla view and is deleted with it; CEO S-RW31); then delete the rest of `src/spike/`, `e2e/spike.spec.ts`, the `App.tsx` branch and the `spike-*` shots entry (RW7), plus the spike-only `__THREE_VERSION__` and `__R3F_VERSION__` defines in `vite.config.ts`; the `preview.headers` comment is reworded to cite chunk 36 timing instead of the spike bench (eng E22). `postprocessing` stays as the peer of `@react-three/postprocessing`. The renderer keeps the ADR 0001 settings unless a later decision changes them (C16 changes `powerPreference`).
+- **Draw calls (CEO S-RW4):** the perf HUD shows scene draw calls (the render pass) and post-processing draw calls as two numbers, counted per frame with `autoReset` off (eng E10): `renderer.info.reset()` at frame start, a snapshot of `info.render.calls` right after the scene render pass (a no-op pass placed after it, or the frame total when bloom is off), and post-processing = frame total minus that snapshot (CEO S-RW32). The "under 10" bar applies to scene draw calls; the post-processing number is shown, not capped (bloom adds 17 at the ADR 0001 settings).
+- **Frame monitor (CEO S-RW5):** one monitor of `requestAnimationFrame` intervals. It judges the mean delivered interval over a short window [about 0.5 s, estimated] against the cap interval in force, so neither a deliberate cap nor a display whose refresh rate does not divide the cap evenly reads as slow (CEO S-RW29). It ignores the first frames after the tab becomes visible or the window resizes, and switches with hysteresis: drop after 2 s with the mean over 1.33 times the cap interval (22 ms at 60 fps, 44 ms at 30 fps), recover after 10 s with it under 1.08 times the cap interval (18 ms at 60 fps) [thresholds estimated]. With `dev=1`, `window.__sceneDev.simulateFrameInterval(ms | null)` replaces the real intervals with synthetic ones while it is non-null, so Playwright can trigger and clear the fallbacks deterministically in any engine (CEO S-RW11, S-RW27). D10's bloom auto-disable and 04b's glass fallback both read it; chunk 36 extends it to the other quality knobs. Under `freeze=1` the monitor is paused, so specs and shots that judge glass or bloom (contrast, shots, look-dev) use `freeze=1` and cannot be flipped by slow software rendering; only the fallback test drives the monitor, through `simulateFrameInterval` (CEO S-RW34). Fake-clock unit tests cover displays at 60, 75, 90, 120 and 144 Hz.
+- **WebGL detection (CEO S-RW6):** the card comes from a WebGL2 pre-check plus an error boundary around the R3F `Canvas`. The pre-check, restore, 10 s timeout and late restore form one state machine in `src/scene/webgl.ts`, with the boundary in `src/scene/SceneBoundary.tsx` (eng D1). The renderer is created through R3F's `gl` factory, which catches a failed `new WebGLRenderer(...)` and rethrows it as `WebGLUnavailableError`, the class the pre-check throws, so the boundary can tell WebGL failures from scene errors by class (R3F rethrows both the same way; eng E24). R3F's `fallback` prop renders only when the browser has no `<canvas>` (`react-three-fiber.esm.js:182`), so it cannot show the card. The `@react-three/postprocessing` `<EffectComposer>` sits in its own error boundary inside the `Canvas`, as in the spike's R3F view; an error there turns bloom off and leaves the scene running, without the WebGL card. On `webglcontextrestored` the composer remounts (key change) under that boundary, so a failed rebuild turns bloom off instead of leaving a black canvas (CEO S-RW31). If no restore event arrives within 10 s [estimated], the store `webgl` state becomes `unavailable` and the card shows with its own wording, since the browser did start 3D: title "The 3D view lost its graphics connection.", body "Reload to restart it.", an outlined Reload button and no hardware-acceleration link (design-review DR4); a restore that arrives later still returns the state to `ok`, hides the card and resumes rendering, since D11 restores automatically (CEO S-RW33). Fake-clock unit tests cover restore, a failed composer rebuild, the timeout and a late restore (CEO S-RW10); a unit test stubs `WebGLRenderer` to throw and asserts the `gl` factory rethrows `WebGLUnavailableError` (eng E24). Scene runtime errors (CEO C23): the driver requests the next frame before running the current one and catches errors from `advance()` and `useFrame` callbacks; each distinct message is logged once with `console.error` and the frame time, the HUD counts them, and rendering continues. After 3 consecutive failing frames [estimated] the driver stops and sets the store `sceneError` (message). A React error in a scene component reaches the outer boundary, which tells the kinds apart: WebGL failures show the D11 card; scene errors show a separate card, "The 3D view stopped after an error.", with the message and a Reload button; panels keep working and the loader ends. Card layout (approved mockup, design-review D2/D3): a red square status icon inline at the left of the title; one Geist Sans body line "The panels still work. Reload to restart the 3D view."; an outlined cyan "Reload" button and a quiet "Copy error details" text button; a divider; then the error message on one Geist Mono line with a chevron that expands the full details. Accessibility (design-review DR14): both the WebGL card and the scene-error card are `role="alert"` regions, read out once when they appear; focus stays where the user is, and the card's buttons take the 3D view's place in the Tab order. "Copy error details" copies the error message, the last 20 `[scene]` console lines, the app version and the browser user agent, then confirms "Copied" (design D13). Tests: a throwing frame callback keeps the loop alive and logs once; 3 consecutive throws set `sceneError`; a throwing component shows the scene-error card, not the WebGL card.
+- **First frame and freeze (CEO S-RW7):** the scene sets one ready signal after its first rendered frame (`data-scene-ready` on the app root and `window.__sceneReady`). The 04b loader, every shots entry (including the existing `home` entries), `e2e/repeat.spec.ts` and the smoke test wait on it before capturing (CEO S-RW20). When WebGL is unavailable no frame ever renders, so the loader also ends when the store `webgl` state is `unavailable` (CEO S-RW19). `freeze=1` renders one fixed frame, stops the scene clock, and re-renders that same frame after a resize or a context restore (section 4, CEO S-RW30).
+- **Render loop and power (CEO C16):** R3F runs with `frameloop="never"`, driven by one `requestAnimationFrame` driver that calls `advance()` (the pattern ADR 0001 measured), passing scene time in seconds, not the rAF timestamp in milliseconds, so `useFrame` deltas keep R3F's seconds convention (eng E19). The driver owns scene time: it starts at 0 on the first rendered frame and advances by the real interval capped at 0.1 s per frame [estimated], so the first frame and the frame after a hidden tab or a long pause never jump; it stays still under `freeze=1`. Store and replay time are separate (eng E20). The driver caps rendering at 60 fps on every display by deadline accumulation: it renders when the time since the last rendered frame reaches the cap interval minus a few milliseconds of tolerance [estimated] and carries the remainder, so the mean rate holds 60 fps on 60, 75, 90, 120 and 144 Hz displays and rAF jitter never halves it (CEO S-RW29). It enters calm mode after 5 s with no pointer or keyboard input, camera motion or glide, where the cap drops to 30 fps; any input returns to 60 within one frame [values estimated]. The renderer uses `powerPreference: "default"` (a later decision under S-RW3). The app parameter `calm=0` keeps the 60 fps cap for measuring runs (chunk 36). The perf HUD also shows the cap and mode. Fake-clock unit tests cover the cap at 60, 75, 90, 120 and 144 Hz, jittered 60 Hz callbacks, calm entry and exit, and a hidden tab (CEO S-RW12, S-RW29), plus scene time: the first delta is 0, a 60 s hidden gap gives at most 0.1 s, and `freeze=1` gives 0 (eng E20).
+- **Cleanup under StrictMode (eng E25):** `src/main.tsx` renders in `<StrictMode>`, which mounts, unmounts and remounts effects in `vp dev`. The driver, the monitor's listeners, the reduced-motion `matchMedia` listener, the ResizeObserver and the WebGL context listeners each return a stop function used as effect cleanup. A unit test mounts, unmounts and remounts the driver and asserts one scheduled callback and baseline listener counts.
+- **Transition logs (CEO S-RW40):** each state transition (`webgl`, quality tier, composer failure, `sceneError`) logs one console line with a `[scene]` prefix, the transition, its reason and, for quality changes, the mean frame interval. The README "Known limits" section names the WebGL card and the scene-error card and what to do (check hardware acceleration; reload and report the `[scene]` console line).
+- **CI WebGL (CEO S-RW30):** before the new smoke merges, confirm that headless Chromium and Firefox on the ubuntu runners create a WebGL2 context [unverified: chunk 03's spike spec was skipped in CI]. If not, add software-rendering launch options in `playwright.config.ts` (for Chromium, `--use-angle=swiftshader` and `--enable-unsafe-swiftshader` [unverified which recent Chromium needs]; for Firefox, its WebGL force-enable pref). If a browser still has no WebGL2, its CI smoke asserts the WebGL card path instead, `e2e/repeat.spec.ts` is skipped in CI for that browser, and the canvas smoke and repeat check for it run only in `vp run e2e:local` (CEO S-RW35).
 
 #### [ ] 04b. UI shell: tokens, glass panel, layout, loader
 - **Goal:** The empty dashboard frame every later panel lives in (split from 04, eng re-review D1).
 - **Depends on:** 04a.
-- **Tasks:** Section 4b tokens wired in (type, spacing, radius, status palette from chunk 01) and themed focus ring, selection, scrollbars and caret, plus adaptive glass fill driven by day/night phase and weather, no GPU readback (section 4b, design D21, eng re-review D2). `GlassPanel` component (backdrop blur, 8% white fill, 1px 12% border, fps-aware fallback to a solid 85% dark panel under 45 fps). Empty layout shell with the section 4b slots (top bar, KPI row, right panel, job tracker, tab strip) that updates the store `safeArea` on panel open/close and on window resize via ResizeObserver (eng re-review E6); pointer events blocked by panels and passed through gaps (design D18, D5). Scene loader (wordmark plus thin cyan progress line) until the first frame (design D10).
-- **Acceptance:** Empty layout shell matches the section 4b diagram at 1280x720 and 1920x1080; glass panels stay readable over bright and dark scene regions; the fallback triggers and recovers in Firefox (design D18). `safeArea` updates on resize and on panel toggle (unit test on the rect). Loader shows until first frame.
+- **Tasks:** Section 4b tokens wired in (type, spacing, radius, status palette from chunk 01) and themed focus ring, selection, scrollbars and caret, plus adaptive glass fill driven by day/night phase and weather, no GPU readback (section 4b, design D21, eng re-review D2). `GlassPanel` component per section 4b "Glass panel" (design D18): backdrop blur 16 px with 140% saturation (design-review DR7), 8% white tint over the C21 dark underlay, 1px 12% border, fps-aware fallback to a solid 85% dark layer under 45 fps that keeps the tint and border and crossfades over `--dur-ui`. Empty layout shell with the section 4b slots (top bar, KPI row, right panel, job tracker, tab strip) that updates the store `safeArea` on panel open/close (opened and closed through a `dev=1` toggle in the HUD's dev section until real panels exist, design-review DR11) and on window resize via ResizeObserver (eng re-review E6), writing at most once per animation frame and only when the rect changed, so the browser never reports a ResizeObserver loop error (CEO S-RW36); pointer events blocked by panels and passed through gaps (design D18, D5). Each empty slot shows its placeholder title in 13 px label type and `--color-text-2` (for example "Claude sessions", "Job tracker"), so the contrast helper has text to sample (CEO S-RW28, design-review DR8). Slot sizes per section 4b (design-review DR10): KPI tiles 168x120 px with a 12 px gap, job tracker 536x112 px 16 px above the tab strip. Scene loader (wordmark plus thin cyan progress line) until the first frame, or until the store `webgl` state is `unavailable` (design D10, CEO S-RW19). Loader look (design-review DR2, settles UI-3): an indeterminate 2x160 px cyan bar sweeps every 1.2 s, 16 px below a 20 px Geist Sans semibold wordmark; it appears only after 300 ms, so fast starts show nothing; it fades out over `--dur-ui` with the D20 easing; under reduced motion it does not sweep and cuts instantly [values estimated]. Message precedence (design-review DR5): only one card shows at a time; WebGL unavailable (either wording) beats scene error, which beats restoring; the restore toast is hidden while any card shows; a unit test covers each pair. Layering (design-review DR1): the loader covers only the 3D area, and the top bar, slots and tab strip render above it from the first paint; while loading, restoring or unavailable the 3D area shows `--color-bg`; after a scene error the last frame stays under a 60% `--color-bg` overlay [estimated]; cards and toasts sit on top. The 04a WebGL card and scene-error card (C23) are restyled with `GlassPanel`, and a minimal toast host (bottom-right above the tab strip, newest on top; normal toasts auto-dismiss after 6 s, design D12; anatomy per section 4b, design-review DR9) shows "Restoring 3D view" for as long as the store `webgl` state is `restoring` and dismisses it on `ok` (CEO S-RW13), inside an `aria-live="polite"` region so screen readers announce it (design D22, eng E21); when `webgl` returns to `ok` from `restoring`, or a late restore hides the WebGL card, a normal toast "3D view restored" shows for 6 s in the same region (design-review DR6); chunk 32 extends this host with the 3-toast cap, overflow, error toasts and mode tags (CEO C15).
+- **Acceptance:** Empty layout shell matches the section 4b diagram at 1280x720 and 1920x1080; the D21 contrast helper passes at the night glass level on the wordmark, the tab-strip labels and each slot's placeholder title, and a `glassFill` unit test covers all inputs (CEO S-RW9, S-RW28); the fallback triggers and recovers in Firefox (design D18), driven by `simulateFrameInterval` (CEO S-RW11). `safeArea` updates on resize and on panel toggle (unit test on the rect). Loader shows until first frame, and with `?webgl=0` it gives way to the card. With `?webgl=0` the WebGL card renders as a glass card; `WEBGL_lose_context` shows the "Restoring 3D view" toast inside an `aria-live="polite"` region, and after restore it clears and "3D view restored" shows for 6 s (CEO C15, eng E21, design-review DR6).
 - **README:** Image `04b-shell.png`.
+- **Glass tokens (CEO S-RW8):** `--color-glass` becomes 8% white and `--color-glass-border` 12% white, matching section 4b "Glass panel" (design D18); chunk 01 set 6% and 8% (`src/styles/tokens.css`).
+- **Quiet text tokens (design-review DR8):** `--color-text-2: #A3ACBD` for secondary text (slot titles, labels, card body lines) and `--color-text-3: #8A93A6` for tertiary text (captions, hints; the D19 derived-badge grey). On night glass (8% white over `--color-bg`, composite `#1B1E25`) they measure 7.3:1 and 5.4:1 [measured: WCAG formula]; the D21 contrast helper checks them at the day levels in chunks 34 and 35.
+- **Adaptive glass now, inputs later (CEO S-RW9):** `glassFill(phase, weather)` is a pure lookup that returns the dark underlay alpha beneath design D18's constant 8% white tint (CEO C21): night 0, dusk 0.30, day 0.60, day + heatwave 0.72 (the R13 levels). Only day + heatwave changes the level; every other weather uses the clear level for its phase, so the unit test covers all 3 phases x 4 weathers (CEO S-RW15). Until chunks 34 and 35 put phase and weather in the store, it reads night and clear. The D21 contrast helper (text sampled against the rendered backdrop) is built here and run at the night level; chunk 34 runs it in forced day, dusk and night, chunk 35 in day + heatwave.
+
+#### [ ] 04c. Look: lights, materials, look-dev view
+- **Goal:** The final look language, tuned against the mockup and guarded by a screenshot (split from 04a, CEO C22).
+- **Depends on:** 04a.
+- **Tasks:** Lighting rig: hemisphere + one directional with soft shadow plus low night fill, tuned to match the approved mockup (design D14). Material library `scene/materials.ts`: dark concrete/slate building greys, warm window and rack-LED emissives, accent cyan emissive for fibre lines (bloom), vendor colours, shared instances only (no per-mesh materials), built on the shared-material guard promoted in 04a. Ground plane with subtle grid. The 04a test cube and ground switch to the library and rig.
+- **Acceptance:** The test cube and ground render with the library under the rig in all three browsers. The look-dev view matches its committed baseline in `vp run e2e:local`, and the PR shows it beside the mockup copy (CEO C17). Shared materials receive 0 `dispose` events when the look-dev view unmounts and remounts (the 04a guard). `playwright test --list` for the chromium, firefox and webkit projects does not list the look-dev spec (eng, S-RW24 check).
+- **README:** Images `04c-scene.png` and `04c-lookdev.png` (CEO C17, C22). One line on the art direction.
+- **Look-dev view (CEO C17):** `?view=lookdev` draws a fixed vignette under the rig with the ortho camera and bloom on, at the 1280x720 shots viewport with the shell and HUD hidden and one fixed camera preset (design-review DR11): a hall slab and wall with a window strip, one 8-rack row with LEDs in all six D17 status colours, a cyan fibre segment, Claude and Codex trim swatches and the ground grid. `vp run shots` captures it as `docs/img/04c-lookdev.png`. `vp run e2e:local` guards it with a `toHaveScreenshot` baseline (`maxDiffPixelRatio: 0.005`, as in `e2e/repeat.spec.ts`), opened with the section 4 URL (`freeze=1`) after the ready signal, so a deliberate look change updates the baseline in the same PR. The baseline is committed under `e2e/__screenshots__/` through its own Playwright project (Chromium only, its own `snapshotPathTemplate`), because `test-results/` is gitignored (`playwright.config.ts:10`); the chromium, firefox and webkit projects ignore this spec with `testIgnore`, and it is skipped when `CI` is set, since CI renders on ubuntu against a Mac baseline (CEO S-RW17, S-RW24). A compressed copy of the approved mockup goes to `docs/designs/variant-B-2.png`. Chunks 06-10 add their new materials to this view.
 
 #### [ ] 05. Camera controls and camera rig
 - **Goal:** Map-style navigation and a programmatic glide API.
 - **Depends on:** 04b.
-- **Tasks:** Left-drag pan, right-drag free rotate, scroll zoom (ortho zoom, not dolly), clamped to campus bounds and zoom range. `cameraRig.glideTo(target, zoom, ms=600)` using the D20 easing (instant cut when `reducedMotion`), interruptible by user input, framing the target inside the store `safeArea` rect (section 4b, design D5). Expose in a dev menu for manual testing.
-- **Acceptance:** Pan, rotate, zoom work with mouse and trackpad in all three browsers. Camera cannot leave bounds. Dev-menu glide reaches target in about 600 ms and cancels on drag. Context menu suppressed on right-drag.
-- **README:** "Controls" line.
+- **Tasks:** Left-drag pan, right-drag free rotate, scroll zoom (ortho zoom, not dolly), clamped to campus bounds and zoom range. Controls are three's `MapControls` (`three/examples/jsm/controls/MapControls.js`, installed with three; left-drag pan and right-drag rotate are its defaults, and it has `zoomToCursor` and damping), with a custom clamp of target and zoom to the campus bounds, and the perspective distance clamp from 04a; the C16 driver calls `controls.update()` each frame, and a `change` event or damping that is still settling counts as camera motion, so calm mode waits for the camera to stop (CEO S-RW16). Map feel (CEO C20): scroll zoom aims at the point under the cursor, still clamped; pan and rotate ease to a stop over about 250 ms [estimated], off under `reducedMotion`, and a new drag or glide stops the damping; a double-click on empty ground glides to `cameraRig.home()`. Empty ground means the nearest raycast hit is the ground mesh; chunk 24's double-click on an entity zooms close and cancels any home glide (CEO S-RW25). `cameraRig.glideTo(target, zoom, ms=600)` using the D20 easing (instant cut when `reducedMotion`), interruptible by user input, framing the target inside the store `safeArea` rect (section 4b, design D5). If `safeArea` changes during a glide, the glide retargets so the target ends inside the new rect (CEO S-RW37). A `safeArea` with no width or height (a window below the supported 1280x720) falls back to the full canvas with one console warning (CEO S-RW38). Expose in a dev menu for manual testing: a collapsible section under the perf HUD (glide test, projection toggle, right-panel toggle) (design-review DR11). Keyboard focus on the canvas shows as four small cyan corner brackets framing the visible canvas area (the `safeArea`), on `:focus-visible` only, not the D21 ring around the whole viewport (approved mockup, design-review D2/D3). Keyboard camera controls (CEO C19): the canvas is focusable (`tabIndex=0`, `role="application"`, a static `aria-label` until chunk 24 adds the live summary) and sits right after the top bar in the Tab order (design-review DR12); its `aria-label` is "3D campus view" and `aria-describedby` points to visually hidden text "Arrow keys pan, plus and minus zoom, Q and E rotate, 0 returns home, P switches perspective." (design-review DR15); while it has focus, arrows pan, `+` (or `=`) and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or Home glides to `cameraRig.home()` (the whole campus framed in the `safeArea`), and `P` toggles ortho and perspective (D9, CEO S-RW26, S-RW30). Keys never fire while typing in inputs, steps use the D20 easing over `--dur-ui` (instant under `reducedMotion`), and a key press counts as input for calm mode (C16). Step sizes (design-review DR13): one arrow press pans 10% of the `safeArea`'s shorter side; one `+`/`=` or `-` press zooms by x1.25; a held key keeps stepping at the key-repeat rate, each step starting from the current animated position, so movement stays smooth and nothing queues [values estimated].
+- **Acceptance:** Pan, rotate, zoom work with mouse and trackpad in all three browsers. Camera cannot leave bounds, in ortho and in perspective. Dev-menu glide reaches target in about 600 ms and cancels on drag. Opening the right panel during a glide still ends with the target inside the new `safeArea` (unit test on the rig with a fake clock, CEO S-RW37). Context menu suppressed on right-drag. With the canvas focused, each camera key moves the camera and it stays in bounds, in all three engines; a unit test covers the key map, the focus gate and the DR13 step sizes (one arrow press pans 10% of the shorter `safeArea` side; one `+` zooms by x1.25) (CEO C19, design-review DR13). Zoom-to-cursor keeps the world point under the cursor fixed while inside bounds (unit test), and in an e2e a scroll over a corner moves that corner toward the centre less than a centre zoom would; a double-click on empty ground glides home (e2e) (CEO C20). With reduced motion emulated, glides and key steps are instant cuts and damping is off (e2e), and a fake-clock test shows that damping still settling holds the 60 fps cap (design D20, CEO S-RW21).
+- **README:** "Controls" line, including the camera keys.
 
 ### Phase 3: World building (static, no data)
 
+Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates its baseline in the same PR (CEO C17).
+
 #### [ ] 06. Parametric data hall
 - **Goal:** One hall built in code from parameters.
-- **Depends on:** 05.
+- **Depends on:** 04c, 05 (CEO C22).
 - **Tasks:** `buildHall({ slots: 16, rows: 2 })`: floor slab, walls, cutaway roof (roof hidden or sliced above a height, toggleable), cold-aisle and hot-aisle floor tiles, door, floor sign plane for the hall letter and project name (canvas texture, shared atlas). Low poly, merged geometry for static parts.
 - **Acceptance:** One hall renders, roof cutaway toggle works, hall sign text is at least 12 CSS px at default zoom (design D7). Static hall costs 3 or fewer draw calls.
 - **README:** Image `06-hall.png`.
@@ -507,7 +541,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 
 #### [ ] 11. Schema, store, and steady mock source
 - **Goal:** One store fed by a mock stream, visible in a debug panel.
-- **Depends on:** 01 (can run in parallel with phases 2-3).
+- **Depends on:** 04a, for the store module it extends (CEO S-RW1); can run in parallel with 04b-10.
 - **Tasks:** `schema.ts` with zod types from section 2. Zustand store: incremental reducers into `projects`, `sessions`, `subagents`, `jobs` (authoritative), plus a capped ring buffer for the recent timeline only (eng review Q1). Source interface `{ start, stop, onEvents }` delivering events in batches; reducers apply a whole batch in one store update so subscribers fire once per batch, not once per event (eng review P3). Seeded deterministic mock generator, scenario `steady` (3 projects, Claude + Codex mix, a few subagents). Dev menu source switch. Raw debug panel listing sessions.
 - **Acceptance:** Unit tests: same seed gives same event sequence; reducers produce expected session counts and token totals for a fixed fixture. Debug panel updates live. No React re-render storm: React Profiler shows the debug panel re-rendering at most a few times per second.
 - **README:** "Data sources" section (mock only for now). Image `11-store-debug.png`.
@@ -619,14 +653,14 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [ ] 24. Picking, selection ring, labels, glide
 - **Goal:** Click anything important and the camera goes there.
 - **Depends on:** 23.
-- **Tasks:** Raycasting with instance IDs for racks, agents, carts; object picking for halls, towers, generators. Selection model in the store (`{kind, id}`). Moving instanced meshes (agents, carts, job tokens) recompute their bounding sphere each frame they move, or picking uses store positions on the CPU, so raycasts never miss moved instances (eng review P2). Selection ring (cyan, animated) and HTML label above target. Click = select + glide, double-click = zoom close, Esc = deselect and return focus to the canvas. Canvas gets `role="application"` with a live campus summary `aria-label` (design D22). Hover highlight. URL hash sync for selection and camera area.
+- **Tasks:** Raycasting with instance IDs for racks, agents, carts; object picking for halls, towers, generators. Selection model in the store (`{kind, id}`). Moving instanced meshes (agents, carts, job tokens) recompute their bounding sphere each frame they move, or picking uses store positions on the CPU, so raycasts never miss moved instances (eng review P2). Selection ring (cyan, animated) and HTML label above target. Click = select + glide, double-click = zoom close (cancelling any home glide from chunk 05, CEO S-RW25), Esc = deselect and return focus to the canvas. The live campus summary replaces chunk 05's static canvas `aria-label` (keeping its key-help description, design-review DR15) (design D22; chunk 05 makes the canvas focusable with `role="application"`, CEO C19, S-RW14). Hover highlight. URL hash sync for selection and camera area.
 - **Acceptance:** Every entity kind is selectable in all three browsers. Reloading with a hash restores the selection. Picking a moving agent tracks it with the ring. Picking cost under 1 ms per click with 400 agents. Clicking an agent that has walked away from its spawn point still selects it (G8, perf P2). Removing the selected entity (hall retires) closes the panel cleanly (G9).
 - **README:** "Interaction" section. Image `24-selection.png`.
 
 #### [ ] 25. Area switcher and shortcuts
 - **Goal:** Fly between Halls, Cooling, Power, Network.
 - **Depends on:** 24.
-- **Tasks:** Camera presets per area computed from current layout (Halls preset reframes as halls are added). Keyboard: 1-4 areas, `/` search focus, D day/night, W weather cycle, Esc deselect. Shortcut help overlay on `?`, combined with the scene legend; the legend auto-shows once on first visit (section 4b, design D13). With localStorage blocked, the legend still works and shows once per page load without errors (G19).
+- **Tasks:** Camera presets per area computed from current layout (Halls preset reframes as halls are added). Keyboard: 1-4 areas, `/` search focus, D day/night, W weather cycle, Esc deselect. Shortcut help overlay on `?`, combined with the scene legend and listing chunk 05's camera keys (CEO C19); the legend auto-shows once on first visit (section 4b, design D13). With localStorage blocked, the legend still works and shows once per page load without errors (G19).
 - **Acceptance:** Each preset frames its area fully inside the safe area (section 4b) at 1280x720 and 1920x1080, with the right panel open and closed. Shortcuts do not fire while typing in inputs.
 - **README:** Shortcut table.
 
@@ -677,7 +711,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [ ] 32. Search and alerts
 - **Goal:** Find anything; get told when something needs you.
 - **Depends on:** 29, 31.
-- **Tasks:** Fuzzy search over projects, session IDs, rack IDs, agents, tool names; dropdown and toast behaviour per section 4b (design D12); Enter flies to the result. Alert rules: agent error, waiting on user over 2 min, estimated rack temp over 35 °C, overflow hall created, log parse failure, hall cap reached. Only live (non-backfill) events raise toasts or announcements (E4); outside live mode toasts and alert rows carry a `REPLAY` or `MOCK` tag (E5); tests for both (G14). Keyboard-only e2e: Tab to the table, Down, Enter selects and glides to the entity (G16). Attention chip counts match the store and clicking it flies to the oldest waiting agent (G17). Alerts announced via `aria-live` (polite for info/waiting, assertive for errors) (design D22). Alert list with acknowledge, toasts capped at 3 with "+N more alerts" overflow (design D12), alert counts in the top-bar attention chip, the single alert entry point, with an alert panel tabbed "Needs you" / "All alerts" (design D6, D26).
+- **Tasks:** Fuzzy search over projects, session IDs, rack IDs, agents, tool names; dropdown and toast behaviour per section 4b (design D12), extending the 04b toast host (CEO C15); Enter flies to the result. Alert rules: agent error, waiting on user over 2 min, estimated rack temp over 35 °C, overflow hall created, log parse failure, hall cap reached. Only live (non-backfill) events raise toasts or announcements (E4); outside live mode toasts and alert rows carry a `REPLAY` or `MOCK` tag (E5); tests for both (G14). Keyboard-only e2e: Tab to the table, Down, Enter selects and glides to the entity (G16). Attention chip counts match the store and clicking it flies to the oldest waiting agent (G17). Alerts announced via `aria-live` (polite for info/waiting, assertive for errors) (design D22). Alert list with acknowledge, toasts capped at 3 with "+N more alerts" overflow (design D12), alert counts in the top-bar attention chip, the single alert entry point, with an alert panel tabbed "Needs you" / "All alerts" (design D6, D26).
 - **Acceptance:** Each rule fires in the matching mock scenario (`errors`, `waiting`, `overflow`) and clears when the condition ends. Search returns a rack ID match in under 50 ms with 400 agents.
 - **README:** Alerts list.
 
@@ -702,20 +736,20 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **Goal:** Animated lighting cycle.
 - **Depends on:** 27.
 - **Tasks:** Sun angle and colour from local time, sky gradient, night mode raises emissive LEDs, hall lights, road lamps. Day / Night / Auto (local clock) / Fast cycle (1 day = 2 min) live in the top-bar Ambience menu (design D25); shortcut D still cycles.
-- **Acceptance:** Smooth transition, no frame drops. Scene stays readable at night. Contrast check passes in forced-day and forced-night: panel text at least 4.5:1, large numerals at least 3:1 against the rendered backdrop (design D21). Screenshot views fixed at noon via `freeze`.
+- **Acceptance:** Smooth transition, no frame drops. Scene stays readable at night. Contrast check passes in forced-day, dusk and forced-night (dusk is the 0.30 glass level, CEO S-RW30): panel text at least 4.5:1, large numerals at least 3:1 against the rendered backdrop (design D21). Screenshot views fixed at noon via `freeze`.
 - **README:** Day and night images `34-day.png`, `34-night.png`.
 
 #### [ ] 35. Weather states
 - **Goal:** Clear, Heatwave, Monsoon, Storm, visual and panel only.
 - **Depends on:** 34.
 - **Tasks:** Weather section of the Ambience menu (design D25) with manual select and auto-cycle (configurable interval); shortcut W still cycles. Heatwave: heat shimmer, towers shown at max duty, warmer grade. Monsoon: instanced rain, wet ground tint. Storm: rain, lightning flashes, wind on vapour, generator test sequence (generators spin up, lights flicker 1 s, test log in panel). Weather panel with condition, outside temp (estimated), and generator test log. Assert simulation independence (D13).
-- **Acceptance:** Unit test: switching weather changes no store value outside the `weather` slice. Rain costs one draw call. Each state looks distinct in screenshots.
+- **Acceptance:** Unit test: switching weather changes no store value outside the `weather` slice. Rain costs one draw call. Each state looks distinct in screenshots. The 04b contrast helper passes in forced day + heatwave at the 72% glass level (design D21, CEO S-RW9).
 - **README:** Image per state `35-<state>.png`.
 
 #### [ ] 36. Cross-browser performance pass
 - **Goal:** Meet the budget in all three browsers.
 - **Depends on:** 35.
-- **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night. Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine (an M1 Air-class Mac; required here because chunk 03 measured on an M1 Max, CEO C11). Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis. Draw-call and triangle budgets enforced by a test that fails CI when exceeded.
+- **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night, with `calm=0` so the 60 fps cap holds (CEO C16). Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine (an M1 Air-class Mac; required here because chunk 03 measured on an M1 Max, CEO C11). Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis, extending the 04a frame monitor (CEO S-RW5) rather than adding a second one. Draw-call and triangle budgets enforced by a test that fails CI when exceeded.
 - **Acceptance:** Measured on the Mac via `vp run e2e:local` (eng review D6). 60 fps median at high or auto-dropped tier in all three; never under 30 fps p95. Results table appended to `docs/adr/0002-perf.md`.
 - **README:** "Performance" section with the results table.
 
@@ -732,15 +766,16 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 
 ```text
 01 → 02 → 02b (release) ; 02 → 03 (gate) → 04a → 04b → 05 → 06 → 07 → 08 → 09
-                                         └→ 10
-01 → 11 → 12 → 13 → 15 → 16 → 17        (data track, parallel to 04-10)
+                                                                   08 → 10
+04a → 04c → 06                           (look, parallel to 04b and 05; CEO C22)
+04a → 11 → 12 → 13 → 15 → 16 → 17       (data track, parallel to 04b-10; CEO S-RW1)
      11 → 14 ─────┘ ; 02b → 14 ; 14 → 14b (downloads)
 10 + 13 → 18;  13 → 19;  18 + 19 → 20 → 21 → 22 → 23
 23 → 24 → 25, 26;  25 → 27 → 28, 29(+26), 30, 31 → 32(+29), 33
 27 → 34 → 35 → 36 → 37
 ```
 
-The data track (11-17) can run alongside world building (04-10) in a separate branch or worktree, since they share no files after chunk 01, except `sidecar/cli.ts` from 02b, which chunk 14 extends.
+The data track (11-17) can run alongside world building (04-10) in a separate branch or worktree, since they share no files after chunk 04a, except `sidecar/cli.ts` from 02b, which chunk 14 extends, and the store from 04a, which chunk 11 extends (CEO S-RW1). Each store slice lives in its own file under `src/app/store/`, so 04b (`safeArea`) and chunk 11 never edit the same slice file. 04b and 04c can run in parallel; both append entries to `scripts/shots.config.ts`, which merges trivially.
 
 ---
 
@@ -3273,19 +3308,1451 @@ None. Open verifications (not decisions): timer resolution in real Safari and Fi
 - Parallelization: 2 lanes, 1 parallel / 3 sequential steps
 - Lake Score: 1/3 (eng D2 picked its 10/10 option; D3 picked the 8/10 option over a 10/10; D4's best option scored 9/10)
 
+## CEO review record: Phase 2 (/plan-ceo-review, 2026-10-13)
+
+Target: Phase 2 (chunks 04a, 04b, 05; 04c added by C22) of `docs/PLAN.md`, branch `phase-2-scene-foundation`, base `main` at `d428146`. Reviewer: Claude (in-host). Review depth: implementation-ready, Phase 2 only. No Phase 2 design doc exists; the finder returns `docs/designs/phase-0-tooling.md` (Phase 0 CEO summary). Questions in this record are numbered SQ1, SQ2... (shown in chat as D1, D2...); ledger rows continue the CEO series at C15. Findings in this record are numbered S-F1, S-F2... so they do not collide with earlier F-numbers.
+
+### 0A. Premise (Phase 2)
+
+- Real problem: about 30 later chunks draw into one canvas, use one camera, one look, one panel frame and one way to navigate. Changing any of these after chunk 06 means touching every chunk built on it.
+- Target outcome: the app opens on one persistent R3F canvas with the final look language, the empty dashboard frame with a correct `safeArea`, and map navigation with a programmatic glide, each chunk ending in a screenshot.
+- Do-nothing cost: none to weigh; Phase 3 onward cannot start without this phase. The question is its shape.
+- Phase 2 as written solves this directly, with these gaps:
+  - S-F1 [P1] Forward dependencies in 04a [measured: plan text]. 04a's WebGL card is a "full-viewport glass card" (design D11) and context restore shows a toast (D11, D12), but `GlassPanel` is built in 04b (chunk 04b Tasks) and the toast system in chunk 32 (chunk 32 Tasks). 04a cannot pass its acceptance in the order written. Resolved by C15 (SQ2).
+  - S-F2 [P1] The store does not exist yet [measured: `package.json` has no `zustand`; chunk 11 creates the store]. 04a adds a `reducedMotion` store flag and 04b a `safeArea` store rect. Resolved by S-RW1.
+  - S-F3 [P1] Adaptive glass inputs arrive in chunks 34 and 35 [measured: plan text]. R13 keys the glass fill on day/night phase (chunk 34) and weather (chunk 35). With a test cube on a night ground, 04b can show one state only, so "glass panels stay readable over bright and dark scene regions" (chunk 04b Acceptance) cannot be produced. Chunk 34 already owns the forced-day and forced-night contrast check (chunk 34 Acceptance); chunk 35 had no check for the day + heatwave 72% level. Resolved by S-RW9 and S-RW15; the glass colour model is C21.
+  - S-F4 [P2] The 04a draw-call bar conflicts with bloom [measured: ADR 0001 rule 2 table, 48 draw calls with bloom off and 65 with bloom on for the same scene]. Bloom adds 17 composer draw calls, so "Perf HUD shows under 10 draw calls" fails whenever bloom is on (D10 default), if the HUD counts every pass as the spike did (eng E10). With three's default `autoReset`, the HUD shows only the last composer pass, which means nothing. Resolved by S-RW4.
+  - S-F5 [P1] Dev and test surfaces in the production build [measured: `playwright.config.ts:37` runs `vp build && vp preview`]. Every Playwright spec and `vp run shots` runs the production bundle. A perf HUD, WebGL-off flag or dev menu gated on `import.meta.env.DEV` would be missing from every automated check that 04a, 04b and 05 name. Resolved by S-RW2.
+  - S-F6 [P2] Spike deletion would throw away product code [measured: `wc -l`, 3,418 lines in `src/spike/` and `e2e/spike.spec.ts`]. The pinned renderer and composer constant (`src/spike/shared/render.ts:17-42`, the ADR's settings table), `guardComposer`, the draw-call counter and the shared-material dispose-event guard are what 04a needs. Resolved by S-RW3 (corrected by S-RW31: the R3F path needs the inner composer error boundary, not `guardComposer`).
+  - S-F7 [P1] No frame-rate or power policy [measured: ADR 0001 environment table, Firefox refresh interval 8.18 to 8.38 ms (about 120 Hz); bloom adds about 6.6 ms median GPU time per frame at 4x in Chrome on the M1 Max; `src/spike/shared/render.ts:20` sets `powerPreference: "high-performance"`]. The storyboard's long-term use is a tab left open all day (section 4b, step 7). R3F's default loop renders every display refresh, so Firefox on a ProMotion laptop draws up to 120 frames a second with bloom, whether or not anything moved; ADR 0001 measured Chrome at 60 Hz on this Mac (16.68 ms), and Safari stays near 60 by default. Correction from the spec review: the C16 question said Chrome and Firefox both run near 120 Hz; only Firefox was measured there. Resolved by C16 (SQ3).
+  - S-F8 [P2] The 04a look cannot be judged on a test cube [inference]. "Lighting rig ... tuned to match the approved mockup (design D14)" has only a cube and ground to tune against, so the acceptance cannot fail. The mockup lives outside the repo (`~/.gstack/projects/bjorkgard-ai-center/designs/main-dashboard-20261012/variant-B-2.png`), so only this machine can compare against it. Resolved by C17 (SQ4).
+
+### 0B. Existing code leverage (Phase 2)
+
+| Sub-problem | Existing code | Plan as written | Reuse |
+|---|---|---|---|
+| Renderer, tone mapping, shadows, composer and bloom settings | `src/spike/shared/render.ts:17-42` (`RENDER`, `applyRendererSettings`), ADR 0001 settings table | deleted with the spike in 04a | move to `src/scene/render.ts` (S-F6) |
+| Composer init failure | R3F view: inner error boundary around `<EffectComposer>` (`src/spike/r3f/View.tsx:336-347`); `guardComposer` (`render.ts:44-55`) serves the vanilla view only | deleted | move the boundary pattern; drop `guardComposer` (S-RW31) |
+| Draw calls across composer passes | `DrawCallCounter` (`src/spike/shared/bench.ts`) | deleted | move for the perf HUD (S-F4) |
+| Shared materials that survive unmount | `createSharedMaterials` dispose-event counter (`render.ts:100-130`), ADR RW6 pattern | deleted | pattern for `scene/materials.ts` |
+| URL parameters with allowlist and warnings | `src/spike/shared/params.ts` | deleted | generalise to an app parameter module (S-F5) |
+| `freeze=1` single-frame render | spike `freeze` handling (eng E11) | deleted | reuse for the scene clock |
+| Shots wait for first render | `ready` expression in `scripts/shots.config.ts` | spike entry removed | same hook, scene-ready signal |
+| Three-engine smoke | `e2e/smoke.spec.ts`, `e2e/spike.spec.ts` | spike spec deleted | extend smoke |
+| Tokens | `src/styles/tokens.css` (type, spacing, radius, status) | extended | add motion tokens; glass fill 6% and border 8% differ from D18's 8% and 12% |
+| Cross-origin isolated preview | `vite.config.ts` `preview.headers` | kept | keep for chunk 36 timing |
+
+New dependencies needed: `zustand` (D11; latest 5.0.15 [measured: `npm view`]). Optional: `@react-three/drei` 10.7.9 (peers `three >=0.159`, `@react-three/fiber ^9.0.0`, React 19 [measured: `npm view`]) if chunk 05 uses its controls; section 1's provisional pick named drei, but nothing installs it yet. Nothing is rebuilt.
+
+Reality rows:
+- REALITY: premise-table finding unverified=3 (postprocessing composer state after a WebGL context restore; bloom GPU cost on an M1 Air; `WEBGL_lose_context` restore behaviour in Safari) docs/PLAN.md:459
+- REALITY: already-done pass `git log origin/main -- src/scene src/dashboard src/config src/sim` shows only `f72dee8` (scaffold `.gitkeep`); no scene, shell or controls code exists docs/PLAN.md:455
+- REALITY: surface-check finding R3F's `fallback` prop renders as `<canvas>` child content (`node_modules/@react-three/fiber/dist/react-three-fiber.esm.js:182`), shown only when the browser lacks canvas, not when WebGL fails; a failed WebGL context rejects into R3F's error path (`:117`); three's `WebGLRenderer` handles `webglcontextlost` and `webglcontextrestored` itself (`node_modules/three/src/renderers/WebGLRenderer.js:403-404, 1113-1140`); `vp run shots` and `vp run e2e:local` exist (`package.json` scripts) docs/PLAN.md:458
+- REALITY: binding-decisions pass D9, D10, D11, D14, D16-D22, R12, R13 and ADR 0001 (R3F) honoured; `gstack-decision-search --scope branch --recent 50` returned none; TODO E18 (#9 moved `vp dev` to `localhost`) triggers before chunk 14, not in Phase 2 docs/PLAN.md:34
+- REALITY: numbers finding 04a's "under 10 draw calls" fails with bloom on, which adds 17 composer draw calls [measured: ADR 0001]; 45 fps floor, 600 ms glide and glass levels are approved budgets [estimated in their source decisions]; file counts below are [estimated] docs/PLAN.md:459
+- REALITY: deferred-asks pass no brief item or TODO is scheduled into Phase 2; `vp run doctor` (X3) and E18 have triggers outside it TODOS.md:5
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; Phase 2 is three chunk PRs (04a, 04b, 05) plus this review's docs PR (D18); four chunk PRs after C22 adds 04c docs/PLAN.md:31
+
+### 0C. Dream state (Phase 2)
+
+```text
+  CURRENT STATE                 THIS PLAN (04a-04c, 05)            12-MONTH IDEAL
+  blank page plus throwaway --> one R3F canvas with the final  --> campus open all day on a laptop at
+  spike views; ADR picks R3F;   look on a placeholder scene;       near-zero cost when calm and a steady
+  no scene, store, layout or    dashboard frame with glass and     60 fps when busy; panels readable at
+  controls                      safeArea; map controls + glide     any time of day; the camera flies to
+                                                                   whatever needs you; every look change
+                                                                   caught by a screenshot diff
+```
+
+Phase 2 moves toward the ideal. Gaps: no power policy (S-F7), and the look acceptance cannot be checked before chunk 08 (S-F8).
+
+### Mode (Phase 2)
+
+SELECTIVE EXPANSION, chosen by the user (SQ1, 2026-10-13; question answer, not auto-decided). The recommendation was SCOPE REDUCTION by the file-count rule: about 63 planned changed files [estimated] across 04a, 04b and 05, 18 of them spike deletions. Under SELECTIVE EXPANSION, Phase 2 scope is held and hardened, and each addition is offered separately for Add, Defer or Skip. No approach decision was needed before the mode.
+
+### Required work applied without a new choice (Phase 2)
+
+Each item cites the approved contract it serves; all are applied to the chunk text above.
+- S-RW1 (S-F2; D11 Zustand store): the store and its `ui` slice are created in 04a; chunk 11 extends it.
+- S-RW2 (S-F5; D18 Playwright on the production build, section 4 shots contract): one allowlisted parameter module, read in production builds, gates the HUD, dev menu and WebGL-off flag.
+- S-RW3 (S-F6; ADR 0001 settings, RW1, RW6, RW7, eng E10): the pinned settings, composer guard, draw-call counter and material guard move to `src/scene/` before the spike is deleted.
+- S-RW4 (S-F4; D10 bloom on by default, eng E10 counting): the HUD splits scene and post-processing draw calls; the "under 10" bar reads scene draw calls.
+- S-RW5 (D10 "bloom auto-disabled below 45 fps", design D18 glass fallback "triggers and recovers"): neither has an owner before chunk 36, which already plans hysteresis; 04a builds the one frame monitor both need.
+- S-RW6 (D11 WebGL card; surface check): detection uses a pre-check and an error boundary, not R3F's `fallback` prop; a composer failure disables bloom only.
+- S-RW7 (section 4 `freeze` contract, D10 loader): one first-frame signal feeds the loader, shots and smoke.
+- S-RW8 (design D18 GlassPanel spec, now written into section 4b "Glass panel"): glass tokens corrected to 8% and 12%.
+- S-RW9 (S-F3; R13 lookup, D21 contrast check): the lookup and contrast helper are built in 04b at the night level; the day + heatwave check is added to chunk 35, which had none.
+
+Added after the first spec review (reviewer findings, each tied to an approved contract):
+- S-RW10 (D11 "restore automatically"; Prime Directive 1): the composer is rebuilt after a restore (by remounting under its error boundary, S-RW31), and a context that does not come back within 10 s shows the card.
+- S-RW11 (design D18 "the fallback triggers and recovers in Firefox"): a `dev=1` hook feeds the frame monitor synthetic intervals, since Playwright can throttle only Chromium.
+- S-RW12 (C16 approved cap): the 60 fps cap is proven by a unit test at 120 Hz, because headless Chromium drives rAF at 60 Hz and an e2e frame count would pass without a cap; the driver tolerates rAF jitter.
+- S-RW13 (D11 toast, D12 lifetimes): the restore toast stays while `restoring` and clears on `ok`; the 6 s rule is for normal toasts.
+- S-RW14 (C19 approved focusable canvas): chunk 24 now replaces the static label instead of adding the role.
+- S-RW15 (R13 table): weathers other than heatwave use the clear level, so the lookup is defined for every input.
+- S-RW16 (reuse ladder: installed dependency before a new one; C16, C20): chunk 05 uses three's `MapControls`, not drei; settling controls count as camera motion for calm mode.
+- S-RW17 (C17 approved baseline): the look-dev baseline is committed under `e2e/__screenshots__/`, runs in Chromium on the Mac only and is skipped in CI.
+- S-RW18 (housekeeping): the section 4b mockup path names the repo copy; chunk 36 extends the 04a frame monitor; `calm` and `lookdev` join the parameter list; the smoke spec drops its heading check; ADR 0001 notes the C16 renderer change.
+
+Added after the second spec review (reviewer findings, each tied to an approved contract):
+- S-RW19 (D10 loader "until the first frame", D11 card): with no WebGL no frame renders, so the loader also ends on `unavailable`, and the `webgl=0` specs wait on the card.
+- S-RW20 (S-RW7 ready signal; eng T2 repeat check): `e2e/repeat.spec.ts` and every shots entry wait on the ready signal, or their first capture can precede the first WebGL frame.
+- S-RW21 (D20 "every animated chunk checks both modes in its acceptance"; S-RW16): chunk 05's acceptance checks reduced motion and that settling damping holds the cap.
+- S-RW22 (labels): "D18" for the glass panel now reads "design D18" (section 1 D18 is the test policy), and section 4b gains a "Glass panel" subsection holding the spec.
+- S-RW23 (record accuracy): the C16 answer carries a note on its superseded details.
+- S-RW24 (C17 baseline; `playwright.config.ts` projects have no `testMatch`): the three browser projects ignore the look-dev spec, which opens the section 4 URL after the ready signal.
+- S-RW25 (C20 double-click, chunk 24 double-click): empty ground is a nearest hit on the ground mesh, and an entity double-click cancels a home glide.
+- S-RW26 (D9 "perspective toggle" had no trigger): a `dev=1` HUD button in 04a and the `P` camera key in chunk 05; controls rebind on a toggle; perspective has a distance clamp. `P` joins the C19 key set.
+- S-RW27 (S-RW11): synthetic intervals replace real ones while set, so recovery is deterministic.
+- S-RW28 (S-RW9 contrast helper): empty slots show placeholder titles so the helper has text to sample.
+- S-RW29 (C16 cap, S-RW5 monitor): deadline-accumulation pacing and a windowed mean, with tests at 60, 75, 90, 120 and 144 Hz; a fixed minimum-interval cap misreads 90 and 144 Hz displays.
+- S-RW30 (D18 CI smoke, section 4 `freeze`, D21): confirm WebGL2 in CI with a written fallback; `freeze` re-renders its frame after a resize or restore; `=` works as `+`; chunk 34 also checks the dusk glass level.
+
+Added after the third spec review (cap reached; fixes checked by Claude against the text, not re-reviewed):
+- S-RW31 (S-RW6, S-RW10; `src/spike/r3f/View.tsx:336-347`): in R3F the composer is guarded by an inner error boundary and rebuilt by remounting; `guardComposer` was vanilla-only and is dropped.
+- S-RW32 (S-RW4 HUD; section 4 shots contract): the scene/post-processing draw-call split is measured with a snapshot after the render pass; `04a-core.png` is captured with `dev=1` through a per-entry extra query, and the frozen HUD shows counts, not fps.
+- S-RW33 (D11 "restore automatically"): a restore after the 10 s timeout still returns to `ok`.
+- S-RW34 (S-RW5 monitor in e2e): the monitor pauses under `freeze=1`, so slow software rendering cannot flip glass or bloom in contrast checks and shots.
+- S-RW35 (S-RW20, S-RW30): the CI fallback also skips `e2e/repeat.spec.ts` in a browser without WebGL2; both SwiftShader flags are named, unverified.
+- Also applied: chunk 05 acceptance gains the C20 corner-scroll e2e and names the double-click check as e2e; section 4b says 04c (not 04) compares to the mockup; section 6 draws `08 → 10` and `04a → 04c → 06` separately; store slices live in separate files so 04b and chunk 11 do not collide; 04a defines the camera ranges that chunk 05 clamps to.
+
+Added in the review sections:
+- S-RW36 (04a/04b smoke "no console errors"; Section 1 A-2): `safeArea` writes are coalesced to one per animation frame.
+- S-RW37 (section 4b "a selected object is never behind a panel", D5; Section 1 A-3): glides retarget when `safeArea` changes mid-glide.
+- S-RW38 (D5 framing contract; Section 2 E-2): a `safeArea` with no width or height falls back to the full canvas with one console warning.
+- S-RW39 (04a "toggle switches ortho/perspective without jump"; Section 4 D-1): a toggle cancels a glide in flight and keeps the framing.
+- S-RW40 (Prime Directive 1; Section 8 O-1): `[scene]` console lines for every state transition, and README "Known limits" lines for both cards.
+
+### 0G. Selective-expansion checks (Phase 2)
+
+Hold-scope checks:
+- Complexity: about 63 files [estimated] is far over the 8-file mark, with new modules for the store, scene, shell and camera rig. Challenge result: 18 are mechanical spike deletions; S-RW3 reuses about 300 lines of spike code instead of rewriting them; each chunk is its own PR (D18). No smaller set reaches the phase goal, since every later chunk needs the canvas, store, shell and camera.
+- Minimum change: every Phase 2 item is required by an approved design decision (D9, D10, D11, D14, D18, D20, D21) or by a later chunk. No deferral proposed.
+- Invariants kept: D1 (three browsers), D9, D10, D11, D14, D16-D22, D18 (one PR per chunk), R12, R13, ADR 0001 (R3F, pinned settings), section 4 protocol. Repairs needed to meet them: S-RW1 to S-RW9 above, and S-F1 (pending C15, which amends R12's split).
+
+10x check: the 10x version of Phase 2 is a foundation that costs almost nothing while the campus is calm, cannot change its look without a failing screenshot, and moves like a good map app. That is about 2x the effort of the phase as written, mostly in the render loop and a look-dev view.
+
+Delight scan (adjacent improvements of about 30 CC-minutes or less):
+1. Frame-rate and power policy for an all-day tab (S-F7).
+2. Look-dev view with a baseline screenshot, so materials and lighting are tuned and guarded from 04a on (S-F8).
+3. Startup quality probe that picks the first tier from a short warm-up instead of starting high and stuttering.
+4. Keyboard camera controls when the canvas has focus (arrows, zoom keys, rotate keys, reset).
+5. Map feel: zoom toward the cursor, reset view, light damping.
+6. Loader fades into the first frame over `--dur-ui` instead of cutting.
+
+Platform potential: the render settings, frame monitor, parameter module and first-frame signal are reused by every scene chunk (06-37) and every Playwright spec. Item 6 is a design detail of the approved D10 loader and goes to the design pass in Section 11, not to the menu. Items 1-5 are offered below, one question each.
+
+### Decision ledger (CEO, Phase 2)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C15 04a forward dependencies (Claude, 0G) | R12 split (re-review D1 A): WebGL card and context restore in 04a, `GlassPanel` in 04b; D11 "full-viewport glass card" and "Restoring 3D view" toast; toasts built in chunk 32 (docs/PLAN.md:680); S-F1 | 04a acceptance needs a glass card and a toast that do not exist yet | A: detect in 04a (store `webgl` state, auto-restore, plain card); 04b gives the card the glass look and adds a minimal toast host that chunk 32 extends | none | approved | SQ2 answer "Detect in 04a, style in 04b (recommended)", 2026-10-13; scope: placement of the WebGL card look and the restore toast across 04a, 04b and 32; R12 split otherwise unchanged; applied to chunks 04a, 04b and 32 |
+| C16 frame-rate and power policy (Claude, 0G) | S-F7; storyboard step 7 (all-day tab); ADR 0001 refresh and bloom GPU numbers | none | A: 04a render loop with `frameloop="never"` driver, 60 fps cap, 30 fps calm mode after 5 s idle, `powerPreference: "default"`, `calm=0` parameter, tests | none | approved | SQ3 answer "Add to this plan's scope (recommended)", 2026-10-13; scope: chunk 04a render loop and power policy, plus `calm=0` in chunk 36's perf scenario; applied to chunks 04a and 36 |
+| C17 look-dev view and baseline (Claude, 0G) | S-F8; D14 "tuned to match the approved mockup" | none | A: `?view=lookdev` in 04a, `04a-lookdev.png`, `toHaveScreenshot` baseline in `e2e:local`, mockup copy in `docs/designs/`, chunks 06-10 extend it | none | approved | SQ4 answer "Add to this plan's scope (recommended)", 2026-10-13; scope: look-dev view, shot, baseline and mockup copy in 04a; Phase 3 chunks add their materials; applied to chunk 04a and the Phase 3 heading; moved to chunk 04c by C22 |
+| C18 startup quality probe (Claude, 0G) | D10 bloom auto-disable; chunk 36 auto tiering; S-RW5 frame monitor | none | B: deferred to `TODOS.md` (P3, trigger: chunk 36 shows a startup stutter on the M1 Air-class Mac) | none | deferred | SQ5 answer "Defer to TODOS.md (recommended)", 2026-10-13; scope: startup probe postponed, not rejected; Phase 2 starts at the high tier and relies on S-RW5; no chunk text changed |
+| C19 keyboard camera controls (Claude, 0G) | D22 canvas `role="application"` and keyboard access; chunk 25 shortcuts (1-4, `/`, D, W, Esc, `?`) | none | A: chunk 05 camera keys while the canvas has focus (arrows, `+`/`-`, `Q`/`E`, `0`/Home to `cameraRig.home()`), focusable canvas, tests; chunk 25 lists them | none | approved | SQ6 answer "Add to this plan's scope (recommended)", 2026-10-13; scope: keyboard camera controls and `cameraRig.home()` in chunk 05, help-overlay listing in chunk 25; applied to chunks 05 and 25 |
+| C20 map feel (Claude, 0G) | chunk 05 controls (approved); chunk 24 double-click on an entity zooms close | none | A: chunk 05 zoom toward the cursor, light damping on pan and rotate, double-click on empty ground glides home, zoom maths unit test | none | approved | SQ7 answer "Add to this plan's scope (recommended)", 2026-10-13; scope: chunk 05 control feel only; chunk 24's entity double-click unchanged; applied to chunk 05 |
+| C21 glass fill colour model (Claude, spec review) | design D18 "8% white fill" against D21 "steps from 8% up to 72% dark" (night 8%, dusk 30%, day 60%, day + heatwave 72%); spec review Consistency 1 | ambiguous: night 8% white or 8% dark, day dark or white | A: constant 8% white tint (D18) over a dark `--color-bg` underlay whose alpha is the lookup level: night 0, dusk 0.30, day 0.60, day + heatwave 0.72 | none | approved | SQ8 answer "White tint over dark underlay (recommended)", 2026-10-13; scope: GlassPanel fill model and `glassFill` return value; border, blur, fallback and contrast checks unchanged; applied to section 4b D21 and chunk 04b |
+| C22 04a size (Claude, spec review 2) | brief: each chunk fits one sitting (docs/PLAN.md:4); R12 split chunk 04 at 314 words; 04a is now 1,242 words [measured: `wc -w`] after S-RW1 to S-RW18, C16 and C17 | one chunk 04a | A: 04a scene core (canvas, loop, store, parameters, camera, HUD, tiers, failure handling, test cube) and new 04c look (rig, materials, look-dev view, baseline, mockup copy); 04b and 04c depend on 04a; 06 depends on 04c and 05 | none | approved | SQ9 answer "Split into 04a core + 04c look (recommended)", 2026-10-13; scope: chunk boundaries and dependencies only, no task added or removed; README images `04a-core.png`, `04c-scene.png`, `04c-lookdev.png`; applied to chunks 04a, 04c, 06, section 6 and the section 4b mockup note |
+| C23 scene runtime errors (Claude, Section 2) | Prime Directive 1 (zero silent failures); D11 card text "Your browser could not start 3D (WebGL)."; Section 1 A-1; chunk 04a outer error boundary (S-RW6) | a frame error can freeze the scene silently; a scene component error shows the WebGL card | A: driver requests the next frame first, catches and logs frame errors, stops after 3 consecutive and sets `sceneError`; outer boundary shows a separate "The 3D view stopped after an error." card with Reload for scene errors; tests | none | approved | SQ11 answer "Catch, then an honest card (recommended)", 2026-10-13; scope: scene runtime error handling in 04a and the card's glass look in 04b; WebGL paths unchanged; applied to chunks 04a and 04b |
+| UI-1 scene-error card copy (Claude, Section 11) | C23 card text "The 3D view stopped after an error."; D11 card style | C23 text as written | wording review next to the D11 card | approved | design review D2 board (variant C, rated 4) and D3 confirmation, 2026-10-13: compact card with inline icon, Sans body line, Reload + Copy error details, Mono error line with expand chevron; applied to chunk 04a |
+| UI-2 focus ring on the full-viewport canvas (Claude, Section 11) | D21 2 px cyan focus ring; C19 focusable canvas | full-viewport ring | keep, inset, or a small focus badge | approved | design review D2 board (corner brackets, rated 4) and D3 confirmation, 2026-10-13: four small cyan corner brackets frame the visible canvas area while it has keyboard focus; applied to chunk 05 |
+| UI-3 loader fade (Claude, 0G delight item 6) | D10 loader "until the first frame"; D20 `--dur-ui` | cut at first frame | fade over `--dur-ui` | approved | design review D6 (DR2) answer "2A Moving line, delay, fade (recommended)", 2026-10-13: indeterminate sweep, 300 ms delay, fade over `--dur-ui`, instant cut under reduced motion; applied to chunk 04b |
+
+### Answered decision C15 (SQ2)
+
+Answer: A, "Detect in 04a, style in 04b (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| WebGL detection, store `webgl` state, auto-restore | D11, S-RW1, S-RW6 (approved or required) | 04a | 04a | 04a | 04a |
+| WebGL card look | D11 "glass card" (approved) | 04a, glass, but `GlassPanel` is built in 04b | 04a plain card with the D11 text; 04b gives it the glass look | 04a, glass | 04a, inline styles imitating glass |
+| `GlassPanel` component | R12 (approved): 04b | 04b | 04b | 04a (adaptive fill stays in 04b) | 04b |
+| "Restoring 3D view" toast | D11, D12 (approved); toast system in chunk 32 | 04a, no toast system exists | 04b minimal toast host (D12 placement, 6 s auto-dismiss); chunk 32 extends it | 04a minimal toast host; chunk 32 extends it | console line until chunk 32 |
+| 04a acceptance on card and toast | 04a (approved) | not passable in order | store state and plain card in 04a; glass card and toast in 04b | passes as written | reworded to drop the toast |
+| R12 split (04a scene, 04b UI shell) | re-review D1 A (approved) | as approved | kept; only the card's look moves | amended: `GlassPanel` and toast host move into 04a | kept |
+| Effort | - | - | S | S | S |
+
+Question: D2 — C15: How should chunk 04a get its WebGL card and restore toast, when the glass panel arrives in 04b and toasts in chunk 32?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a acceptance (design D11).
+ELI10: Chunk 04a must show a glass error card when 3D cannot start and a "Restoring 3D view" toast when the graphics context resets. But the glass panel is built in the next chunk, 04b, and the toast system only in chunk 32, so 04a cannot pass its own checklist in the order written. We can split the work (detect in 04a, make it look right in 04b), pull the glass panel and a small toast host forward into 04a, or drop the toast until chunk 32.
+Stakes if we pick wrong: 04a either cannot pass its acceptance, grows past one sitting, or ships the context-reset path with no message to the user for about 27 chunks.
+Recommendation: A because every D11 behaviour still lands by 04b while 04a, already the largest chunk, does not grow, and chunk 32 extends one toast host instead of replacing a stand-in.
+Completeness: A=9/10, B=9/10, C=6/10
+Net: same result one chunk later (A), same result now in a bigger 04a (B), or a missing toast until chunk 32 (C).
+Header: 04a order
+A) Detect in 04a, style in 04b (recommended)
+04a ships detection, the store `webgl` state, auto-restore and a plain full-viewport card with the D11 text; 04b gives the card the GlassPanel look and adds a minimal toast host (D12 placement, 6 s auto-dismiss) that shows "Restoring 3D view"; chunk 32 extends the same host. Effort S, risk low. ✅ Both chunks keep their approved scope and only the card's look moves to 04b ✅ Chunk 32 extends one toast host instead of throwing away a stand-in ❌ For the one chunk between 04a and 04b the WebGL card is plain, not glass
+B) Pull GlassPanel and toasts into 04a
+04a builds GlassPanel (without adaptive fill) and the minimal toast host, so its acceptance passes exactly as written; 04b keeps adaptive fill, layout shell, safeArea and loader. Effort S, risk low. ✅ 04a passes its acceptance word for word, glass card and toast included ✅ No plain-card interim between the two chunks ❌ 04a, already the largest chunk with the spike deletion, store and parameters, grows further
+C) Keep as written, toast waits for chunk 32
+04a imitates glass with inline styles and logs the context restore to the console; the toast arrives with chunk 32. Effort S, risk medium. ✅ No restructuring of the R12 split at all ✅ Smallest change to 04a's task list ❌ D11's "Restoring 3D view" message is missing for about 27 chunks, and 04a's acceptance still needs rewording
+
+### Answered decision C16 (SQ3)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-13.
+
+Superseded details (spec reviews 1 and 2; the question below is kept as asked): ADR 0001 measured only Firefox near 120 Hz on this Mac, Chrome at 60 Hz (S-F7); the frame-count e2e in the grid is replaced by fake-clock unit tests at 60 to 144 Hz plus a calm-mode e2e (S-RW12, S-RW29); the cap paces by deadline accumulation (S-RW29).
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Render loop | ADR 0001 (R3F); R3F default `frameloop="always"` | every display refresh (up to 120 Hz in Chrome and Firefox on ProMotion) | R3F `frameloop="never"` driven by one `requestAnimationFrame` driver calling `advance()`, the pattern the spike measured | unchanged until the TODO is worked | unchanged |
+| Frame cap | pending | none | 60 fps on any display | none | none |
+| Calm mode | pending | none | after 5 s with no input, camera motion or glide, cap drops to 30 fps; any input returns to 60 within one frame [values estimated] | none | none |
+| `powerPreference` | ADR 0001 settings (race only), S-RW3 | `"high-performance"` | `"default"` (a later decision under S-RW3) | `"high-performance"` | `"high-performance"` |
+| Frame monitor (S-RW5) | required work | judged against the frame rate in force | same; a 30 fps calm cap never trips D10's 45 fps rule | same | same |
+| Tests | pending | none | fake-clock unit tests (cap, calm entry and exit, hidden tab); Chromium e2e counts at most 61 frames in 1 s with `?dev=1` | none | none |
+| HUD | S-RW4 | draw calls, fps | also shows cap and mode | unchanged | unchanged |
+| Effort | - | - | S (human ~4h / CC ~20 min) | S (zero now) | S (zero) |
+
+Question: D3 — C16: Add a frame-rate and power policy to chunk 04a?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a render loop.
+ELI10: This dashboard is meant to sit open in a tab all day. As planned, the 3D scene redraws on every screen refresh, which is 120 times a second in Chrome and Firefox on your MacBook's screen, with bloom costing about 6.6 ms of GPU time per frame (ADR 0001), even when nothing moves. That drains battery and spins fans. The addition caps drawing at 60 frames a second, drops to 30 when you have not touched it for a few seconds, and stops asking for the faster graphics chip. Every later animation chunk builds on this loop, so it is cheap now and a retrofit later.
+Stakes if we pick wrong: either the all-day tab costs real battery and fan noise from the first release, or a later loop change touches every animated chunk.
+Recommendation: A because the render loop is the one thing chunks 20-35 all build their animations on, and the spike already proved the `frameloop="never"` driver, so this costs about 20 CC-minutes now.
+Note: options differ in kind, not coverage — no completeness score.
+Net: a calm, battery-friendly loop from day one (A), a tracked TODO with a retrofit later (B), or full-rate rendering always (C).
+Header: Power
+A) Add to this plan's scope (recommended)
+04a drives R3F with `frameloop="never"` from one rAF driver: 60 fps cap on every display, 30 fps calm mode after 5 s without input or camera motion, `powerPreference: "default"`; the frame monitor judges against the cap in force; fake-clock unit tests and a frame-count e2e. Effort S (human ~4h / CC ~20 min), risk medium. ✅ The all-day tab draws at most half the frames on a 120 Hz screen, and a quarter when calm ✅ Animation chunks 20-35 inherit one loop with a known frame rate instead of each guessing ❌ Calm mode makes ambient animation look choppier at 30 fps, and the first frame after waking is up to 33 ms late
+B) Defer to TODOS.md
+Record the policy as a TODO with a trigger (before chunk 22, the first ambient-animation chunk); Phase 2 keeps R3F's default loop. Effort S (zero now), risk medium. ✅ Phase 2 stays exactly as scoped, and the loop is chosen once real animations exist ✅ No calm-mode tuning before there is anything moving to tune it against ❌ Switching the loop later touches every chunk that already animates, and testing runs uncapped until then
+C) Skip
+Keep R3F's default loop: render on every display refresh, `"high-performance"` GPU. Effort S (zero), risk high. ✅ Nothing to build, test or tune in the render loop ✅ Every frame is as smooth as the display allows ❌ The all-day tab renders up to 120 frames a second with bloom whether or not anything changes
+
+### Answered decision C17 (SQ4)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-13.
+
+Placement superseded by C22 (SQ9): the look-dev view, baseline, mockup copy and images now live in chunk 04c (`04c-lookdev.png`); the content is unchanged.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| What the 04a look is tuned against | D14 (approved): "tuned to match the approved mockup" | a test cube and ground | a fixed look-dev vignette: hall slab and wall with a window strip, one 8-rack row with LEDs in all six D17 status colours, a cyan fibre segment, Claude and Codex trim swatches, ground grid; 04a rig, ortho camera, bloom on | test cube and ground | test cube and ground |
+| View and shot | section 4 shots contract | `04a-scene.png` only | `?view=lookdev` plus `docs/img/04a-lookdev.png` | none | none |
+| Regression guard on the look | pending | none | `toHaveScreenshot` baseline of the look-dev view in `vp run e2e:local` (Chromium, `maxDiffPixelRatio: 0.005` as in `e2e/repeat.spec.ts`) | none | none |
+| Mockup in the repo | D14 mockup path outside the repo | `~/.gstack/.../variant-B-2.png`, this machine only | compressed copy at `docs/designs/variant-B-2.png` for side-by-side review in PRs | outside the repo | outside the repo |
+| Later chunks | pending | none | chunks 06-10 add their new materials to the look-dev view | none | none |
+| Effort | - | - | S (human ~3h / CC ~15 min) | S (zero now) | S (zero) |
+
+Question: D4 — C17: Add a look-dev view with a baseline screenshot to chunk 04a?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a materials and lighting (design D14).
+ELI10: Chunk 04a must tune the lights and materials "to match the approved mockup", but all it draws is a test cube on a ground plane, so nobody can tell whether the slate walls, window glow, rack LEDs and cyan lines look right. A look-dev view is a small fixed scene with one of each: a wall with windows, a row of racks with every status colour, a fibre line, the vendor trims. It gets its own screenshot, and a baseline test fails whenever a code change alters the look by accident. The mockup also moves into the repo so the comparison works on any machine.
+Stakes if we pick wrong: the look drifts chunk by chunk with nothing to catch it, and 04a's "matches the mockup" is a judgement no one can check.
+Recommendation: A because it turns an uncheckable acceptance into a picture and a failing test for about 15 CC-minutes, and every later world chunk reuses the same view.
+Note: options differ in kind, not coverage — no completeness score.
+Net: a checkable look from 04a on (A), a TODO until the campus exists (B), or tuning by eye on a cube (C).
+Header: Look-dev
+A) Add to this plan's scope (recommended)
+04a adds `?view=lookdev`: a fixed vignette with one of each material under the 04a rig, captured as `04a-lookdev.png`, guarded by a `toHaveScreenshot` baseline in `e2e:local`, with a compressed copy of the mockup in `docs/designs/`; chunks 06-10 add their materials to it. Effort S (human ~3h / CC ~15 min), risk low. ✅ 04a's "matches the mockup" becomes a side-by-side picture in the PR instead of a claim ✅ Any accidental change to materials, lights or bloom fails a test before it merges ❌ Each deliberate look change needs a baseline update, and the baseline comes from headless Chromium's software renderer, not a GPU
+B) Defer to TODOS.md
+Record the look-dev view as a TODO with a trigger (before chunk 08, where D14 compares the campus to the mockup); 04a tunes against the cube. Effort S (zero now), risk medium. ✅ Phase 2 stays as scoped, and the view is built once there are real halls to show ✅ No baseline churn while the first materials are still being tuned ❌ Chunks 04a to 07 change materials with no picture or test to catch drift
+C) Skip
+Keep 04a as written: lighting and materials tuned by eye on a test cube; chunk 08 compares the campus to the mockup. Effort S (zero), risk medium. ✅ Nothing extra to build or maintain ✅ The look is judged once, on the full campus ❌ Material mistakes surface at chunk 08, after six chunks have used them
+
+### Answered decision C18 (SQ5)
+
+Answer: B, "Defer to TODOS.md (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Starting quality tier | 04a quality tier object (approved) | high on every machine | picked from a probe: about 1 s of frames at high behind the loader, first frames discarded (shader compile), mapped to high, medium or low [values estimated] | high | high |
+| Runtime tier changes | S-RW5 (required), chunk 36 (approved) | frame monitor drops after 2 s of slow frames | unchanged; the probe only sets the start | unchanged | unchanged |
+| Loader duration | D10 (approved): until the first frame | first frame | first frame plus the probe, about 1 s longer | first frame | first frame |
+| Remembered pick | pending | none | stored per browser in localStorage, wrapped in try/catch (as the D13 legend does); rechecked when the monitor drops a tier | none | none |
+| Tests | pending | none | fake-clock unit tests: probe maps intervals to tiers, ignores compile frames, survives blocked storage | none | none |
+| Effort | - | - | S (human ~2h / CC ~10 min) | S (zero now) | S (zero) |
+
+Question: D5 — C18: Add a startup quality probe to chunk 04a?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a quality tiers (design D10).
+ELI10: The scene starts at the highest quality on every machine. On a slower laptop, the frame monitor notices after about 2 seconds of stutter and drops bloom or shadows. A probe would render about one second of frames behind the loading screen, judge the machine, and start at the right tier, remembering the pick for next time. The cost is a loading screen about a second longer and a little logic that has to ignore the slow first frames while shaders compile. Chunk 36 measures on an M1 Air-class Mac and could judge whether the startup stutter is real before anyone builds this.
+Stakes if we pick wrong: either slower Macs see a short stutter on every launch, or every launch waits about a second for a probe that fast Macs never needed.
+Recommendation: B because the stutter it prevents lasts about 2 seconds and has not been measured on target hardware yet; chunk 36 measures there and can pick this up with evidence.
+Note: options differ in kind, not coverage — no completeness score.
+Net: a smart start now (A), decided with M1 Air numbers in chunk 36 (B), or always start high (C).
+Header: Start tier
+A) Add to this plan's scope
+04a renders about 1 s of frames at high behind the loader, discards the shader-compile frames, picks high, medium or low, and remembers the pick per browser in localStorage (try/catch); the frame monitor still adjusts at runtime. Effort S (human ~2h / CC ~10 min), risk medium. ✅ Slower Macs start at a tier they can hold, with no visible stutter and drop ✅ The remembered pick means the probe cost is paid once per browser ❌ The loader stays about a second longer on every first launch, and a cold GPU can make the probe pick too low
+B) Defer to TODOS.md (recommended)
+Record the probe as a TODO with a trigger: chunk 36 shows a visible startup stutter on the M1 Air-class Mac. Phase 2 starts at high and relies on the frame monitor. Effort S (zero now), risk low. ✅ Built only if target-hardware numbers show the stutter it fixes ✅ Phase 2 keeps D10's loader exactly as approved, ending at the first frame ❌ Until then, a slower Mac may stutter for about 2 s before the monitor drops a tier
+C) Skip
+Always start at high and let the frame monitor and chunk 36's tiering adjust at runtime. Effort S (zero), risk low. ✅ Nothing extra to build, test or remember ✅ Simplest startup path, matching D10 exactly ❌ The startup stutter on slower Macs is never addressed by design
+
+### Answered decision C19 (SQ6)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Keyboard path into the scene | D22 (approved): table rows and search results, Enter glides | rows and search only (chunks 24, 32) | unchanged, plus direct camera keys | unchanged | unchanged |
+| Camera keys while the canvas has focus | pending | none | arrows pan, `+` and `-` zoom, `Q` and `E` rotate 45 degrees, `0` or Home glides to the home view; keys act only while the canvas (`role="application"`) has focus and never while typing in inputs | none | none |
+| Motion | D20 (approved), C16 (approved) | - | steps use the D20 easing over `--dur-ui`; instant under `reducedMotion`; a key press counts as input for calm mode | - | - |
+| Shortcut conflicts | chunk 25 (approved): 1-4, `/`, D, W, Esc, `?` | - | none; chunk 25's help overlay lists the camera keys | - | - |
+| Home view | chunk 05 `cameraRig` (approved) | none | `cameraRig.home()`: glide to the whole campus framed in the `safeArea` | none | none |
+| Tests | pending | none | unit test of the key map and focus gate; e2e in three engines: focus canvas, press keys, camera moves and stays in bounds | none | none |
+| Effort | - | - | S (human ~2h / CC ~10 min) | S (zero now) | S (zero) |
+
+Question: D6 — C19: Add keyboard camera controls to chunk 05?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 05 camera controls (design D22).
+ELI10: Chunk 05 moves the camera with the mouse and trackpad only. The plan's keyboard access (D22) lets you reach things through the table and search, but there is no way to look around the campus without a mouse. The addition lets the arrow keys pan, plus and minus zoom, Q and E rotate, and 0 or Home fly back to the full campus, but only while the 3D view has focus, so the keys never clash with typing or chunk 25's shortcuts.
+Stakes if we pick wrong: keyboard-only users can jump to an object but cannot look around the campus, and retrofitting keys later means re-testing every shortcut chunk 25 adds.
+Recommendation: A because D22 already makes the canvas a focusable application, so the keys cost about 10 CC-minutes and close the one gap in keyboard access to the scene.
+Note: options differ in kind, not coverage — no completeness score.
+Net: full keyboard navigation from chunk 05 (A), tracked for later (B), or mouse-only camera (C).
+Header: Keys
+A) Add to this plan's scope (recommended)
+Chunk 05 adds camera keys while the canvas has focus: arrows pan, `+`/`-` zoom, `Q`/`E` rotate 45 degrees, `0` or Home glides to `cameraRig.home()`; steps use the D20 easing (instant under `reducedMotion`) and count as input for calm mode; chunk 25's help overlay lists them. Effort S (human ~2h / CC ~10 min), risk low. ✅ Keyboard-only users can look around the whole campus, not only jump to rows ✅ A home key gives every user a one-press way back after getting lost ❌ Six more keys for chunk 25's shortcut list to document and keep free of clashes
+B) Defer to TODOS.md
+Record keyboard camera controls as a TODO with a trigger: chunk 37's accessibility audit, or before chunk 25 fixes the shortcut map. Effort S (zero now), risk low. ✅ Chunk 05 stays mouse and trackpad only, as scoped ✅ The full shortcut map is designed once, with chunk 25's keys in view ❌ Until then the scene has no keyboard navigation of its own
+C) Skip
+Keep the camera mouse and trackpad only; keyboard users reach objects through the table and search (D22). Effort S (zero), risk medium. ✅ Nothing extra to build or test in chunk 05 ✅ Fewer keys to document and keep free of clashes ❌ Looking around the campus stays impossible without a pointing device
+
+### Answered decision C20 (SQ7)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Scroll zoom target | chunk 05 (approved): ortho zoom, clamped | zooms about the screen centre | zooms toward the point under the cursor, still clamped to bounds and zoom range | screen centre | screen centre |
+| Pan and rotate feel | chunk 05 (approved) | stops dead on release | light damping (eases to a stop over about 250 ms [estimated]); off under `reducedMotion`; the loop stays at 60 fps while the camera settles (C16) | stops dead | stops dead |
+| Double-click on empty ground | chunk 24 (approved): double-click on an entity zooms close | nothing | glides to `cameraRig.home()` (C19) | nothing | nothing |
+| Glide interruption | chunk 05 (approved): cancels on drag | cancels on drag | unchanged; damping stops on a new drag or glide | unchanged | unchanged |
+| Tests | pending | none | unit test: zoom-to-cursor keeps the world point under the cursor fixed, within bounds; e2e: scroll over a corner moves it toward the centre less than a centre zoom would | none | none |
+| Effort | - | - | S (human ~2h / CC ~10 min) | S (zero now) | S (zero) |
+
+Question: D7 — C20: Add map-style feel to chunk 05's camera controls?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 05 camera controls.
+ELI10: Map apps zoom toward wherever your cursor is, glide to a stop when you let go, and give you a quick way home. As planned, chunk 05 zooms about the middle of the screen and stops dead when you release the mouse. The addition makes scroll zoom aim at the cursor, adds a short ease-out when you let go of a pan or rotate, and makes a double-click on empty ground fly back to the full campus. Damping keeps the frame rate at 60 for a moment after you let go, which the power policy already allows.
+Stakes if we pick wrong: zooming into a hall at the edge of the screen takes a zoom plus a pan every time, and the camera feels stiff next to the map apps people know.
+Recommendation: A because zoom-to-cursor removes a pan from the most common move, and all three behaviours sit inside chunk 05's controls for about 10 CC-minutes.
+Note: options differ in kind, not coverage — no completeness score.
+Net: map-app feel from chunk 05 (A), tracked for later (B), or plain controls (C).
+Header: Map feel
+A) Add to this plan's scope (recommended)
+Chunk 05 zooms toward the cursor (clamped to bounds and zoom range), adds light damping to pan and rotate (off under `reducedMotion`), and glides to `cameraRig.home()` on a double-click on empty ground; a unit test pins the zoom-to-cursor maths. Effort S (human ~2h / CC ~10 min), risk low. ✅ Zooming into any hall takes one gesture instead of a zoom plus a pan ✅ The camera feels like the map apps people already know ❌ Damping keeps the loop at 60 fps for a moment after each release, and zoom-to-cursor needs care at the bounds
+B) Defer to TODOS.md
+Record map feel as a TODO with a trigger: after chunk 08, once there is a campus to navigate. Effort S (zero now), risk low. ✅ Chunk 05 stays exactly as scoped ✅ Feel is tuned against a real campus instead of a test cube ❌ Controls get reworked after chunks 06-08 have been built and screenshotted on them
+C) Skip
+Keep chunk 05's controls as written: centre zoom, no damping, no double-click home. Effort S (zero), risk low. ✅ Fewest moving parts in the camera code ✅ No damping frames to account for in the power policy ❌ Every zoom toward an off-centre hall needs a second pan gesture
+
+### Answered decision C21 (SQ8)
+
+Answer: A, "White tint over dark underlay (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Night panel fill | design D18 "8% white fill"; D21 "night 8%" (both approved) | ambiguous | 8% white tint, no dark underlay (exactly D18) | 8% dark (`--color-bg`) | 8% white tint (exactly D18) |
+| Dusk, day, day + heatwave | D21 levels 30%, 60%, 72% dark; R13 lookup (approved) | ambiguous | 8% white tint over a dark underlay at 30%, 60%, 72% | dark fill at 30%, 60%, 72% | dark fill at 30%, 60%, 72%, white tint removed |
+| What `glassFill` returns | S-RW9, S-RW15 (required) | one number | underlay alpha (0, 0.30, 0.60, 0.72); tint fixed | fill alpha (0.08, 0.30, 0.60, 0.72) | fill colour and alpha per level |
+| Night to dusk change | D20 motion (approved) | - | the underlay darkens smoothly | the fill darkens smoothly | colour flips from white tint to dark fill |
+| Border, blur, 85% solid fallback | D18 (approved) | 12% white border, backdrop blur, solid 85% dark under 45 fps | unchanged | unchanged | unchanged |
+| D21 contrast check at every level | D21, S-RW9 (approved, required) | night in 04b, day and night in 34, heatwave in 35 | unchanged | unchanged | unchanged |
+| Effort | - | - | S | S | S |
+
+Question: D8 — C21: What should the glass panel fill be at each brightness level?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04b GlassPanel and adaptive glass (design D18, D21).
+ELI10: Two approved design notes disagree. D18 says the glass panel has an 8% white fill. D21 says the fill steps "from 8% up to 72% dark" as the scene gets brighter: night 8%, dusk 30%, day 60%, day with a heatwave 72%. So is a night panel lightly white or lightly dark, and is a daytime panel dark glass or something else? The builder needs one rule before writing the glass panel that every later panel uses.
+Stakes if we pick wrong: every panel in chunks 26-33 inherits the fill, so changing it later means retuning contrast across the whole dashboard.
+Recommendation: A because it keeps both approved notes true at once: a night panel is exactly D18's 8% white glass, and brighter scenes add a dark layer underneath that deepens smoothly, with no colour flip at dusk.
+Note: options differ in kind, not coverage — no completeness score.
+Net: two layers that honour both notes (A), dark glass at every level (B), or a white-to-dark switch at dusk (C).
+Header: Glass fill
+A) White tint over dark underlay (recommended)
+Every panel keeps D18's 8% white tint; under it sits a dark layer in `--color-bg` whose alpha follows the table: night 0%, dusk 30%, day 60%, day + heatwave 72%. `glassFill` returns the underlay alpha. Effort S, risk low. ✅ Night panels look exactly like the approved D18 glass and the mockup ✅ Brighter scenes deepen the same panel smoothly, with no colour change at dusk ❌ D21's "night 8%" now names the white tint, not a dark level, which the plan text must say plainly
+B) Dark fill only
+Panels use one dark fill in `--color-bg` at 8%, 30%, 60% and 72%, read literally from D21; D18's white tint is dropped and the 12% white border stays. Effort S, risk medium. ✅ One layer and one number per level, the simplest panel to build ✅ Matches D21's table word for word ❌ Night panels lose D18's frosted look and read as nearly clear glass over a dark scene
+C) White at night, dark from dusk
+Night panels use D18's 8% white fill; from dusk on, the fill switches to dark at 30%, 60% and 72%. Effort S, risk medium. ✅ Night matches D18 exactly and daytime matches D21's dark levels ✅ Each level is a single fill, easy to reason about ❌ The panel changes colour at the dusk step, which shows as a visible flip during the day/night cycle
+
+### Answered decision C22 (SQ9)
+
+Answer: A, "Split into 04a core + 04c look (recommended)", 2026-10-13.
+
+Size after the split [measured: `wc -w` on the chunk text]: 04a 1,319 words, 04b about 520, 04c 347, 05 about 480. The 04a text grew again with the second spec review's fixes, which are mostly acceptance and failure detail rather than new work items, so 04a remains the largest chunk; the C22 option's "fits a sitting again" is not yet shown. Flagged for `/plan-eng-review` to check 04a's size.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Spike promote and delete, store, parameters, render loop and power (C16), frame monitor, WebGL detection and restore, first-frame signal and `freeze`, canvas, camera with ortho/perspective toggle, perf HUD, quality tier, motion tokens and `reducedMotion`, test cube and ground | approved (04a, S-RW, C15, C16) | 04a | 04a "Scene core" | 04a | 04a plumbing (loop, store, params, monitor, WebGL) and a second chunk for camera, HUD and tiers |
+| Lighting rig, material library, ground grid look, look-dev view, baseline and mockup copy, `04a-scene.png` and `04a-lookdev.png` | approved (04a, D14, C17) | 04a | new chunk 04c "Look", depending on 04a; images become `04c-scene.png` and `04c-lookdev.png` | 04a | a third chunk "Look" |
+| Order and dependencies | R12: 04a, then 04b, then 05; 06 depends on 05 | 04a, 04b, 05 | 04a, then 04b and 04c (both need only 04a), then 05; 06 depends on 04c and 05 | unchanged | four chunks before 05 |
+| PRs (D18: one per chunk) | approved | 3 in Phase 2 | 4 | 3 | 5 |
+| Effort to amend the plan | - | - | S (human ~30 min / CC ~3 min) | S (zero) | S (human ~45 min / CC ~5 min) |
+
+Question: D9 — C22: Split chunk 04a again, now that it has grown?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a size.
+ELI10: Chunk 04 was split once because it was about three times a normal chunk. This review then added the fixes and additions you approved, mostly to 04a, which is now about 1,240 words of tasks against about 100 for a typical chunk. That is several sittings with no runnable checkpoint in between. The natural cut is between plumbing and looks: 04a builds the canvas, store, render loop, error handling and camera on a test cube; a new 04c tunes the lights and materials with the look-dev view. Nothing is added or removed.
+Stakes if we pick wrong: 04a runs over several sittings with half-finished work and no checkpoint, or the plan gains one more PR to track.
+Recommendation: A because it restores the one-sitting rule at the place the work naturally divides, and the look work can run beside 04b since both need only 04a.
+Note: options differ in kind, not coverage — no completeness score.
+Net: two clean checkpoints (A), one large chunk (B), or three small ones with more PR overhead (C).
+Header: 04a split
+A) Split into 04a core + 04c look (recommended)
+04a "Scene core": spike promote and delete, store, parameters, render loop and power, frame monitor, WebGL detection and restore, first-frame signal, canvas, camera and toggle, HUD, quality tier, motion tokens, test cube and ground. New 04c "Look": lighting rig, materials, look-dev view, baseline, mockup copy and the two images. 04b and 04c both depend on 04a; 06 depends on 04c and 05. Effort S (human ~30 min / CC ~3 min), risk low. ✅ Each chunk fits a sitting again and ends in something runnable and testable ✅ Look tuning, which is slow visual work, can run beside the 04b shell ❌ One more PR, chunk number and README image step to track
+B) Keep one 04a
+Leave 04a as amended: one chunk, one PR, about 1,240 words of tasks. Effort S (zero), risk medium. ✅ No renumbering, and the scene foundation lands in one commit ✅ One acceptance pass covers plumbing and look together ❌ Breaks the one-sitting rule by a wide margin, with no checkpoint between plumbing and look
+C) Split into three
+04a plumbing (spike, store, parameters, loop, monitor, WebGL handling), a second chunk for camera, HUD and quality tiers, and 04c look. Effort S (human ~45 min / CC ~5 min), risk low. ✅ The smallest chunks, each quick to review ✅ Camera work gets its own checkpoint before the look ❌ Five Phase 2 PRs, and the camera chunk has little to show on screen without the look
+
+### Scope document approval (Phase 2)
+
+SQ10 answer "Approve and continue (recommended)", 2026-10-13: the working plan (this file, Phase 2 chunks 04a, 04b, 04c, 05 and this record) and the CEO summary (`~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-13-phase-2-scene-foundation.md`) are approved as of that answer. Spec review: 3 refuter runs, scores 6, 7, 7; Scope PASS in all three; issues verified: 12 of 12 for the third run's findings (applied edits, checked by Claude, not re-reviewed: spec not re-verified after the last fixes). Metrics appended to `~/.gstack/analytics/spec-review.jsonl` (iterations 3, found 36, fixed 23, remaining 12, score 7).
+
+### 0I. Temporal interrogation (Phase 2)
+
+```text
+  HOUR 1 (foundations):   zustand + store slices (src/app/store/); params module from the spike parser;
+                          promote RENDER, composer boundary, draw-call counter, material guard to src/scene/;
+                          delete the rest of src/spike/ and e2e/spike.spec.ts; confirm WebGL2 in CI (S-RW30)
+  HOUR 2-3 (core logic):  Canvas frameloop="never" + rAF driver (deadline pacing, calm mode, hidden tab);
+                          frame monitor (windowed mean, hysteresis, simulate hook); webgl state machine
+                          (pre-check, outer boundary, restore, 10 s timeout, late restore); camera module
+                          with ortho and perspective ranges; HUD with the draw-call split
+  HOUR 4-5 (integration): ready signal into shots, repeat spec and smoke; freeze=1 re-render; 04b shell,
+                          GlassPanel two-layer fill, safeArea, loader, toast host; 04c rig, materials,
+                          look-dev project with committed baseline; 05 MapControls, clamps, glide, keys
+  HOUR 6+ (polish/tests): fake-clock suites (pacing at 60-144 Hz, monitor, webgl timeout, key map, zoom
+                          maths); e2e in three engines; contrast helper at night; shots and README images
+```
+
+What will surprise the implementer:
+- R3F `frameloop="never"` turns `invalidate()` into a no-op; every frame comes from the driver. Use no library that relies on `invalidate()` (drei is not added).
+- Headless Chromium drives rAF at 60 Hz, so the 60 fps cap can only be proven in fake-clock tests (S-RW12, S-RW29).
+- Safari on macOS delivers trackpad pinch as `gesturestart`/`gesturechange` events, and an unhandled pinch can zoom the page instead of the scene [unverified on Safari 27]; chunk 05 must check pinch zoom in Safari explicitly (its acceptance already requires trackpad zoom in all three browsers).
+- Writing `safeArea` to the store straight from a ResizeObserver callback can raise "ResizeObserver loop completed with undelivered notifications", which Playwright reports as a page error (Section 1, A-2).
+- The look-dev baseline is rendered by headless Chromium on the Mac; it is a regression guard, not a GPU-accurate picture.
+
+Feasibility blockers: none found. Open verifications with owners: WebGL2 in CI browsers (04a, S-RW30); composer behaviour after a context restore (04a, S-RW31); Safari pinch (05).
+
+Effort [estimated, task-type ratios: features ~30x, tests ~50x]: 04a human ~2 days / CC ~1.5 h; 04b human ~1 day / CC ~45 min; 04c human ~1 day of tuning / CC ~30 min plus human look review; 05 human ~1 day / CC ~45 min.
+
+### Section 1: Architecture (Phase 2)
+
+```text
+  URL ──► src/app/params.ts (allowlist) ──► dev, webgl, calm, view, freeze, seed ...
+                     │
+                     ▼
+  src/app/store/ (zustand: ui slice now; data slices from chunk 11)
+     ui: reducedMotion · quality · webgl · safeArea
+       ▲          ▲            ▲            ▲
+       │          │            │            └── 04b Shell: ResizeObserver + panel toggles
+       │          │            └── src/scene/webgl: pre-check · outer boundary · restore · 10 s timeout
+       │          └── src/scene/loop/monitor: windowed mean ──► bloom off (D10) · glass solid (D18)
+       └── matchMedia(prefers-reduced-motion) change listener
+                     │
+  src/scene/loop/driver (rAF, deadline pacing, calm mode) ──► R3F Canvas frameloop="never" advance(t)
+                     │                                           ├── scene graph (04a cube, 04c look)
+                     │                                           ├── composer in inner boundary (bloom)
+                     │                                           └── HUD (dev=1): draw-call split, cap, tier
+                     ▼
+  ready signal (data-scene-ready, __sceneReady) ──► 04b Loader · shots · repeat spec · smoke
+  src/scene/camera (ortho + perspective ranges) ◄── 05 MapControls + clamps ◄── keys, wheel, drag
+                     ▲
+  05 cameraRig: glideTo · home ── reads safeArea (transient subscribe)
+  04b GlassPanel ── glassFill(phase, weather) (night, clear until chunks 34-35)
+  04b ToastHost ── webgl === 'restoring' ──► "Restoring 3D view" (chunk 32 extends)
+```
+
+State machines (new stateful objects):
+
+```text
+  webgl:   ok ──contextlost──► restoring ──restored──► ok
+           restoring ──10 s, no restore──► unavailable ──late restore──► ok
+           (start) ──pre-check fails / Canvas rejects──► unavailable
+           Not allowed: unavailable ──► restoring without a new contextlost; ok ──► unavailable
+           except through a failed pre-check, a Canvas rejection or the timeout.
+
+  driver:  active (cap 60) ──5 s without input, camera motion or glide──► calm (cap 30)
+           calm ──any input / glide / damping──► active (within one frame)
+           active | calm ──tab hidden──► paused (no rAF) ──visible──► previous mode, monitor ignores first frames
+           freeze=1: frozen (one frame; re-render on resize or restore only)
+
+  quality: normal ──mean > 1.33 x cap interval for 2 s──► degraded (bloom off, glass solid)
+           degraded ──mean < 1.08 x cap interval for 10 s──► normal
+           Not allowed: flapping inside the hysteresis windows; judging while paused or frozen.
+
+  camera:  idle ──drag/wheel/key──► user ──release──► damping ──settled──► idle
+           any ──glideTo/home──► gliding ──done──► idle; gliding ──drag or new glide──► user | gliding(new)
+```
+
+- Coupling: scene, shell and camera rig meet only in the store (`safeArea`, `webgl`, `quality`, `reducedMotion`); before, the app had no shared state. Justified by D11 (one store). Chunk 11 now depends on 04a for the store module (S-RW1).
+- Scaling: there is no data in Phase 2. The first thing to break at 10x panels is `safeArea` churn during a window drag (every panel and the rig react); A-2 coalesces updates to one per frame.
+- Single points of failure: the rAF driver. If one frame throws before the next frame is requested, the scene freezes with no message (A-1).
+- Security architecture: no endpoints or data mutations; see Section 3.
+- Rollback: each chunk is one PR (D18); revert it. The spike deletion in 04a is the only removal, and ADR 0001 and its results stay.
+- Value test: the perf HUD and the look-dev view are product tooling consumed by the developer and by e2e (`04a-core.png`, the baseline); the look-dev view stays as the material regression guard, so it does not retire.
+- Elegance and platform: four small modules (`app/params`, `app/store`, `scene/loop`, `scene/webgl`) are what every later chunk plugs into; README "Architecture" names them (04a README step).
+- Cherry-pick fit: C16's `frameloop="never"` fits C20's damping because settling counts as camera motion (S-RW16); C19's keys share the rig's glide; C17 sits outside the render path. No accepted cherry-pick adds coupling beyond the store.
+
+Findings:
+- A-1 [P1] (confidence 8/10) A frame that throws inside `advance()` (a `useFrame` callback, a material update) can end the rAF chain if the next frame was not yet requested; the scene freezes and nothing tells the user. R3F's own loop is off under `frameloop="never"`, so this is now the driver's job. Pending: C23 (Section 2).
+- A-2 [P2] (confidence 7/10) Writing `safeArea` from a ResizeObserver callback can trigger the browser's "ResizeObserver loop" error, which the smoke test counts as a page error. Required for the 04a/04b smoke acceptance ("no console errors"); applied as S-RW36.
+- A-3 [P2] (confidence 8/10) `glideTo` frames its target inside `safeArea` when the glide starts; a panel that opens during the 600 ms glide leaves the target behind the panel, breaking the section 4b invariant "a selected object is never behind a panel". Required for that invariant (D5); applied as S-RW37.
+- A-4 [P3] Under `frameloop="never"`, R3F's `invalidate()` does nothing; recorded as an implementer note in 0I. No change.
+
+Section 1 dispositions: A-1 resolved by C23 (SQ11); A-2 applied (S-RW36); A-3 applied (S-RW37); A-4 note.
+
+
+### Section 2: Error & Rescue Map (Phase 2)
+
+```text
+  METHOD/CODEPATH             | WHAT CAN GO WRONG                                  | ERROR
+  ----------------------------|----------------------------------------------------|---------------------------
+  app/params.parse            | unknown value, malformed number, unknown view      | InvalidParam
+  scene/webgl precheck        | no WebGL2 context                                  | WebGLUnavailable
+  R3F Canvas create           | renderer promise rejects                           | CanvasInitError
+  composer (inner boundary)   | EffectComposer throws on mount or remount          | ComposerError
+  context events              | webglcontextlost                                   | ContextLost
+                              | no webglcontextrestored within 10 s                | RestoreTimeout
+                              | restore after the timeout                          | LateRestore
+  scene/loop driver tick      | advance() or a useFrame callback throws            | FrameError        <- C23
+  scene components (React)    | a component throws while rendering                 | SceneRenderError  <- C23
+  scene/loop monitor          | sustained slow frames                              | SlowFrames
+                              | tab hidden, window resized                         | (frames ignored)
+  shell safeArea              | ResizeObserver loop                                | ROLoop (prevented, S-RW36)
+                              | rect smaller than 1 px (window below 1280x720)     | EmptySafeArea
+  cameraRig.glideTo / home    | target outside bounds, zoom outside range          | (clamped)
+                              | safeArea changes mid-glide                         | (retarget, S-RW37)
+  look-dev baseline           | pixels differ                                      | BaselineMismatch (intended)
+
+  ERROR              | RESCUED | RESCUE ACTION                                   | USER SEES
+  -------------------|---------|-------------------------------------------------|------------------------------------
+  InvalidParam       | Y       | fallback value, one console warning              | nothing; warning names the parameter
+  WebGLUnavailable   | Y       | webgl = unavailable, loader ends                 | D11 card (plain in 04a, glass in 04b)
+  CanvasInitError    | Y       | outer boundary, webgl = unavailable              | D11 card
+  ComposerError      | Y       | inner boundary, bloom off, console.warn          | scene without bloom; HUD shows bloom off
+  ContextLost        | Y       | webgl = restoring                                | "Restoring 3D view" toast (04b)
+  RestoreTimeout     | Y       | webgl = unavailable                              | D11 card
+  LateRestore        | Y       | webgl = ok, card hides, rendering resumes        | scene returns
+  FrameError         | Y (C23) | catch, log once, continue; 3 in a row: stop      | nothing for one-offs; scene-error card
+                     |         | and set sceneError                               | after 3 consecutive failures
+  SceneRenderError   | Y (C23) | outer boundary, sceneError                       | "The 3D view stopped after an error." + Reload
+  SlowFrames         | Y       | degraded tier, hysteresis                        | no bloom, solid glass
+  EmptySafeArea      | Y       | frame inside the full canvas, console.warn       | target framed in the full canvas (S-RW38)
+  BaselineMismatch   | Y       | test fails; update baseline on purpose           | failing e2e:local run
+```
+
+- E-1 [P1] (confidence 8/10) FrameError and SceneRenderError were the gaps (Section 1 A-1). Resolved by C23 (SQ11).
+- E-2 [P3] (confidence 7/10) A window smaller than the supported 1280x720 with the right panel open can leave a `safeArea` with no width; required for the D5 framing contract not to divide by zero; applied as S-RW38 (frame inside the full canvas, one console warning).
+- Logging: each rescued error logs one line with its kind and context (Section 8 sets the format).
+
+### Answered decision C23 (SQ11)
+
+Answer: A, "Catch, then an honest card (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Next frame requested before the frame runs | Prime Directive 1 (pending) | not stated | yes | yes | not stated |
+| Frame error handling | pending | not stated; a throw can end the rAF chain | caught per frame; each distinct message logged once with `console.error` and the frame time; HUD error count; rendering continues | same as A | none |
+| Repeated frame errors | pending | - | after 3 consecutive failing frames [estimated], the driver stops and raises the scene-error state | same as A, but the state shows the WebGL card | - |
+| React error in a scene component | S-RW6 outer boundary (required) | outer boundary shows the WebGL card | outer boundary tells kinds apart: scene error shows a separate card, "The 3D view stopped after an error." with the message and a Reload button; panels keep working; loader ends | outer boundary shows the D11 WebGL card text | same as B |
+| WebGL unavailable, restore, timeout | D11, S-RW6, S-RW10, S-RW33 (approved or required) | unchanged | unchanged | unchanged | unchanged |
+| Tests | pending | none | fake-clock unit tests: a throwing frame callback keeps the loop alive and logs once; 3 consecutive throws raise the state; a throwing component shows the scene-error card, not the WebGL card | same, asserting the WebGL card | none |
+| Effort | - | - | S (human ~2h / CC ~10 min) | S (human ~1.5h / CC ~8 min) | S (zero) |
+
+Question: D11 — C23: What should happen when scene code fails while the app is running?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a render loop and error boundary.
+ELI10: The plan handles the graphics card failing (WebGL off, context lost), but not a bug in our own scene code. With the new render loop, an error inside one frame can stop the loop for good: the scene freezes and nothing says why. A crash inside a scene component falls into the error boundary that shows "Your browser could not start 3D", which blames the browser for our bug. Option A keeps the loop alive through a one-off error, stops after repeated errors, and shows an honest "3D view stopped after an error" card with a Reload button, while the panels keep working.
+Stakes if we pick wrong: a scene bug either freezes the campus with no message, which looks like live data that stopped changing, or tells users their browser cannot do 3D when it can.
+Recommendation: A because it closes both silent-failure paths and names the real cause for about 10 CC-minutes (zero silent failures, every error has a user-visible result and a test).
+Completeness: A=9/10, B=6/10, C=3/10
+Net: honest error states with tests (A), caught but mislabelled (B), or a freeze and a wrong message (C).
+Header: Scene errors
+A) Catch, then an honest card (recommended)
+The driver requests the next frame first, catches frame errors, logs each distinct message once and keeps rendering; after 3 consecutive failing frames it stops and raises a scene-error state. The outer boundary shows a separate card, "The 3D view stopped after an error.", with the message and Reload; panels keep working and the loader ends. Fake-clock and component tests. Effort S (human ~2h / CC ~10 min), risk low. ✅ No scene bug can freeze the campus silently; one-off glitches do not even interrupt it ✅ Users see the real cause and a one-click recovery, and the console has the message ❌ One more card and state for chunk 04b to style and for the design review to word
+B) Catch, reuse the WebGL card
+Same frame-error catching and 3-strike stop, but scene errors show the existing D11 card ("Your browser could not start 3D (WebGL)."). Effort S (human ~1.5h / CC ~8 min), risk medium. ✅ No silent freeze, and no new card to design or style ✅ Same tests for the loop as A ❌ The card blames the browser for our own bug, so users may switch browsers instead of reporting it
+C) Keep as written
+No frame-error handling; React errors in scene components show the WebGL card through the outer boundary. Effort S (zero), risk high. ✅ Nothing extra to build in 04a ✅ The plan text stays unchanged ❌ A single thrown frame freezes the campus with no message, which reads as live data that stopped
+
+
+### Section 3: Security & threat model (Phase 2)
+
+| Threat | Likelihood | Impact | Mitigated? |
+|---|---|---|---|
+| New runtime dependency `zustand` | Low | Low | Yes: MIT, widely used, lockfile, Dependabot weekly (X2) |
+| URL parameters read in production (`dev`, `webgl`, `calm`, `view`, `freeze`, `seed`, ...) | Low | Low | Yes: allowlist with fallback (S-RW2); values go to the console only, never into the DOM |
+| `window.__sceneDev.simulateFrameInterval` and `window.__sceneReady` in the production bundle | Low | Low | Accepted: the hook exists only with `dev=1`, is same-origin, and changes only the quality tier; no data |
+| Scene-error card shows an error message (C23) | Low | Low | Yes: message only, no stack; React escapes text, so no markup injection |
+| Committed mockup copy in a public repo (C17) | Low | Low | Accepted: an approved design image with made-up data [inference: AI-generated mockup] |
+
+No endpoints, secrets, stored data, background jobs or network calls are added; nothing leaves localhost (D16). localStorage is not used in Phase 2 (C18 deferred). No issues found beyond the table.
+
+### Section 4: Data flow and interaction edge cases (Phase 2)
+
+```text
+ prefers-reduced-motion ─► matchMedia + change listener ─► store.reducedMotion ─► glide, damping, keys, D20 tokens
+   nil: matchMedia missing ─► false        changed at runtime ─► listener updates the flag live
+ window resize / panel toggle ─► ResizeObserver ─► coalesce to 1 per rAF ─► store.safeArea ─► cameraRig (transient)
+   empty: rect has no width or height ─► full canvas + warning (S-RW38)   stale: changed mid-glide ─► retarget (S-RW37)
+   storm: 60 resize events per second ─► at most 1 store write per frame (S-RW36)
+ rAF ─► driver (pace, calm, freeze, hidden) ─► advance(t) ─► monitor (windowed mean) ─► quality ─► bloom, glass
+   hidden: no rAF ─► paused     first frames after visible or resize ─► ignored     freeze ─► monitor paused (S-RW34)
+   error: frame throws ─► caught, logged once, continue; 3 in a row ─► sceneError (C23)
+ webglcontextlost ─► webgl=restoring ─► toast   restored ─► composer remount ─► ok   10 s ─► unavailable ─► card
+   late restore ─► ok (S-RW33)   remount throws ─► inner boundary ─► bloom off (S-RW31)
+```
+
+Async ordering:
+- Invariant 1 (section 4b, D5): a glide ends with its target inside the `safeArea` in force at the end. Operations: glide (600 ms) and a `safeArea` write (coalesced to the next frame). Order A: write lands before the glide starts, so the glide uses the new rect. Order B: write lands mid-glide, so the glide retargets (S-RW37). Order C: chunk 24 opens the panel and starts the glide in the same tick, so the glide starts with the old rect and retargets one frame later when the coalesced write lands (S-RW37). Regression proof: the S-RW37 rig unit test with a fake clock releases the `safeArea` write before, during and in the same tick as the glide.
+- Invariant 2 (D11): exactly one of `ok` or `unavailable` holds after a lost context settles. Operations: the restore event and the 10 s timer. Order A: restore first, timer cleared, `ok`. Order B: timer first, `unavailable`, then a late restore returns `ok` (S-RW33). Regression proof: the S-RW10 fake-clock tests fire restore at 9.99 s and 10.01 s.
+
+| Interaction | Edge case | Handled? | How |
+|---|---|---|---|
+| Drag pan or rotate | pointer leaves the window mid-drag | Y | MapControls pointer capture |
+| Right-drag rotate | context menu | Y | suppressed (05 acceptance) |
+| Wheel or trackpad zoom | fast wheel, trackpad momentum | Y | zoom range clamp (05) |
+| Safari trackpad pinch | page zooms instead of the scene | Verify | owner chunk 05; recorded in 0I [unverified] |
+| Double-click empty ground | during a glide | Y | new glide replaces the old (camera state machine) |
+| Double-click an entity (chunk 24) | home glide in flight | Y | entity double-click cancels it (S-RW25) |
+| Camera keys | held key auto-repeat | Y | each repeat restarts a short step; latest wins, nothing queues |
+| Camera keys | typing in an input | Y | focus gate (C19) |
+| Perspective toggle (`P`, HUD) | pressed during a glide | Gap | S-RW39: the toggle cancels the glide and keeps the current framing |
+| HUD toggle button | double click | Y | the toggle is a state flip; the second click flips back |
+| Window resize | during a glide | Y | S-RW37 |
+| Tab hidden | during a glide | Y | the glide is time-based and ends on the first visible frame |
+| `?webgl=0&freeze=1` | no frame ever renders | Y | loader ends on `unavailable` (S-RW19); card shows |
+
+- D-1 [P3] (confidence 7/10) A perspective toggle during a glide was undefined; required for the "toggle switches without jump" acceptance (04a); applied as S-RW39.
+
+### Section 5: Code quality (Phase 2)
+
+- Q-1 [P3] The driver's per-frame decision (hidden, freeze, cap, calm, error count) has more than 5 branches; keep it a pure function of state and time so the fake-clock tests drive it directly. Implementation note for 04a; no plan change.
+- Q-2 [P3] The outer boundary must tell WebGL failures from scene errors by error class (thrown by the pre-check and the Canvas init path), not by matching message text. Implementation note for C23; no plan change.
+- Q-3 [P3] The parameter allowlist and the shots URL builder (`scripts/shots.config.ts` `viewUrl`) describe the same contract; the shots entries should take their keys from the app's parameter module so the two cannot drift. Implementation note for 04a; no plan change.
+
+Fits existing patterns: the spike's single-constant settings (`src/spike/shared/render.ts`), its allowlist parser and its error boundaries are reused rather than rewritten (S-RW3, S-RW31). No duplicated behaviour or over-engineering found beyond these notes.
+
+### Section 6: Test review (Phase 2)
+
+```text
+ NEW THING                          | TYPE          | IN PLAN?            | HAPPY                        | FAILURE                         | EDGE
+ -----------------------------------|---------------|---------------------|------------------------------|---------------------------------|-----------------------------
+ params (S-RW2)                     | unit          | yes                 | each key parsed              | junk -> fallback + warning      | unknown view
+ reducedMotion flag (D20)           | unit + e2e    | yes (determined)    | follows emulated OS setting  | -                               | changes at runtime
+ driver pacing and calm (C16)       | unit (fake)   | yes                 | 60 fps at 60-144 Hz          | -                               | jitter, hidden tab, freeze
+ calm mode in a browser (C16)       | e2e           | yes                 | <= 31 fps after 5 s idle     | -                               | -
+ frame errors (C23)                 | unit (fake)   | yes                 | one-off error, loop lives    | 3 in a row -> sceneError        | same message logged once
+ frame monitor (S-RW5, S-RW29)      | unit (fake)   | yes                 | normal at cap                | slow -> degraded                | recover, 90 and 144 Hz
+ webgl state (D11, S-RW10, S-RW33)  | unit + e2e    | yes                 | restore -> ok                | timeout -> card                 | late restore, 9.99/10.01 s
+ composer boundary (S-RW31)         | unit          | yes                 | bloom on                     | throw -> bloom off, no card     | throw on remount
+ scene-error card (C23)             | component+e2e | yes                 | -                            | throwing component -> card      | not the WebGL card
+ draw-call split (S-RW4, S-RW32)    | e2e + unit    | yes                 | scene < 10, post shown       | -                               | bloom off: post = 0
+ ready signal (S-RW7, S-RW20)       | e2e (implied) | yes                 | shots and specs wait         | webgl=0: wait on card           | freeze + resize re-render
+ safeArea (eng E6, S-RW36, S-RW38)  | unit + smoke  | yes                 | rect on resize and toggle    | no RO loop error                | empty rect -> full canvas
+ glassFill + contrast (S-RW9, C21)  | unit + e2e    | yes                 | 12 inputs mapped             | -                               | night level on every slot
+ glass fallback (D18, S-RW11)       | e2e (Firefox) | yes                 | triggers                     | -                               | recovers
+ toast host (C15, S-RW13)           | e2e           | yes                 | shows while restoring        | -                               | clears on ok
+ look-dev baseline (C17, S-RW17)    | e2e:local     | yes                 | matches baseline             | drift -> fails                  | skipped in CI
+ shared materials (04c)             | e2e or unit   | yes                 | 0 dispose events             | -                               | unmount and remount
+ controls and bounds (05)           | e2e x3        | yes                 | pan, rotate, zoom            | -                               | ortho and perspective bounds
+ glide and retarget (05, S-RW37)    | unit (fake)   | yes (determined)    | ends in ~600 ms              | drag cancels                    | panel opens mid-glide
+ keys (C19)                         | unit + e2e x3 | yes                 | each key moves               | typing ignored                  | auto-repeat
+ zoom-to-cursor, double-click (C20) | unit + e2e    | yes                 | point stays fixed            | -                               | corner vs centre
+ reduced motion in controls (S-RW21)| e2e + unit    | yes                 | instant cuts                 | -                               | settling holds the cap
+ perspective toggle mid-glide (S-RW39) | unit       | yes                 | glide cancelled              | -                               | framing kept
+ Safari trackpad pinch (05)         | manual        | yes (manual)        | scene zooms                  | page zoom                       | -
+```
+
+Assertion checks for approved items: C16's cap test asserts at most 60 rendered frames per simulated second at 120 and 144 Hz and exactly 60 at 60 Hz with jitter (rejects 30 or 120; `no_claim`=real browser rAF timing, fake clock only). C23's tests assert the loop is still scheduled after a thrown frame and that `sceneError` is set on the third consecutive throw, not the second (rejects a frozen loop and an early card; `no_claim`=errors from WebGL driver crashes, simulated with a throwing callback). S-RW33 asserts `ok` after a restore at 10.01 s (rejects a permanent card; `no_claim`=real Safari restore behaviour, which `WEBGL_lose_context` only approximates).
+
+Determined checks spelled out (implementation of approved behaviour, no new approval): the reduced-motion flag is tested with Playwright `emulateMedia` before load and after load; a resize of a `freeze=1` page re-renders the same frame (driver unit test); glide duration is asserted in the rig's fake-clock unit test, and e2e asserts only the end state, so the e2e cannot flake on timing; the Safari pinch check is manual and recorded in the 05 PR, since Playwright cannot drive a trackpad.
+
+Test ambition: the 2am-Friday test is a lost context with no restore that must show the card after 10 s; the hostile test resizes the window below 1280x720 mid-glide with the right panel open (S-RW37, S-RW38); the chaos test throws from a `useFrame` callback every frame and expects the scene-error card after 3. Pyramid: about 14 unit suites, about 10 e2e specs across three engines, one Mac-only baseline. Flakiness: the calm e2e waits 5 s and asserts an upper bound only; glide timing lives in unit tests; the baseline is skipped in CI.
+
+Section 6 dispositions: 0 gaps; S-RW39 added its own unit test.
+
+### Section 7: Performance (Phase 2)
+
+- P-1 [P2] (confidence 6/10) `backdrop-filter` blur on up to five glass slots over a canvas that redraws at up to 60 fps re-blurs every frame; its cost is unmeasured and likely highest in Firefox and Safari [inference]. Mitigation in scope: the frame monitor drops glass to the solid fallback (D18, S-RW5). Measurement owner: chunk 36, which already tiers the glass fallback; no new work.
+- P-2 [P3] (confidence 6/10) Composer memory at the ADR 0001 settings: a HalfFloat RGBA target is 8 bytes per pixel, so a 2880x1800 canvas at DPR 2 needs about 41 MB per target and about 166 MB for the 4x multisampled one, plus bloom mips [estimated]. Notable on an 8 GB M1 Air; the quality tier's pixel-ratio knob is the lever. Owner: chunk 36.
+- Slowest new paths: bloom (about 6.6 ms median GPU per frame at 4x, M1 Max, Chrome, ADR 0001), glass blur (unmeasured), the 2048 shadow map (04c). No queries, caches, jobs or connection pools.
+
+No decision needed; both items sit with chunk 36, which owns measured tiering.
+
+### Section 8: Observability (Phase 2)
+
+- O-1 [P2] (confidence 8/10) Quality drops, WebGL state changes, composer failures and frame errors are visible to the user (no bloom, a card, a toast) but leave the team nothing to read afterwards except the frame-error log from C23. Required by Prime Directive 1 (surface every failure to system, team and user); applied as S-RW40: each transition logs one console line with a `[scene]` prefix, the transition, its reason and the mean frame interval where relevant (for example `[scene] quality normal -> degraded (mean 31.2 ms over 2 s)`), and the README's "Known limits" names the WebGL card and the scene-error card with what to do (check hardware acceleration; reload and report the console line).
+- Dashboard: the `dev=1` HUD is the operator view (fps, cap and mode, tier, draw-call split, `webgl` state, frame-error count).
+- Debuggability: a bug report three weeks later can include the `[scene]` console lines; there is no server log in Phase 2.
+
+### Section 9: Deployment and rollout (Phase 2)
+
+```text
+ docs PR (this review, title docs:) ──► no release
+ 04a PR (feat:) ──► CI: check, test, Chromium + Firefox smoke (WebGL2 or S-RW30 fallback) ──► squash ──► release 0.3.0
+        └─ deletes src/spike/ and e2e/spike.spec.ts; ADR 0001, its results and 03-spike.png stay
+ 04b PR (feat:) ─┐
+ 04c PR (feat:) ─┴─ parallel after 04a (shots.config.ts appends merge trivially) ──► releases 0.4.0, 0.5.0
+ 05 PR (feat:)  ──► after 04b ──► release 0.6.0
+ rollback: revert the PR, merged as "fix: revert <title>" (CONTRIBUTING runbook) ──► patch release
+```
+
+- Dep-1 [P2] (confidence 6/10) CI WebGL2 in headless browsers is unproven (S-RW30 carries the check and the fallback); the 04a PR is where it shows.
+- Dep-2 [P3] The look-dev baseline is Mac-only; a contributor on Linux cannot regenerate it. Accepted for a single-contributor repo (C17, S-RW17).
+- No migrations, flags or deploy windows. Post-merge check: `release.yml` green, `vp run serve` shows the scene at `127.0.0.1:7317`.
+
+### Section 10: Long-term trajectory (Phase 2)
+
+- Debt: (1) C16 depends on R3F 9's `frameloop="never"` and `advance()`; R3F 10 (alpha, WebGPU-first) may change the loop API [unverified]; (2) the look-dev baseline needs a deliberate update on each look change; (3) 04a remains the largest chunk (C22 note); (4) the frame-monitor thresholds are estimates until chunk 36 measures; (5) C18's probe is deferred.
+- Reversibility: chunk code 4/5 (one PR each); the C16 loop 3/5 once animation chunks build on it; the store layout 3/5 once chunk 11 adds slices.
+- Path forward: Phase 3 builds halls with 04c's materials and look-dev view; the data track (11-17) extends the 04a store; every scene chunk inherits the loop, monitor, ready signal and error handling.
+- Platform potential: the parameter module and ready signal are the test seam for every later Playwright spec; the toast host and `GlassPanel` are reused by chunks 26-33.
+- Cherry-pick retrospective: C16, C17, C19 and C20 all landed inside existing chunks without new coupling; C18's deferral removes nothing they depend on.
+- 1-year question: a new engineer reads ADR 0001, section 4b and this record and can see why the loop is capped, why glass has two layers and why 04a and 04c are separate.
+
+### Section 11: Design and UX (Phase 2)
+
+```text
+  open app ─► loader (wordmark + cyan line) ─┬─► first frame ─► campus (cube in 04a, look in 04c) + shell slots
+                                             ├─► webgl unavailable ─► WebGL card (D11)
+                                             └─► scene error ─► "The 3D view stopped after an error." + Reload (C23)
+  campus ─► context lost ─► "Restoring 3D view" toast ─┬─► restored ─► campus
+                                                       └─► 10 s ─► WebGL card ─► late restore ─► campus
+  campus ─► slow frames ─► bloom off, solid glass ─► frames recover (10 s) ─► normal
+  campus ─► drag / wheel / keys ─► camera moves ─► 5 s idle ─► calm (30 fps, invisible to the user)
+```
+
+```text
+  FEATURE          | LOADING                 | EMPTY                    | ERROR                                   | SUCCESS             | PARTIAL
+  scene canvas     | loader until 1st frame  | test cube / dormant      | WebGL card; scene-error card (C23)      | campus renders      | bloom off, solid glass
+  shell slots      | -                       | placeholder titles       | -                                       | glass slots         | solid fallback < 45 fps
+  restore toast    | -                       | -                        | card after 10 s                         | clears on restore   | -
+  perf HUD (dev=1) | -                       | -                        | frame-error count                       | live numbers        | "frozen" under freeze=1
+  camera           | -                       | home view                | clamped at bounds                       | moves, glides       | instant under reduced motion
+```
+
+- UI-1 [P3] The scene-error card (C23) needs copy review next to the D11 card; owner `/plan-design-review`. Pending, not a task here.
+- UI-2 [P3] The D21 2 px cyan focus ring on a focused full-viewport canvas (C19) would outline the whole screen; owner `/plan-design-review` (keep the ring, inset it, or show a small focus badge). Pending.
+- UI-3 [P3] Delight item 6 from 0G, a loader fade over `--dur-ui` instead of a cut, is a detail of the approved D10 loader; owner `/plan-design-review`. Pending.
+- Responsive: desktop only from 1280x720 (D1, section 4b); S-RW38 covers smaller windows without breaking. Accessibility: keyboard camera (C19), reduced motion (D20, S-RW21), contrast helper (S-RW9, S-RW28).
+
+Recommendation: Phase 2 has significant UI scope (shell, glass, cards, toast, keyboard camera). Consider running /plan-design-review for UI-1 to UI-3 before 04b starts.
+
+
+### Outside voice (Phase 2)
+
+`codex_reviews` is disabled (stored config). Recorded as `outside_status: disabled` (review log, commit `d428146`). No external or native challenge ran; this is an opt-out, not missing coverage to replace. The three refuter spec reviews in 0H are same-harness reviews and are not outside coverage.
+
+### TODOS.md (Phase 2)
+
+One TODO from this review, already answered: C18 startup quality probe (SQ5, deferred, P3, added to `TODOS.md`). No other TODO proposal remains.
+
+### Approval readiness (Phase 2)
+
+Checked rows and answers: C15 (SQ2), C16 (SQ3), C17 (SQ4), C18 deferred (SQ5), C19 (SQ6), C20 (SQ7), C21 (SQ8), C22 (SQ9), C23 (SQ11); scope documents (SQ10, document approval only). Mode: SQ1 (SELECTIVE EXPANSION, user choice; not a remedy approval). Required work without a new choice, each citing its contract: S-RW1 to S-RW9 (Step 0), S-RW10 to S-RW18 (spec review 1), S-RW19 to S-RW30 (spec review 2), S-RW31 to S-RW35 (spec review 3), S-RW36 to S-RW40 (Sections 1, 2, 4, 8). Every Phase 2 chunk edit and every edit to chunks 06, 11, 24, 25, 32, 34, 35, 36, sections 4b and 6 and ADR 0001 maps to one of these. Pending rows UI-1 to UI-3 are not applied to any chunk text.
+
+Approval readiness: PASS
+
+### NOT in scope (Phase 2)
+
+- Deferred: startup quality probe (C18, SQ5) to `TODOS.md`, trigger chunk 36.
+- Handed off, not decided here: UI-1 scene-error card copy, UI-2 canvas focus ring, UI-3 loader fade (owner `/plan-design-review`).
+- Not added: `@react-three/drei` (chunk 05 uses three's installed `MapControls`, S-RW16); a fourth spec review (cap of three reached).
+- Rejected by user choice: keeping 04a whole and a three-way split (SQ9); dark-only or white-to-dark glass (SQ8); reusing the WebGL card for scene errors and leaving errors unhandled (SQ11); pulling GlassPanel into 04a (SQ2).
+- Outside Phase 2, unchanged: TODO E18 (#8 and #9 against C8 and C2, before chunk 14); chunk 36's "200 racks" overrun noted in the Phase 1 review.
+
+### What already exists (Phase 2)
+
+The spike's pinned render settings, R3F composer boundary, draw-call counter, shared-material guard and allowlist parser (`src/spike/`) are promoted, not rewritten (S-RW3, S-RW31). Playwright's three engines and production-build server, the shots pipeline and its `ready` hook, the repeat check, the tokens file, the cross-origin isolated preview and three's `MapControls` are reused. Nothing is rebuilt.
+
+### Dream state delta (Phase 2)
+
+After Phase 2: one R3F canvas that costs about half the frames on a 120 Hz display and a quarter when calm, never freezes or blames the browser silently, frames its targets inside the panels' safe area, moves like a map app by mouse or keyboard, and has a look-dev view whose screenshot catches material drift. Still missing from the 12-month ideal: the campus itself (06-10), measured numbers on an M1 Air-class Mac (chunk 36), and day and weather states for the glass (34-35).
+
+### Error and rescue registry (Phase 2)
+
+See "Section 2: Error & Rescue Map (Phase 2)": 16 codepath rows, 12 error classes, all rescued after C23, each with a user-visible result and a named test.
+
+### Failure modes registry (Phase 2)
+
+```text
+  CODEPATH            | FAILURE MODE                          | RESCUED? | TEST?             | USER SEES?                        | LOGGED?
+  --------------------|---------------------------------------|----------|-------------------|-----------------------------------|--------
+  app params          | unknown or malformed value            | Y        | Y (unit)          | nothing; console warning          | Y
+  webgl pre-check     | no WebGL2                             | Y        | Y (e2e webgl=0)   | WebGL card                        | Y [scene]
+  Canvas init         | renderer promise rejects              | Y        | Y (unit)          | WebGL card                        | Y [scene]
+  composer            | throws on mount or remount            | Y        | Y (unit)          | scene without bloom               | Y [scene]
+  context             | lost, then restored                   | Y        | Y (unit + e2e)    | "Restoring 3D view" toast         | Y [scene]
+  context             | lost, no restore in 10 s              | Y        | Y (unit + e2e)    | WebGL card                        | Y [scene]
+  context             | restore after the timeout             | Y        | Y (unit)          | scene returns                     | Y [scene]
+  render driver       | one frame throws                      | Y        | Y (unit)          | nothing                           | Y (once)
+  render driver       | 3 consecutive frames throw            | Y        | Y (unit)          | scene-error card                  | Y [scene]
+  scene component     | throws while rendering                | Y        | Y (component)     | scene-error card                  | Y [scene]
+  frame monitor       | sustained slow frames                 | Y        | Y (unit + e2e)    | no bloom, solid glass             | Y [scene]
+  frame monitor       | 90 or 144 Hz display misread as slow  | Y        | Y (unit)          | none needed                       | n/a
+  shell safeArea      | ResizeObserver loop error             | Y        | Y (smoke)         | none needed                       | n/a
+  shell safeArea      | empty rect                            | Y        | Y (unit)          | target framed in the full canvas  | Y (warn)
+  camera rig          | panel opens mid-glide                 | Y        | Y (unit)          | target ends inside the panel gap  | n/a
+  camera rig          | projection toggled mid-glide          | Y        | Y (unit)          | framing kept                      | n/a
+  controls            | Safari trackpad pinch zooms the page  | ?        | manual (05 PR)    | page zoom (visible, not silent)   | n/a
+  CI                  | no WebGL2 in a headless browser       | Y        | Y (CI)            | card-path smoke instead           | Y
+  look-dev            | material or lighting drift            | Y        | Y (e2e:local)     | failing baseline                  | Y
+```
+CRITICAL GAPS: 0.
+
+### Scope expansion decisions (Phase 2)
+
+Full record in the CEO plan (`~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-13-phase-2-scene-foundation.md`).
+- Accepted: C16 render loop and power policy; C17 look-dev view and baseline; C19 keyboard camera controls; C20 map feel.
+- Deferred: C18 startup quality probe.
+- Skipped: none.
+
+### Diagrams produced (Phase 2)
+
+Dream state (0C), temporal sequence (0I), system architecture and state machines (Section 1), error and rescue map (Section 2), data flow with shadow paths (Section 4), test map (Section 6), deployment sequence and rollback (Section 9), user flow and interaction states (Section 11).
+
+### Stale diagram audit (Phase 2)
+
+- Section 3 architecture picture: accurate (Phase 2 adds no data path).
+- Section 4b screen layout: accurate; section 4b gains a "Glass panel" subsection (S-RW22).
+- Section 6 dependency summary: was stale after C22 and S-RW1; updated (04c branch, `08 → 10`, chunk 11 after 04a).
+- Phase 0 and Phase 1 review diagrams: historical; unaffected.
+
+### Reality rows (Phase 2)
+
+The seven REALITY rows are in "0B. Existing code leverage (Phase 2)" above, with `file:line` receipts updated after C22.
+
+PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=3 verdict=complete
+
+
+## Implementation Tasks (CEO review, Phase 2)
+
+Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratios assumed: features ~30x, tests ~50x, scaffolding ~100x; 04c look tuning is mostly human review time.
+
+- [ ] **T1 (P1, human: ~4h / CC: ~15min)** — 04a foundations — Add the store and parameter module; promote spike code to `src/scene/`; delete the rest of the spike
+  - Surfaced by: Step 0 — S-F2, S-F5, S-F6; S-RW1, S-RW2, S-RW3, S-RW31
+  - Files: package.json, pnpm-lock.yaml, src/app/store/index.ts, src/app/store/ui.ts, src/app/params.ts, src/app/params.test.ts, src/scene/render.ts, src/app/App.tsx, scripts/shots.config.ts, src/spike/ (deleted), e2e/spike.spec.ts (deleted)
+  - Verify: `vp check`, `vp test`; `vp run shots` passes; `docs/img/03-spike.png` unchanged
+- [ ] **T2 (P1, human: ~6h / CC: ~25min)** — 04a render loop — rAF driver with deadline pacing, calm mode, freeze, hidden tab and frame-error handling
+  - Surfaced by: C16 (SQ3), C23 (SQ11); S-RW12, S-RW29; Section 1 — A-1
+  - Files: src/scene/loop/driver.ts, src/scene/loop/driver.test.ts, src/scene/SceneCanvas.tsx
+  - Verify: fake-clock tests at 60, 75, 90, 120 and 144 Hz; calm e2e (31 or fewer fps after 5 s); a throwing frame keeps the loop alive
+- [ ] **T3 (P1, human: ~3h / CC: ~15min)** — 04a quality — Frame monitor with windowed mean and hysteresis, simulate hook, quality tier
+  - Surfaced by: S-RW5, S-RW11, S-RW27, S-RW29, S-RW34
+  - Files: src/scene/loop/monitor.ts, src/scene/loop/monitor.test.ts, src/scene/render.ts (`qualitySettings`), src/app/store/ui.ts (tier) (eng D1)
+  - Verify: fake-clock tests (drop at 2 s, recover at 10 s, paused under freeze); `simulateFrameInterval` drives bloom off and on in e2e
+- [ ] **T4 (P1, human: ~5h / CC: ~20min)** — 04a failure handling — WebGL pre-check, outer boundary with error kinds, composer inner boundary, restore, 10 s timeout, late restore, plain WebGL and scene-error cards
+  - Surfaced by: C15 (SQ2), C23 (SQ11); S-RW6, S-RW10, S-RW19, S-RW31, S-RW33; Section 2 — E-1
+  - Files: src/scene/webgl.ts, src/scene/webgl.test.ts, src/scene/SceneBoundary.tsx, src/scene/SceneBoundary.test.ts, src/app/App.tsx (eng D1)
+  - Verify: unit tests for restore, rebuild failure, timeout and late restore; e2e `?webgl=0` card; `WEBGL_lose_context` with and without restore; throwing component shows the scene-error card
+- [ ] **T5 (P2, human: ~5h / CC: ~20min)** — 04a camera, HUD and test seams — Camera module with ortho and perspective ranges and toggle, HUD draw-call split, ready signal, transition logs, CI WebGL check
+  - Surfaced by: S-RW4, S-RW7, S-RW20, S-RW26, S-RW30, S-RW32, S-RW35, S-RW39, S-RW40
+  - Files: src/scene/camera.ts, src/scene/PerfHud.tsx, e2e/smoke.spec.ts, e2e/repeat.spec.ts, playwright.config.ts, scripts/shots.config.ts, README.md, docs/img/04a-core.png
+  - Verify: HUD shows under 10 scene draw calls; CI Chromium and Firefox smoke green (WebGL2 or the S-RW30 fallback); `vp run e2e:local` green in three engines
+- [ ] **T6 (P1, human: ~1 day / CC: ~40min)** — 04b shell — Tokens, two-layer GlassPanel, `glassFill`, layout slots with placeholder titles, coalesced `safeArea`, loader, toast host, glass cards, night contrast helper
+  - Surfaced by: C15 (SQ2), C21 (SQ8), C23 (SQ11); S-RW8, S-RW9, S-RW13, S-RW15, S-RW19, S-RW28, S-RW36
+  - Files: src/styles/tokens.css, src/dashboard/GlassPanel.tsx, src/dashboard/glassFill.ts, src/dashboard/glassFill.test.ts, src/dashboard/shell/, src/dashboard/ToastHost.tsx, src/app/store/ui.ts, e2e/shell.spec.ts, e2e/contrast.ts, README.md, docs/img/04b-shell.png
+  - Verify: shell matches section 4b at 1280x720 and 1920x1080; contrast helper passes at night; Firefox fallback triggers and recovers; toast shows and clears
+- [ ] **T7 (P2, human: ~1 day / CC: ~30min)** — 04c look — Lighting rig, material library, look-dev view, committed baseline project, mockup copy
+  - Surfaced by: C17 (SQ4), C22 (SQ9); S-RW17, S-RW24; Step 0 — S-F8
+  - Files: src/scene/lights.tsx, src/scene/materials.ts, src/scene/LookDev.tsx, e2e/lookdev.spec.ts, e2e/__screenshots__/, playwright.config.ts, scripts/shots.config.ts, docs/designs/variant-B-2.png, docs/img/04c-scene.png, docs/img/04c-lookdev.png, README.md
+  - Verify: baseline matches in `vp run e2e:local`; spec skipped in CI; shared materials get 0 dispose events on remount; PR shows the shot beside the mockup
+- [ ] **T8 (P1, human: ~1 day / CC: ~45min)** — 05 camera — MapControls with clamps, glide with retarget and home, keys, map feel, reduced motion, dev menu
+  - Surfaced by: C19 (SQ6), C20 (SQ7); S-RW16, S-RW21, S-RW25, S-RW26, S-RW37, S-RW38; Section 1 — A-3
+  - Files: src/scene/controls.tsx, src/scene/cameraRig.ts, src/scene/cameraRig.test.ts, src/scene/keys.ts, src/scene/keys.test.ts, src/dashboard/DevMenu.tsx, e2e/camera.spec.ts, README.md
+  - Verify: e2e in three engines (pan, rotate, zoom, keys, bounds, corner scroll, double-click home, reduced motion); rig unit tests (glide timing, retarget, empty `safeArea`); Safari trackpad pinch checked by hand and noted in the PR
+
+_No new tasks from Security (Section 3), Code quality (Section 5), Performance (Section 7, owned by chunk 36) or Long-term trajectory (Section 10)._
+
+### Completion summary (Phase 2)
+
+```text
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | no scene code; 3,418 spike lines to promote |
+  |                      | or delete; Playwright runs prod build; R3F  |
+  |                      | fallback is canvas-only; 120 Hz in Firefox  |
+  | Step 0               | C15 04a/04b order; C16-C20 additions (4     |
+  |                      | accepted, 1 deferred); C21 glass; C22 split |
+  | Section 1  (Arch)    | 4 issues found (A-1 C23, A-2/A-3 fixed)     |
+  | Section 2  (Errors)  | 16 error paths mapped, 0 GAPS after C23     |
+  | Section 3  (Security)| 0 issues found, 0 High severity             |
+  | Section 4  (Data/UX) | 13 edge cases mapped, 0 unhandled (S-RW39;  |
+  |                      | Safari pinch: manual verify)                |
+  | Section 5  (Quality) | 0 issues found (3 P3 notes)                 |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps                    |
+  | Section 7  (Perf)    | 2 issues found (owned by chunk 36)          |
+  | Section 8  (Observ)  | 1 gap found (O-1, S-RW40)                   |
+  | Section 9  (Deploy)  | 2 risks flagged                             |
+  | Section 10 (Future)  | Reversibility: 4/5 code, 3/5 loop;          |
+  |                      | debt items: 5                               |
+  | Section 11 (Design)  | 3 issues, handed to /plan-design-review     |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (5 groups, 12 items)                |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 16 rows, 0 CRITICAL GAPS                    |
+  | Failure modes        | 19 total, 0 CRITICAL GAPS                   |
+  | TODOS.md updates     | 1 item proposed (C18, added)                |
+  | Scope proposals      | 5 proposed, 4 accepted (SELECTIVE)          |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex disabled (config)                     |
+  | Lake Score           | N/A (no scored question offered a 10/10)    |
+  | Diagrams produced    | 9 (dream, temporal, arch, state, error,     |
+  |                      | data flow, tests, deploy, user flow)        |
+  | Stale diagrams found | 1 (section 6, fixed)                        |
+  | Unresolved decisions | 3 (UI-1 to UI-3, to /plan-design-review)    |
+  | Reality rows         | 7/7 rows (PLAN_REALITY complete), 3 unverif.|
+  +====================================================================+
+```
+
+Lake Score basis: the coverage-scored questions were C15 (9, 9, 6) and C23 (9, 6, 3); neither offered a 10/10 option, so Y = 0. Spec review: 3 refuter runs, last score 7/10, spec not re-verified after the third run's fixes.
+
+### Unresolved decisions (Phase 2)
+
+- UI-1 scene-error card copy (owner `/plan-design-review`).
+- UI-2 focus ring on the full-viewport canvas (owner `/plan-design-review`).
+- UI-3 loader fade over `--dur-ui` (owner `/plan-design-review`).
+
+Open verifications (not decisions): WebGL2 in headless CI browsers and the SwiftShader flag (S-RW30, S-RW35); postprocessing after a context restore (S-RW31); Safari trackpad pinch (chunk 05); R3F 10 loop API (Section 10).
+
+
+## Eng review record: Phase 2 (/plan-eng-review, 2026-10-13)
+
+Target: `docs/PLAN.md` Phase 2 (chunks 04a, 04b, 04c, 05) as amended by the Phase 2 CEO review (C15-C23, S-RW1 to S-RW40), branch `phase-2-scene-foundation`, base `d428146` plus uncommitted CEO review edits. Reviewer: Claude (in-host). Report file: this plan. Design doc: `docs/designs/phase-2-scene-foundation.md` (the promoted CEO summary). Question numbers D1, D2... are this review's own sequence; ledger rows continue the eng series at E19.
+
+### Scope record (eng, Phase 2)
+
+feature answers: none proposed (no cut or deferral offered; every item traces to an approved decision or required fix); structure: B "Smaller arrangement (recommended)", eng D1, 2026-10-13; accepted scope: Phase 2 feature list unchanged; in 04a the quality tier is a `qualitySettings(tier)` table in `src/scene/render.ts` with the tier in the store `ui` slice (no `src/scene/quality.ts`), and the WebGL failure handling is one state-machine module `src/scene/webgl.ts` (pre-check, restore, 10 s timeout, late restore) plus `src/scene/SceneBoundary.tsx`; the driver (`src/scene/loop/driver.ts`) and monitor (`src/scene/loop/monitor.ts`) stay separate; pending remedies: E20.
+
+04a size flag (CEO C22 note): 04a's tasks T1-T5 estimate to about 95 CC-minutes [estimated, CEO task table], against chunk 03's estimate of about 1.5 h, which shipped as one PR (#11). The word count (1,319) is mostly acceptance and failure detail. No cut proposed; the smaller arrangement removes two modules.
+
+### Scope Challenge (eng, Phase 2)
+
+- What already exists: the spike's settings constant, R3F composer boundary, draw-call counter, shared-material guard and allowlist parser (CEO S-RW3, S-RW31); the spike's boundary tests call the class methods directly (`src/spike/r3f/View.test.ts:4-21`), so the C23 boundary tests need no DOM library; three's `MapControls` (CEO S-RW16); Playwright's three engines, shots `ready` hook and repeat check.
+- Minimum change: every item is approved; no deferral proposed.
+- Complexity: 04a about 43 files (25 added or edited, 18 deleted) and 8 new modules before D1, 6 after [estimated]; Phase 2 about 70 files [estimated].
+- Search check: [Layer 1] R3F `frameloop="never"` plus a custom `requestAnimationFrame` loop that calls `advance()` is the documented way to own the frame rate; [Layer 2] R3F issue #2688 plans to change `advance()` to take a delta and pause effects, so the C16 driver depends on R3F 9's timestamp API (E23); [Layer 2] three.js maintainers advise recreating app-owned render targets after `webglcontextrestored`, which matches CEO S-RW31's composer remount.
+- TODOS: C18 probe (deferred, trigger chunk 36), E18 (#8/#9, before chunk 14) and `vp run doctor` neither block nor belong in Phase 2.
+- Distribution: no new artifact; binaries stay in chunk 14b. The mockup copy in `docs/designs/` is a 2.2 MB source image compressed on commit (CEO C17).
+
+Findings:
+- E19 [P1] (confidence: 9/10) src/spike/r3f/View.tsx:94 — `state.advance(t);` passes the rAF timestamp in milliseconds; R3F's `update()` in `frameloop="never"` mode sets `delta = timestamp - state.clock.elapsedTime` (`node_modules/@react-three/fiber/dist/events-9ce18a08.esm.js:17406`), while in its default mode `delta` comes from `clock.getDelta()` in seconds (`:17402`). Promoting the spike pattern (CEO C16 "the pattern ADR 0001 measured") would hand every `useFrame` callback in chunks 20-35 a delta 1000 times R3F's convention; the spike had no `useFrame` consumer, so it never showed. Factual correction, no behaviour choice: the driver passes seconds to `advance()`. Applied.
+- E20 [P2] (confidence: 8/10) same lines — in `frameloop="never"` the clock starts at 0 (`setFrameloop`, `:1128-1130`), so the first frame's delta is the time since page load, and a frame after a hidden tab or a long pause gets the whole gap. The plan does not say what scene time does across gaps. Pending (behaviour choice).
+- E21 [P2] (confidence: 8/10) docs/PLAN.md 04b Tasks — the minimal toast host shows "Restoring 3D view" but is not announced; design D22 (section 4b, "Alerts are announced: `aria-live="polite"` for info and waiting") covers it. Required by D22; applied.
+- E22 [P3] (confidence: 9/10) vite.config.ts:21-23 — `__THREE_VERSION__` and `__R3F_VERSION__` defines exist only for spike result files (declared in `src/spike/spike-globals.d.ts`), and the `preview.headers` comment cites the spike bench. Deleting the spike (CEO S-RW3) leaves dead defines and a stale comment. Covered by S-RW3's approved deletion; applied.
+- E23 [P3] (confidence: 6/10) Medium confidence, verify when upgrading R3F: R3F issue #2688 plans an `advance(delta)` API that pauses all effects under `frameloop="never"`. The C16 driver and E19's units would need a small change on that upgrade. Recorded in Section 4 trajectory notes; no plan change.
+
+
+
+Scope Challenge dispositions: E19 applied (factual correction); E20 approved (eng D2, A); E21 applied (design D22); E22 applied (CEO S-RW3); E23 recorded, no change. Scope Challenge result: scope accepted as-is (the smaller arrangement keeps the scope).
+
+### 1. Architecture review (eng, Phase 2)
+
+```text
+ src/main.tsx (StrictMode) ─► App
+   ├─ src/app/params.ts ─────────────► dev, webgl, calm, view, freeze, seed, source, scenario
+   ├─ src/app/store/index.ts ◄─ ui.ts (reducedMotion, quality tier, webgl, sceneError, safeArea)
+   │                         ◄─ chunk 11 data slices (separate files)
+   ├─ src/scene/SceneBoundary.tsx (outer; WebGLUnavailableError ─► D11 card; anything else ─► scene-error card)
+   │    └─ R3F <Canvas frameloop="never" gl={createRenderer}>      (R3F rethrows inner errors: esm.js:61)
+   │         ├─ createRenderer: new WebGLRenderer(...) in try/catch ─► WebGLUnavailableError   (E24)
+   │         ├─ scene graph (04a cube, 04c look, later chunks)
+   │         ├─ composer boundary (inner) ─► bloom off on error (S-RW31)
+   │         └─ PerfHud (dev=1)
+   ├─ src/scene/webgl.ts: pre-check, contextlost/restored, 10 s timeout, late restore ─► store.webgl
+   ├─ src/scene/loop/driver.ts: rAF, deadline pacing, calm, scene time (E20) ─► advance(seconds)
+   │    └─ src/scene/loop/monitor.ts ─► store quality tier ─► render.ts qualitySettings(tier)
+   ├─ src/scene/camera.ts (ortho + perspective ranges) ◄─ chunk 05 controls, cameraRig
+   └─ chunk 04b shell: GlassPanel, glassFill, safeArea, loader, ToastHost (aria-live)
+```
+
+Production failure per new path:
+
+| Path | Realistic failure | Handled? |
+|---|---|---|
+| Renderer creation | pre-check passes but `new WebGLRenderer` throws (GPU process blocklisted, context limit) | Gap: three throws a plain `Error` (`WebGLRenderer.js:421`) and R3F rethrows it like any scene error, so C23's boundary would show the scene-error card instead of the D11 card (E24) |
+| Driver and listeners under StrictMode | `vp dev` mounts, unmounts and remounts effects; a driver or listener without cleanup runs twice | Gap: two rAF loops double the frame rate in development only, and production-build e2e cannot see it (E25) |
+| Context restore | browser never restores | Y: 10 s timeout, late restore (S-RW10, S-RW33) |
+| Frame monitor | thresholds wrong for a display | Y: windowed mean, tests at 60-144 Hz (S-RW29) |
+| Ready signal | never fires | Y: loader ends on `unavailable`; webgl=0 specs wait on the card (S-RW19) |
+| Distribution | none: no new artifact; binaries in chunk 14b | n/a |
+
+- E24 [P2] (confidence: 9/10) node_modules/@react-three/fiber/dist/react-three-fiber.esm.js:61 — `if (error) throw error;` rethrows renderer-creation and scene errors alike, and `node_modules/three/src/renderers/WebGLRenderer.js:421` throws `new Error( 'THREE.WebGLRenderer: Error creating WebGL context.' )`. To meet C23's approved contract ("WebGL failures show the D11 card; scene errors show a separate card"), 04a creates the renderer through R3F's `gl` factory (`configuration.d.ts:11`, `(defaultProps) => Renderer`), catches construction errors and rethrows them as `WebGLUnavailableError`, the same class the pre-check throws. Covered by C23 (SQ11); applied.
+- E25 [P2] (confidence: 8/10) src/main.tsx:7 — `<StrictMode>` double-invokes effects in `vp dev`. The C16 driver, the frame monitor's visibility and resize listeners, the reduced-motion `matchMedia` listener, the ResizeObserver and the WebGL context listeners must each stop and remove themselves on cleanup, or development runs two loops and leaks listeners while every production-build test passes. Required for C16's 60 fps cap and the RW9 listener-leak contract; applied: each starter returns a stop function, and a unit test mounts, unmounts and remounts the driver and asserts one scheduled callback and baseline listener counts.
+- Coupling: chunk 11 now depends on 04a's store module (CEO S-RW1); slices in separate files keep 04b and 11 apart.
+- Security: no endpoints, auth or data access; the URL parameters are allowlisted (CEO S-RW2). No issues.
+
+Section 1 dispositions: E24 applied (covered by C23); E25 applied (required by C16 and RW9).
+
+
+### 2. Code quality review (eng, Phase 2)
+
+No issues found that need a decision. Notes for the implementer (no plan change):
+- Q-E2 [P3] (confidence: 8/10) src/spike/shared/bench.ts:169-184 — the spike injected `raf` and `cancelAnimationFrame` through `Pick<Window, "requestAnimationFrame" | "cancelAnimationFrame">`; the 04a driver and monitor reuse that seam (the production caller passes `window`), so their fake-clock tests need no global faking.
+- Q-E3 [P3] (confidence: 8/10) src/spike/spike-globals.d.ts — it declares the spike's window globals and is deleted with the spike (E22); the new `window.__sceneReady` and `window.__sceneDev` get one declaration file under `src/app/`.
+
+Shared-code candidates (rubric): (1) the URL contract keys in `scripts/shots.config.ts:18` (`viewUrl`) and the proposed `src/app/params.ts`: two callers in different runtimes (Node script, browser), savings under 10 lines [estimated]; not proposed, the CEO Q-3 note stands. (2) A fake-clock helper for the driver, monitor, WebGL and camera-rig tests: Vitest's fake timers plus the injected scheduler (Q-E2) cover it; no new helper. Diagram accuracy: the CEO Section 1 diagram and tasks T3/T4 match the D1 arrangement after the file-list update.
+
+### 3. Test review (eng, Phase 2)
+
+Framework: Vitest through Vite+ (`vp test`, `vite.config.ts` `test`) and Playwright (`playwright.config.ts`, production build, Chromium, Firefox and WebKit); no CLAUDE.md testing section exists. Existing tests on the paths this phase touches: `e2e/smoke.spec.ts` (title, heading, version meta, no console errors), `e2e/repeat.spec.ts` (two captures within 0.5%), the spike suites in `src/spike/**` (to be promoted or retired) and `src/styles/tokens.test.ts`.
+
+```text
+CODE PATHS (proposed)                                   USER FLOWS (proposed)
+[+] src/app/params.ts                                   [+] Open the app
+  ├── [PLANNED ★★★] each key, junk fallback, warning      ├── [PLANNED ★★★][→E2E] loader → first frame → scene (S-RW7)
+[+] src/scene/loop/driver.ts                              ├── [PLANNED ★★★][→E2E] webgl=0 → WebGL card, loader ends (S-RW19)
+  ├── [PLANNED ★★★] pacing 60-144 Hz, jitter, calm        └── [PLANNED ★★ ][→E2E] scene component throws → scene-error card (C23)
+  ├── [PLANNED ★★★] scene time: first 0, gap ≤ 0.1 s,   [+] Graphics context lost
+  │                  freeze 0, seconds (E19, E20)         ├── [PLANNED ★★★][→E2E] restore → toast (aria-live) → ok (C15, E21)
+  ├── [PLANNED ★★★] frame errors, 3-strike (C23)          └── [PLANNED ★★★][→E2E] no restore → card at 10 s (S-RW10)
+  └── [PLANNED ★★ ] mount/unmount/mount: one loop (E25) [+] Idle laptop tab
+[+] src/scene/loop/monitor.ts                             └── [PLANNED ★★ ][→E2E] ≤ 31 fps after 5 s idle (C16)
+  └── [PLANNED ★★★] drop, recover, paused, 90/144 Hz    [+] Slow GPU
+[+] src/scene/webgl.ts + SceneBoundary.tsx                └── [PLANNED ★★★][→E2E] simulateFrameInterval → glass solid,
+  ├── [PLANNED ★★★] restore, timeout, late restore                       bloom off, recover (Firefox) (S-RW11)
+  ├── [PLANNED ★★ ] gl factory rethrows WebGLUnavailableError (E24, gap filled)
+  └── [PLANNED ★★★] boundary: WebGL class → D11 card;   [+] Navigate the campus (05)
+                     other → scene-error card (C23)       ├── [PLANNED ★★★][→E2E] drag, wheel, keys, bounds, 3 engines
+[+] src/scene/render.ts                                   ├── [PLANNED ★★ ][→E2E] corner scroll vs centre; double-click home
+  ├── [PLANNED ★★ ] promoted settings + composer tests    ├── [PLANNED ★★ ][→E2E] reduced motion: instant cuts
+  └── [PLANNED ★★ ] qualitySettings(tier) table (D1)      └── [MANUAL] Safari trackpad pinch (PR note)
+[+] HUD draw-call split                                 [+] Shell (04b)
+  └── [PLANNED ★★ ] scene < 10, post shown, bloom off 0   ├── [PLANNED ★★★][→E2E] layout 1280x720 / 1920x1080, safeArea
+[+] 04b glassFill + contrast helper                       ├── [PLANNED ★★ ][→E2E] night contrast on titles and tab labels
+  └── [PLANNED ★★★] 12 inputs; night level on slots       └── [PLANNED ★★ ][→E2E] toast in an aria-live region (E21, gap filled)
+[+] 05 cameraRig + keys                                 [+] Look (04c)
+  ├── [PLANNED ★★★] glide timing, retarget, empty rect    └── [PLANNED ★★ ] look-dev baseline (e2e:local only); browser
+  └── [PLANNED ★★★] key map, focus gate, toggle mid-glide                 projects do not list the spec (S-RW24, gap filled)
+
+Legend: [PLANNED ★★★] behaviour + edge + error planned | [PLANNED ★★] happy path planned | [MANUAL] hand check
+        [→E2E] needs a browser test
+COVERAGE (planned): 34/35 paths have a planned test; 1 manual (Safari pinch). No path is built yet.
+GAPS FOUND AND FILLED: 3 (E24 gl factory test, E21 aria-live assertion, S-RW24 project list check)
+```
+
+Gaps and required proof (each covered by an existing approval, so added without a question):
+- E24: `src/scene/webgl.test.ts` stubs `WebGLRenderer` to throw and asserts the `gl` factory rethrows `WebGLUnavailableError`. Value: protects=a context-creation failure shows the D11 card; fails_when=the factory stops wrapping the constructor; why_new=the pre-check test does not reach construction; seam=none (the factory is the production path); no_claim=a real GPU-process failure (stubbed constructor; unit only).
+- E21: the 04b toast e2e asserts the "Restoring 3D view" text sits inside an `aria-live="polite"` region. Value: protects=design D22 announcement; fails_when=the live region is dropped; why_new=the toast e2e checks visibility only; seam=none; no_claim=screen-reader output (DOM attribute only).
+- S-RW24: `playwright test --list --project=chromium` (and firefox, webkit) does not list the look-dev spec. Value: protects=the baseline never runs where it has no snapshot; fails_when=`testIgnore` is dropped; why_new=no test reads the project config; seam=none; no_claim=CI skipping (covered by the `CI` guard).
+
+Regression rule: behaviour at risk and its approved contract, carried forward: the version meta tag stays asserted in `e2e/smoke.spec.ts`, and only the heading check goes (CEO S-RW18, intended change); `e2e/repeat.spec.ts` keeps its 0.5% bound on the home view and waits on the ready signal (CEO S-RW20); `01-scaffold.png` and `02-pipeline.png` regenerate with the new look under the section 4 protocol (intended). No new regression contract was needed.
+
+Tests made obsolete (proposal; each needs a retirement card when the spike is deleted): `src/spike/shared/bench.test.ts`, `fakeStore.test.ts`, `scene.test.ts`, `stats.test.ts` and `e2e/spike.spec.ts` (spike-only behaviour); `params.test.ts`, `render.test.ts` and `src/spike/r3f/View.test.ts` move with their code (CEO S-RW3).
+
+Test plan artifact: `~/.gstack/projects/bjorkgard-ai-center/nathanael-phase-2-scene-foundation-eng-review-test-plan-20261013-174235.md`.
+
+Section 3 dispositions: 3 gaps filled under existing approvals (E24, E21, S-RW24); no pending test decision.
+
+### 4. Performance review (eng, Phase 2)
+
+- P-E2 [P3] (confidence: 6/10) Medium confidence, verify this is actually an issue: src/spike/shared/render.ts:20 — `renderer: { antialias: true, ... }` alongside the composer's `multisampling: 4` (`:24`). While bloom is on, the default framebuffer's multisampled buffer receives only the composer's final pass; at 2880x1800 it costs about 83 MB [estimated: 2880 x 1800 x 4 bytes x 4 samples], notable on an 8 GB M1 Air. Turning `antialias` off would drop anti-aliasing in the bloom-off tier unless the composer stays on. Owner: chunk 36, which measures memory and tiers on the M1 Air-class Mac; no change now.
+- Note: the monitor's 0.5 s window and the driver keep their samples in typed arrays sized up front, so nothing is allocated per frame (the spike's P-E1 rule, `src/spike/shared/bench.ts`). Implementation note, no plan change.
+- No database, queries, caches or jobs in Phase 2. `safeArea` writes are capped at one per frame (CEO S-RW36).
+
+Section 4 dispositions: P-E2 to chunk 36 (measurement owner); no decision needed now.
+
+### Outside voice (eng, Phase 2)
+
+`codex_reviews` is disabled (stored config). Recorded as `outside_status: disabled` (review log, commit `d428146`). No external or native challenge ran.
+
+### TODOS.md (eng, Phase 2)
+
+No TODO proposals. E23 (R3F's planned `advance(delta)` API) is a note for the R3F 10 migration already listed in ADR 0001's consequences; P-E2 belongs to chunk 36.
+
+### Decision ledger (eng review, Phase 2)
+
+### E20: Scene time across gaps
+Finding: E20 [P2] (confidence: 8/10), `node_modules/@react-three/fiber/dist/events-9ce18a08.esm.js:1128-1130, 17406` and the 04a render loop (CEO C16), reviewer Claude (in-host)
+Plan baseline: CEO C16 (SQ3): R3F `frameloop="never"`, one rAF driver calling `advance()`, 60 fps cap, 30 fps calm mode, paused while the tab is hidden; `freeze=1` stops the scene clock (section 4, CEO S-RW7). Scene time across gaps is unspecified. E19 (applied): `advance()` receives seconds.
+Runtime evidence: R3F sets `clock.elapsedTime = 0` when the frameloop is `never` and then uses `delta = timestamp - clock.elapsedTime` on each `advance()`; so the first frame's delta is whatever scene time is passed, and a frame after a hidden tab carries the whole gap. No `useFrame` consumer exists yet (the spike had none).
+Comparison grid:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Units passed to `advance()` | E19 (applied, factual) | seconds | seconds | seconds | seconds |
+| Scene clock origin | pending | unspecified (R3F counts from 0, the caller picks the timestamp) | 0 at the first rendered frame, so the first delta is 0 | 0 at the first rendered frame | unspecified |
+| Gap after a hidden tab, long frame or GC pause | pending | the whole gap reaches `useFrame` | at most 0.1 s per frame [estimated]; animation pauses across the gap | the whole gap (real time) | each animation chunk decides |
+| `freeze=1` | section 4, S-RW7 (approved, required) | clock stopped | delta 0 on every render | delta 0 | delta 0 |
+| Store and replay time (chunks 11-12) | D4, chunk 12 (approved) | separate | unchanged: data uses event time, not scene time | unchanged | unchanged |
+| Tests | pending | none | fake-clock driver tests: first delta 0; 60 s hidden gives at most 0.1 s; freeze gives 0 | fake-clock: first delta 0; gap passes through | none |
+| Effort | - | - | S (human ~30 min / CC ~3 min) | S (human ~20 min / CC ~2 min) | S (zero now) |
+
+Question D2:
+D2 — E20: What should scene time do across gaps such as a hidden tab or a long pause?
+Project/branch/task: Synapse Horizon, branch phase-2-scene-foundation, chunk 04a render driver (CEO C16).
+ELI10: With the new render loop, our driver decides what time the 3D scene sees each frame. Animations move by "time since the last frame". Two moments are undefined: the very first frame, where R3F would see all the seconds since the page opened, and the first frame after the tab was hidden for, say, ten minutes. If that whole gap reaches the animations, a packet or cart jumps across the campus in one frame. Option A starts scene time at zero and caps each step at a tenth of a second, so animations pause while you are away and resume smoothly. Live data is not affected: racks and agents follow the store's event times, not scene time.
+Stakes if we pick wrong: every animated chunk from 20 to 35 either jumps after a hidden tab, or each one has to remember its own guard and some will not.
+Recommendation: A because one cap in the driver protects every later animation and turns the first frame and hidden-tab cases into tested behaviour (edge cases over speed, explicit over clever).
+Completeness: A=9/10, B=6/10, C=4/10
+Net: one tested guard for all animations (A), real time with jumps (B), or no rule (C).
+Header: Scene time
+Options:
+A) Start at 0, cap each step (recommended)
+The driver owns scene time: it starts at 0 on the first rendered frame, advances by the real interval capped at 0.1 s per frame [estimated], and stays still under `freeze=1`; it passes seconds to `advance()`. Fake-clock tests: first delta 0, a 60 s hidden gap gives at most 0.1 s, freeze gives 0. Effort S (human ~30 min / CC ~3 min), risk low. ✅ No animation can jump across the campus after a hidden tab or a long pause ✅ The first frame and frozen frames are defined and tested once, for every later chunk ❌ Ambient animation pauses while the tab is hidden instead of catching up, which differs from wall-clock time
+B) Real time from the first frame
+Scene time starts at 0 on the first rendered frame and then follows real time with no cap; gaps pass straight to `useFrame`. Fake-clock tests for the first frame and pass-through. Effort S (human ~20 min / CC ~2 min), risk medium. ✅ Scene time always equals elapsed wall-clock time since the first frame ✅ Slightly less driver code than A ❌ After a hidden tab every animation gets the whole gap in one frame unless its own code guards against it
+C) Leave it to each animation chunk
+No rule in 04a; chunks 20-35 handle first-frame and gap deltas themselves. Effort S (zero now), risk high. ✅ Nothing extra to build or test in 04a ✅ Each animation can choose its own behaviour ❌ Repeats the same guard in a dozen chunks, and any that forget it jump after a hidden tab
+
+State: approved
+Actual answer: A) Start at 0, cap each step (recommended), eng D2, 2026-10-13
+Accepted scope: the 04a driver owns scene time: 0 at the first rendered frame, advances by the real interval capped at 0.1 s per frame [estimated], still under `freeze=1`, passed to `advance()` in seconds; fake-clock tests (first delta 0, a 60 s hidden gap gives at most 0.1 s, freeze gives 0); store and replay time unchanged.
+History: none
+
+Approval readiness: PASS. Checked: E20 (eng D2, A). Structure (eng D1, B) is a scope selector, not a remedy approval. Required work applied without a new choice, each citing its approved contract: E19 (factual: R3F's seconds convention, `events-9ce18a08.esm.js:17402-17406`), E21 (design D22), E22 (CEO S-RW3), E24 (CEO C23, SQ11), E25 (CEO C16 and RW9), and the Section 3 test gaps (E24, E21, S-RW24 proofs). No unanswered remedy is in the plan.
+
+
+### NOT in scope (eng, Phase 2)
+
+- Further splitting 04a: not proposed; its estimate (about 95 CC-minutes) is close to chunk 03's, which shipped as one PR (eng D1 record).
+- Turning off renderer `antialias` while the composer runs (P-E2): left to chunk 36, which measures memory on the M1 Air-class Mac.
+- A shared URL-contract module for `params.ts` and `shots.config.ts`: not proposed (two callers in different runtimes, savings under 10 lines).
+- Adapting to R3F's planned `advance(delta)` API (E23): belongs to the R3F 10 migration listed in ADR 0001.
+- Codex outside voice: disabled by config.
+
+### What already exists (eng, Phase 2)
+
+- R3F `gl` factory (`configuration.d.ts:11`): reused for E24 instead of a wrapper component.
+- R3F `advance()` under `frameloop="never"` (`events-9ce18a08.esm.js:17498`): reused by the driver with seconds (E19, E20).
+- The spike's boundary-method tests (`src/spike/r3f/View.test.ts:4-21`) and injected scheduler (`src/spike/shared/bench.ts:169-184`): reused for the C23 and driver tests; no DOM library or new test dependency is needed.
+- Playwright `--list` (`playwright test --help`): reused for the S-RW24 check.
+
+### Failure modes (eng, Phase 2)
+
+```text
+  NEW PATH                 | REALISTIC FAILURE                                    | TEST                   | HANDLING                          | USER SEES
+  -------------------------|------------------------------------------------------|------------------------|-----------------------------------|------------------------------
+  renderer creation (E24)  | context creation fails after the pre-check passed    | unit (stubbed ctor)    | gl factory -> WebGLUnavailable    | D11 WebGL card
+  driver under StrictMode  | effect runs twice in vp dev, two loops               | unit (remount)         | stop functions as cleanup         | none needed
+  scene time (E19, E20)    | ms passed to advance(); hidden-tab gap jumps          | unit (fake clock)      | seconds; origin 0; 0.1 s cap      | smooth resume
+  restore toast (E21)      | toast not announced                                  | e2e (aria-live attr)   | polite live region                | announced toast
+  look-dev spec            | browser projects run it without a snapshot           | --list check           | testIgnore                        | none needed
+  composer memory (P-E2)   | MSAA default framebuffer unused while bloom is on    | chunk 36 measurement   | quality tier, pixel ratio         | possible memory pressure
+```
+Critical gaps: 0 (no row lacks both a test and handling while failing silently).
+
+### Worktree parallelization strategy (eng, Phase 2)
+
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| 04a scene core | `src/app/`, `src/scene/`, `e2e/`, `scripts/`, `vite.config.ts`, `playwright.config.ts`, package files | — |
+| 04b UI shell | `src/dashboard/`, `src/styles/`, `src/app/store/` (ui slice), `e2e/`, `scripts/shots.config.ts` | 04a |
+| 04c look | `src/scene/` (lights, materials, look-dev), `e2e/`, `playwright.config.ts`, `scripts/shots.config.ts`, `docs/designs/` | 04a |
+| 05 camera | `src/scene/` (controls, cameraRig, keys), `src/dashboard/` (dev menu), `e2e/` | 04b |
+| 11 data track | `src/data/`, `src/app/store/` (new slice files) | 04a |
+
+Lane A: 04a (shared foundations, sequential first). Lane B: 04b → 05 (`src/dashboard/`, then camera). Lane C: 04c (`src/scene/` look files). Lane D: chunk 11 (`src/data/`). Execution order: build 04a and merge it; then launch B, C and D in parallel worktrees; merge C before 05 starts if 05 touches `src/scene/` files near the look. Conflict flags: `scripts/shots.config.ts` and `e2e/` receive appends from B and C (trivial merges); `playwright.config.ts` is edited by 04a (CI WebGL options) and 04c (look-dev project), so C starts after 04a merges; `src/app/store/` takes one slice file per lane.
+
+## Implementation Tasks (eng review, Phase 2)
+
+Synthesized from this review's findings; they extend the CEO Phase 2 tasks T1-T8 rather than replace them. Effort ratios assumed: features ~30x, tests ~50x, config ~30x.
+
+- [ ] **T1 (P1, human: ~1h / CC: ~5min)** — 04a render loop — Pass scene time in seconds; start at 0; cap each step at 0.1 s; still under freeze
+  - Surfaced by: Scope Challenge — E19; eng D2 (E20)
+  - Files: src/scene/loop/driver.ts, src/scene/loop/driver.test.ts
+  - Verify: `vp test` (first delta 0, 60 s hidden gap gives at most 0.1 s, freeze gives 0, `advance()` receives seconds)
+- [ ] **T2 (P2, human: ~1h / CC: ~5min)** — 04a WebGL — Create the renderer through the `gl` factory and rethrow `WebGLUnavailableError`
+  - Surfaced by: Architecture — E24
+  - Files: src/scene/webgl.ts, src/scene/webgl.test.ts, src/scene/SceneCanvas.tsx, src/scene/SceneBoundary.tsx
+  - Verify: `vp test` stubbed-constructor test; e2e `?webgl=0` still shows the D11 card
+- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — 04a lifecycle — Stop functions for the driver and every listener; StrictMode remount test
+  - Surfaced by: Architecture — E25
+  - Files: src/scene/loop/driver.ts, src/scene/loop/monitor.ts, src/scene/webgl.ts, src/app/store/ui.ts, src/scene/loop/driver.test.ts
+  - Verify: `vp test` (mount, unmount, remount: one scheduled callback, baseline listener counts)
+- [ ] **T4 (P2, human: ~30min / CC: ~3min)** — 04a structure — Apply the smaller arrangement (quality tier in the store and `render.ts`; `webgl.ts` plus `SceneBoundary.tsx`)
+  - Surfaced by: Scope Challenge — eng D1
+  - Files: src/scene/render.ts, src/app/store/ui.ts, src/scene/webgl.ts, src/scene/SceneBoundary.tsx
+  - Verify: `vp check`; no `src/scene/quality.ts` or `src/scene/webgl/` directory exists
+- [ ] **T5 (P2, human: ~30min / CC: ~3min)** — 04b shell — Restore toast in an `aria-live="polite"` region, asserted in e2e
+  - Surfaced by: Scope Challenge — E21; Test review gap
+  - Files: src/dashboard/ToastHost.tsx, e2e/shell.spec.ts
+  - Verify: `vp run e2e:local` toast spec checks the live region
+- [ ] **T6 (P3, human: ~15min / CC: ~2min)** — 04a cleanup — Remove the spike-only version defines, reword the preview-headers comment, add one globals declaration
+  - Surfaced by: Scope Challenge — E22; Code quality — Q-E3
+  - Files: vite.config.ts, src/app/globals.d.ts, src/spike/spike-globals.d.ts (deleted)
+  - Verify: `vp check`; `grep -n "__THREE_VERSION__\|__R3F_VERSION__" -r src vite.config.ts` finds nothing
+- [ ] **T7 (P3, human: ~15min / CC: ~2min)** — 04c tests — Check the browser projects do not list the look-dev spec
+  - Surfaced by: Test review — S-RW24 gap
+  - Files: playwright.config.ts
+  - Verify: `playwright test --list --project=chromium --project=firefox --project=webkit` output has no look-dev spec
+
+_No new tasks from Performance review (P-E2 is owned by chunk 36)._
+
+### Reality rows (eng, Phase 2)
+
+- REALITY: premise-table finding unverified=3 (R3F issue #2688's `advance(delta)` change has not been confirmed as shipped; the 83 MB MSAA figure is an estimate; `WEBGL_lose_context` restore in Playwright's WebKit is unprobed) docs/PLAN.md:455
+- REALITY: already-done pass `git log origin/main -- src/spike` shows only `d428146` (#11, the spike); no scene, shell or camera code on main docs/PLAN.md:455
+- REALITY: surface-check pass R3F `gl` factory type (`node_modules/@react-three/fiber/dist/declarations/src/core/configuration.d.ts:11`), `advance()` (`events-9ce18a08.esm.js:17498`), the rethrow (`react-three-fiber.esm.js:61`), three's context error (`WebGLRenderer.js:421`) and `playwright test --list` (`playwright test --help`, line 43) all exist as the plan uses them docs/PLAN.md:455
+- REALITY: binding-decisions pass CEO C15-C23 and S-RW1 to S-RW40 honoured; `gstack-decision-search --scope branch` returns the Phase 2 CEO record; eng D1 and D2 logged docs/PLAN.md:34
+- REALITY: numbers finding 04a effort about 95 CC-minutes, 43 files, 83 MB and the 0.1 s cap are [estimated]; R3F and three line numbers are [measured: source read] docs/PLAN.md:455
+- REALITY: deferred-asks pass no linked issue; nothing requested for Phase 2 is left out; C18 stays deferred with its trigger TODOS.md:19
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; Phase 2 is four chunk PRs (04a, 04b, 04c, 05) plus this branch's review-docs PR (D18) docs/PLAN.md:31
+
+PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=3 verdict=complete
+
+### Unresolved decisions (eng, Phase 2)
+
+None in this review. Carried from the CEO review and owned by `/plan-design-review`: UI-1 scene-error card copy, UI-2 canvas focus ring, UI-3 loader fade. Open verifications (not decisions): WebGL2 in headless CI browsers (S-RW30); `WEBGL_lose_context` restore in Playwright's WebKit; Safari trackpad pinch; R3F's `advance()` API on the next major upgrade (E23).
+
+### Completion summary (eng, Phase 2)
+
+- Step 0: Scope Challenge — scope accepted as-is (smaller arrangement, eng D1)
+- Reality rows: 7/7 applicable rows emitted (`PLAN_REALITY` complete), 3 unverified premises
+- Architecture Review: 2 issues found (E24, E25)
+- Code Quality Review: 0 issues found (2 P3 notes)
+- Test Review: diagram produced, 3 gaps identified (all filled under existing approvals)
+- Performance Review: 1 issue found (P-E2, owned by chunk 36)
+- Scope Challenge findings, reported separately: 5 (E19-E23); E19, E21, E22 applied, E20 decided (eng D2), E23 note
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to user
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (config)
+- Parallelization: 4 lanes, 3 parallel / 1 sequential first (04a)
+- Lake Score: N/A (eng D2 scored 9/6/4; no 10/10 option offered)
+
+
+## Design review record: Phase 2 (/plan-design-review, 2026-10-13)
+
+Target: `docs/PLAN.md` Phase 2 (chunks 04a, 04b, 04c, 05), branch `phase-2-scene-foundation`, after the Phase 2 CEO and eng reviews. Reviewer: Claude (in-host), plus one independent Claude subagent (Codex disabled). Question numbers D1, D2... are this review's own sequence; findings are numbered DR1, DR2...
+
+System audit: no DESIGN.md (the 2026-10-12 design review deferred one; tokens live in section 4b and `src/styles/tokens.css`); Phase 2 UI scope: canvas, loader, WebGL card, scene-error card (C23), restore toast and toast host, two-layer GlassPanel (C21), empty shell slots, keyboard-focusable canvas, and dev-only HUD, dev menu and look-dev view. Prior design review on `main` (2026-10-12): 4/10 to 7/10 overall; weakest remaining passes were design system (8), accessibility (8) and AI slop (7).
+
+Step 0: initial rating 6/10 (states named, but loader, card, toast, glass and focus details missing). Focus: all 7 passes with mockups (D1).
+
+### Approved Mockups
+
+| Screen/Section | Mockup Path | Direction | Notes |
+|----------------|-------------|-----------|-------|
+| Scene-error card (UI-1) | /Users/nathanael/.gstack/projects/bjorkgard-ai-center/designs/scene-error-card-20261013/variant-C.png | compact card: inline red square icon, title, one body line, outlined cyan Reload, Copy error details, Mono error line with expand chevron | not adopted from the image: mono body text (D16 Sans), the red-highlighted Errors tab, the "UTC" clock (D15 local time); canvas size and card width in the image are not to scale |
+| Shell, restore toast and canvas focus (UI-2) | /Users/nathanael/.gstack/projects/bjorkgard-ai-center/designs/shell-focus-toast-20261013/variant-C.png | four cyan corner brackets frame the visible canvas area on keyboard focus; restore toast bottom-right above the tab strip with a small cyan spinner | the job tracker in the image is a vertical list; section 4b's layout and the mockup variant-B-2 still govern slot shapes |
+
+Mockup generation: 6 images requested, 5 saved (one timed out); the vision check flagged every image for canvas size and card width, which the user was told before choosing.
+
+### Outside voice (design, Phase 2)
+
+CLAUDE SUBAGENT (design completeness) [single-model], 13 findings, folded into the passes below as DR1-DR13. Codex disabled (`codex_reviews`), recorded `outside_status: disabled`.
+
+### Pending findings (each needs its own decision)
+
+- DR1 [critical] Non-success layering: what the canvas area shows while loading, restoring, after a scene error or when WebGL is unavailable, and whether the shell sits above the loader (section 4b D10/D11; chunk 04a). Pass 1.
+- DR2 [high] Loader indicator and exit: the "progress line" has nothing to measure; UI-3 fade (D10; chunk 04b). Pass 2.
+- DR3 [critical] WebGL card anatomy and placement: D11 says "full-viewport glass card" while panels keep working (section 4b D11). Pass 2.
+- DR4 [high] WebGL card wording after the 10 s restore timeout, when the browser did start 3D (S-RW10). Pass 2.
+- DR5 [medium] Precedence when several failure states apply. Pass 2.
+- DR6 [high] No message when the 3D view recovers (journey ends silently). Pass 3.
+- DR7 [high] Glass blur amount and fallback transition (design D18). Pass 5.
+- DR8 [medium] No secondary or muted text colour token. Pass 5.
+- DR9 [medium] Toast anatomy values. Pass 5.
+- DR10 [medium] Empty shell slot sizes. Pass 5.
+- DR11 [medium] Dev-only surfaces (HUD, dev menu, right-panel toggle, look-dev framing) unspecified. Pass 7.
+- DR12 [high] The canvas has no place in the D22 tab order. Pass 6.
+- DR13 [medium] Camera key step sizes and held-key behaviour. Pass 6.
+- DR14 [high] Both cards are silent to screen readers; focus and "Copy error details" content unspecified. Pass 6.
+- DR15 [medium] Static canvas `aria-label` copy. Pass 6.
+
+
+### Pass 1: Information architecture (Phase 2) — 7/10 → 9/10
+
+```text
+  LAYER STACK (top to bottom)                 WHAT THE USER SEES FIRST, SECOND, THIRD
+  5  toast host (bottom-right)                1  a card, when one is showing (WebGL or scene error)
+  4  WebGL card / scene-error card            2  the shell: top bar, KPI tiles, job tracker, tab strip
+  3  shell: top bar, slots, tab strip         3  the 3D area: loader, campus, or dimmed last frame
+  2  loader (3D area only)
+  1  3D area: canvas | --color-bg | last frame under a 60% --color-bg overlay (scene error)
+```
+
+- DR1 resolved: D5 answer "1A Dim last frame, panels early (recommended)", applied to chunk 04b. Re-rated 9: every Phase 2 state now has a defined stack; the remaining gap is the right panel's content order, which belongs to chunk 29.
+
+
+### Pass 2: Interaction state coverage (Phase 2) — 5/10 → 9/10
+
+```text
+  FEATURE          | LOADING                         | EMPTY                  | ERROR                                        | SUCCESS            | PARTIAL
+  3D area          | loader: 300 ms delay, sweep     | test cube (04a)        | WebGL card (start / lost wording);           | campus renders     | bloom off, solid glass
+                   | line, fade out (DR2)            |                        | scene-error card over dimmed last frame      |                    | (frame monitor)
+  WebGL card       | -                               | -                      | DR3 layout, DR4 wording; Reload; help link   | late restore hides | -
+  Scene-error card | -                               | -                      | approved mockup (UI-1); Reload; copy details | -                  | -
+  Restore toast    | spinner while restoring         | -                      | hidden while a card shows (DR5)              | clears on ok       | -
+  Shell slots      | visible from first paint (DR1)  | placeholder titles     | -                                            | glass slots        | solid fallback
+```
+
+- DR2 resolved: D6 "2A Moving line, delay, fade (recommended)" (also settles UI-3). DR3 resolved: D7 "3A Same layout, in 3D area (recommended)", reopening design D11's "full-viewport" wording on new evidence (D11's own "panels still render" and the approved card layout); section 4b D11 annotated. DR4 resolved: D8 "4A Separate, accurate wording (recommended)". DR5 resolved: D9 "5A Fixed severity order (recommended)". Re-rated 9: the remaining gap is the recovery message (Pass 3).
+
+
+### Pass 3: User journey and emotional arc (Phase 2) — 7/10 → 9/10
+
+```text
+  STEP | USER DOES                                  | USER FEELS             | PLAN SPECIFIES
+  -----|--------------------------------------------|------------------------|--------------------------------------------------
+  1    | Opens the app                              | curious                | panels from first paint; loader only after 300 ms (DR1, DR2)
+  2    | Sees the scene arrive                      | "it's alive"           | loader fades over --dur-ui (DR2); look-dev-tuned look (04c)
+  3    | Tabs into the 3D view, uses arrow keys     | in control             | corner brackets on keyboard focus (UI-2); camera keys (C19)
+  4    | Leaves the tab open all afternoon          | unbothered             | 30 fps calm mode (C16); no jump on return (E20)
+  5    | GPU hiccup: toast "Restoring 3D view"      | slight worry           | sticky toast while restoring (S-RW13)
+  6    | View comes back                            | relieved, reassured    | "3D view restored" toast, 6 s (DR6)
+  7    | View does not come back                    | let down, but informed | "lost its graphics connection" card + Reload (DR4)
+  8    | A bug stops the scene                      | annoyed, not lost      | dimmed last frame, scene-error card, Copy error details (UI-1, DR1)
+```
+Time horizons: 5 s visceral (steps 1-2), 5 min behavioural (step 3), long-term reflective (steps 4-8: the failure paths are honest and recover).
+
+- DR6 resolved: D10 "6A Show \"3D view restored\" (recommended)", applied to chunk 04b. Re-rated 9: the remaining gap is the first visit without data, which belongs to the data chunks (D9 empty states).
+
+
+### Pass 4: AI slop risk (Phase 2) — 7/10 → 7/10
+
+Classifier: OPERATE (app UI, a dashboard). Hard rejections: none (the shell is a fixed layout, not stacked cards; the KPI tiles and error cards are the only cards and each carries data or an action). Litmus, from the approved mockups and plan text: brand in first screen YES (wordmark top-left); one visual anchor YES (the 3D campus); scannable by titles YES (slot titles); one job per section YES; cards necessary YES (KPI numbers, error actions); motion helps YES (loader fade, calm mode, no count-ups); premium without decorative shadows YES (glass border only, no shadows specified). No new issue. The score stays 7 because of the accepted dark neon-glass look (design D14, D18; earlier design review), a tradeoff the user already chose.
+
+### Pass 5: Design system alignment (Phase 2) — 5/10 → 8/10
+
+- DR7 resolved: D11 "7A 16 px blur, fade switch (recommended)", applied to section 4b "Glass panel" and chunk 04b.
+- DR8 resolved: D12 "8A Two tinted greys (recommended)", applied to chunk 04b; contrast measured after the answer at 7.3:1 and 5.4:1 against the true night-glass composite `#1B1E25` (the question quoted 7.8:1 and 5.8:1 against an approximate `#141720`; both pass either way).
+- DR9 resolved: D13 "9A Fixed 320 px, tokens (recommended)", applied to section 4b D12 and chunk 04b.
+- DR10 resolved: D14 "10A Fixed, from the mockup (recommended)", applied to section 4b D5 and chunk 04b.
+- DESIGN.md: still absent; the 2026-10-12 design review deferred a full DESIGN.md (tokens live in section 4b), so no new question. Re-rated 8: the remaining gap is the missing DESIGN.md file itself.
+
+
+### Pass 6: Responsive and accessibility (Phase 2) — 6/10 → 9/10
+
+- Responsive: desktop only from 1280x720 (D1, section 4b); windows below it frame targets in the full canvas (CEO S-RW38). No new issue.
+- DR12 resolved: D15 "12A After the top bar (recommended)", applied to section 4b D22 and chunk 05.
+- DR13 resolved: D16 "13A Relative steps, smooth hold (recommended)", applied to chunk 05.
+- DR14 resolved: D17 "14A Announce, keep focus (recommended)", applied to chunks 04a and 04b.
+- DR15 resolved: D18 "15A Short name + key description (recommended)", applied to chunks 05 and 24.
+- Carried, no question: the corner brackets show on keyboard focus only (`:focus-visible`), which is the meaning of "keyboard focus" in the approved UI-2 direction.
+Re-rated 9: the remaining gap is screen-reader testing on real assistive tech, which stays with chunk 37's audit.
+
+
+### Pass 7: Unresolved design decisions (Phase 2)
+
+```text
+  DECISION NEEDED                                  | RESOLUTION
+  -------------------------------------------------|-------------------------------------------------------------
+  UI-1 scene-error card copy (CEO)                 | approved mockup C (D2 board, D3 confirmation)
+  UI-2 focus ring on the full-viewport canvas (CEO)| corner brackets on :focus-visible (D2 board, D3)
+  UI-3 loader fade (CEO)                           | D6 (DR2): sweep line, 300 ms delay, fade over --dur-ui
+  DR11 dev-only screens                            | D19 "11A Fixed spots and framing (recommended)"
+  DR16 Safari has no hardware-acceleration switch  | D20 "16A Advice per browser (recommended)"
+```
+
+DR16 was found in this pass: it follows from the DR3 wording and the supported browsers (D1); the Safari claim is unverified in this session. 5 resolved, 0 deferred.
+
+
+Post-pass mockups: D21 answer "Keep the current mockups (recommended)"; the two approved images stay the visual reference and the written spec governs the values changed in the passes.
+
+### Approval reconciliation (design, Phase 2)
+
+Every applied fix has its own answer: UI-1 and UI-2 (D2 board submissions, D3 confirmation), DR1 (D5), DR2 and UI-3 (D6), DR3 (D7, reopening design D11 on new evidence), DR4 (D8), DR5 (D9), DR6 (D10), DR7 (D11), DR8 (D12), DR9 (D13), DR10 (D14), DR12 (D15), DR13 (D16), DR14 (D17), DR15 (D18), DR11 (D19), DR16 (D20). Carried without a new question: the brackets show on `:focus-visible` (the "keyboard focus" wording confirmed in D3). Pass 4 made no change. Setup and navigation answers (D1, D4, D21) approved no fix.
+
+### NOT in scope (design, Phase 2)
+
+- A full DESIGN.md: deferred by the 2026-10-12 design review (tokens live in section 4b); `/design-consultation` can create one later.
+- Regenerated mockups after the passes: declined (D21).
+- Screen-reader testing on real assistive technology: stays with chunk 37's audit.
+- The right panel's content order: chunk 29.
+- First-visit empty-data states: the data chunks (design D9).
+- Revisiting the dark neon-glass look: an accepted tradeoff (design D14, D18).
+
+### What already exists (design, Phase 2)
+
+`src/styles/tokens.css` (type, spacing, radius, status palette), section 4b decisions D5-D26, the approved mockup variant-B-2, the two Phase 2 mockups above, the D11 card text and the D12 toast placement and timing. All Phase 2 values reuse these tokens; the two new tokens are the quiet text greys (DR8).
+
+### TODOS.md (design, Phase 2)
+
+No TODO proposals: no decision was deferred.
+
+## Implementation Tasks (design review, Phase 2)
+
+Synthesized from this review's findings; they extend the CEO tasks T1-T8 and the eng tasks T1-T7. Effort ratios assumed: features ~30x, tests ~50x.
+
+- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — 04b loader — Indeterminate sweep line, 300 ms delay, fade over --dur-ui; loader over the 3D area only; non-drawing backgrounds and the dimmed last frame
+  - Surfaced by: Pass 1 — DR1; Pass 2 — DR2 (UI-3)
+  - Files: src/dashboard/shell/Loader.tsx, src/dashboard/shell/Shell.tsx, src/scene/SceneBoundary.tsx, e2e/shell.spec.ts
+  - Verify: e2e: shell visible before the first frame; no loader on a start under 300 ms (fake timer); reduced motion cuts instantly
+- [ ] **T2 (P1, human: ~3h / CC: ~15min)** — 04a/04b cards — One card component for WebGL and scene errors: approved layout, safe-area placement, start / lost / Safari wording, precedence, role="alert", Copy error details payload
+  - Surfaced by: Pass 2 — UI-1, DR3, DR4, DR5; Pass 6 — DR14; Pass 7 — DR16
+  - Files: src/scene/SceneBoundary.tsx, src/dashboard/ErrorCard.tsx, src/dashboard/ErrorCard.test.ts, src/scene/webgl.ts
+  - Verify: unit tests per wording branch (start, lost, Safari/unknown) and per precedence pair; e2e `?webgl=0` card centred in the safe area with panels usable; clipboard contains message, `[scene]` lines, version, user agent
+- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — 04b toasts — 320 px token-based toast anatomy and the "3D view restored" toast
+  - Surfaced by: Pass 3 — DR6; Pass 5 — DR9
+  - Files: src/dashboard/ToastHost.tsx, e2e/shell.spec.ts
+  - Verify: e2e: after `restoreContext()` the restored toast shows for 6 s in the polite live region; stacked toasts share one left edge
+- [ ] **T4 (P1, human: ~2h / CC: ~10min)** — 04b design system — Glass blur and fallback crossfade, quiet text tokens, slot sizes, placeholder titles
+  - Surfaced by: Pass 5 — DR7, DR8, DR10
+  - Files: src/styles/tokens.css, src/styles/tokens.test.ts, src/dashboard/GlassPanel.tsx, src/dashboard/shell/Shell.tsx
+  - Verify: tokens test asserts `--color-text-2`, `--color-text-3` and the glass values; e2e slot sizes at 1280x720 and 1920x1080; Firefox fallback crossfades with tint and border kept
+- [ ] **T5 (P1, human: ~2h / CC: ~10min)** — 05 keyboard camera — Corner brackets on `:focus-visible`, Tab position after the top bar, label and key-help description, DR13 step sizes
+  - Surfaced by: Pass 6 — UI-2, DR12, DR13, DR15
+  - Files: src/scene/controls.tsx, src/scene/keys.ts, src/scene/keys.test.ts, src/dashboard/shell/FocusBrackets.tsx, e2e/camera.spec.ts
+  - Verify: e2e: one Tab from the top bar focuses the canvas and shows brackets; mouse click shows none; one arrow press pans 10% of the short side
+- [ ] **T6 (P3, human: ~1h / CC: ~5min)** — dev surfaces — HUD position and style, dev menu under it, right-panel toggle, look-dev framing
+  - Surfaced by: Pass 7 — DR11
+  - Files: src/scene/PerfHud.tsx, src/dashboard/DevMenu.tsx, src/scene/LookDev.tsx
+  - Verify: `04a-core.png` shows the HUD top-right without covering a slot; look-dev baseline stable across two runs
+
+_No new tasks from Pass 4 (AI slop)._
+
+### Completion summary (design, Phase 2)
+
+```text
+  +====================================================================+
+  |         DESIGN PLAN REVIEW — COMPLETION SUMMARY                    |
+  +====================================================================+
+  | System Audit         | no DESIGN.md (deferred earlier); Phase 2 UI: |
+  |                      | canvas, loader, 2 cards, toasts, glass,     |
+  |                      | shell slots, focusable canvas, dev screens  |
+  | Step 0               | 6/10; all 7 passes with mockups (D1)        |
+  | Pass 1  (Info Arch)  | 7/10 → 9/10 after fixes                     |
+  | Pass 2  (States)     | 5/10 → 9/10 after fixes                     |
+  | Pass 3  (Journey)    | 7/10 → 9/10 after fixes                     |
+  | Pass 4  (AI Slop)    | 7/10 → 7/10 after fixes                     |
+  | Pass 5  (Design Sys) | 5/10 → 8/10 after fixes                     |
+  | Pass 6  (Responsive) | 6/10 → 9/10 after fixes                     |
+  | Pass 7  (Decisions)  | 5 resolved, 0 deferred                      |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (6 items)                           |
+  | What already exists  | written                                     |
+  | TODOS.md updates     | 0 items proposed                            |
+  | Approved Mockups     | 5 generated (6 requested), 2 approved       |
+  | Decisions made       | 18 added to plan                            |
+  | Decisions deferred   | 0                                           |
+  | Overall design score | 5/10 → 7/10                                 |
+  +====================================================================+
+```
+
+Overall score basis: the lowest rated pass, before (Passes 2 and 5 at 5) and after (Pass 4 at 7). Pass 4 stays at 7 because of the accepted dark neon-glass look (design D14, D18), not an open finding; every other pass is 8 or more.
+
+### Unresolved decisions (design, Phase 2)
+
+None.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 2 | CLEAR | mode: HOLD_SCOPE, 0 critical gaps (Phase 1, chunk 03, 2026-10-13) |
-| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` | Independent 2nd opinion | 4 | disabled | `codex_reviews` disabled; no completed external review |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 4 | ISSUES OPEN | 5 issues, 0 critical gaps (this run: Phase 1, chunk 03; all mapped to tasks T1-T7, 0 unresolved; not yet in the review log when this report was saved) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (on main, 2026-10-12) |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 3 | ISSUES OPEN | 5 proposals, 4 accepted, 1 deferred; 0 critical gaps (Phase 2, logged 2026-10-13T15:26:46Z) |
+| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` | Independent 2nd opinion | 6 | disabled | `codex_reviews` disabled; no completed external review |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 5 | ISSUES OPEN | 6 issues, 0 critical gaps (Phase 2, logged 2026-10-13T15:44:44Z) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 2 | ISSUES OPEN | score: 5/10 → 7/10, 18 decisions (this run: Phase 2, logged) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled by config for the Phase 1 CEO and eng reviews (logged skipped/disabled at commit `dc8612a`), as for Phase 0. No external or native challenge ran.
-- **VERDICT:** CEO CLEARED for Phase 1. Eng Review ISSUES OPEN means 5 findings mapped to tasks T1-T7 with 0 unresolved decisions and 0 critical gaps; eng review required status per dashboard rules.
+- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled for the Phase 2 CEO and eng reviews; design phase: codex disabled, one native Claude subagent completed (13 findings, all folded into DR1-DR15; native, not outside coverage).
+- **VERDICT:** No review is CLEAR. Design Review ISSUES OPEN reflects the 7/10 AI-slop pass held by the accepted dark neon-glass look, with 0 unresolved decisions; eng review required per dashboard rules (Eng ISSUES OPEN means mapped tasks, 0 unresolved).
 
-NO UNRESOLVED DECISIONS
-
-
+**UNRESOLVED DECISIONS:**
+- + 3 unresolved from prior reviews (the CEO log row's UI-1 to UI-3, settled by this design review after that row was written)
