@@ -129,6 +129,7 @@ One source switch (`mock | live | replay`) in a dev menu; the rest of the app ca
 - Captured by `vp run shots` (Playwright, Chromium), which opens the app with `?source=mock&scenario=steady&seed=1&freeze=1&view=<name>`. `freeze=1` stops the animation clock at a fixed time so images are reproducible.
 - Each chunk adds its view name(s) to `scripts/shots.config.ts`, so old images regenerate when the look changes.
 - Exception: `14b-release.png` shows a GitHub Release page, so it is captured by hand, not by `vp run shots`.
+- Exception: `03-spike.png` is captured by `vp run shots` in chunk 03, then kept as a static file when chunk 04a deletes the spike views and their shots entry (CEO RW7).
 - The README is rebuilt section by section. Every chunk's README step lists exactly what to add.
 
 README skeleton, grown over time:
@@ -430,10 +431,17 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [ ] 03. R3F vs direct Three.js spike
 - **Goal:** Pick the integration with numbers, not opinion.
 - **Depends on:** 02.
-- **Tasks:** Two throwaway routes, `/spike/r3f` and `/spike/vanilla`, each rendering the same thing: 12 hall boxes, 200 instanced racks, 3,200 instanced LEDs with per-frame colour updates driven by a fake store at 10 updates/s, MeshStandardMaterial flat-shaded, one shadow-casting light, bloom on/off toggle. A churn button adds and removes 6 halls 50 times. Record per browser: median fps, p95 frame time, `renderer.info.memory.geometries/textures` and `renderer.info.programs` before and after churn, JS heap where available (Chromium). Measure on the target machine (M1 Air class) in Chrome, Safari, Firefox.
-- **Acceptance:** Results table committed to `docs/adr/0001-render-integration.md` with a decision and reasoning. Both routes hit 60 fps median with bloom off in all three browsers, or the ADR states which one fails and why. Geometry/texture counts return to baseline after churn for the chosen approach.
+- **Tasks:** Two throwaway views, `?view=spike-r3f` and `?view=spike-vanilla` (the shots URL contract; the app has no router, CEO RW4), each rendering the same thing: 12 hall boxes, 192 instanced racks (12 halls x 16, D8) and 3,072 instanced LEDs (16 per rack) with per-frame colour updates driven by a fake store at 10 updates/s, MeshStandardMaterial flat-shaded, one shadow-casting light, bloom on/off toggle (CEO RW5). Both views use identical renderer settings: pixel ratio `min(devicePixelRatio, 2)`, antialias on, ACES Filmic tone mapping, sRGB output, `PCFSoftShadowMap` at 2048, and the same bloom library, pmndrs `postprocessing` (R3F through `@react-three/postprocessing`); the ADR lists them (CEO RW1). Composer options are pinned in that shared constant and passed explicitly in both views, because the two entry points default differently (`@react-three/postprocessing` uses multisampling 8 and `HalfFloatType`; `postprocessing` uses multisampling 0 and `UnsignedByteType`): `multisampling: 4`, `frameBufferType: HalfFloatType`, and the bloom effect's intensity, luminance threshold and mipmap blur [values estimated; identical values in both views are the requirement] (eng E8). A churn button adds and removes 6 halls 50 times. Record per browser: CPU frame time (update + render, `performance.now()`) median, p95 and p99; the longest frame during churn, measured as the longest wall-clock interval between `requestAnimationFrame` callbacks, so React work that runs between frames counts (eng E15); GPU time where `EXT_disjoint_timer_query_webgl2` exists; fps for reference only, because on a ProMotion display Chrome and Firefox run `requestAnimationFrame` at up to 120 Hz while Safari stays near 60 by default (CEO RW2). Record `renderer.info.memory.geometries/textures` and `renderer.info.programs.length` before churn and after disposal settles (1 s after the last removal; R3F disposes unmounted objects on idle) (CEO RW3), and JS heap where available (Chromium). Measure in Chrome, Safari and Firefox on the dev Mac (M1 Max); the ADR names the machine, treats the CPU-time pick as valid (same CPU core design as the M1 Air), and labels the 1x 60 fps check "M1 Max, overstates M1 Air GPU" (CEO C11). Measuring runs use `vp build` then `vp preview --host 127.0.0.1`, never `vp run serve`: `preview.headers` in `vite.config.ts` sends COOP `same-origin` and COEP `require-corp`, so the page is cross-origin isolated and `performance.now()` steps 0.005-0.02 ms instead of 0.1-1 ms; each result records `crossOriginIsolated` and the measured timer step, and a pass whose step is coarser than 0.1 ms is `valid:false` with reason `coarse-timer`, covered by a unit test (eng E6). Each view takes `&load=1` or `&load=4` (4x instance counts: 768 racks and 12,288 LEDs at the same draw-call count) and `&bench=1`, which runs one scripted pass (warm-up, steady, churn, settle) and prints a single JSON result; the ADR's results table is built from those JSON files (CEO C10).
+- **Acceptance:** Results table committed to `docs/adr/0001-render-integration.md` with a decision and reasoning. The ADR's decision rule is committed before the first measured run, and the decision follows from it; default rule: R3F unless, in any browser at 4x load, its p95 CPU frame time exceeds vanilla's by more than 1 ms or 15%, any count misses baseline after churn, or its longest churn frame (longest wall-clock frame interval during churn, eng E15) is more than 2x vanilla's [thresholds estimated] (CEO C10). Each 4x case (bloom on and off) runs three passes per browser, alternating R3F and vanilla; the rule uses the median p95 per case and counts a gap only when it is larger than both views' pass-to-pass range of p95; 1x cases run once (48 passes in all) (CEO C14). The ADR names the commit that added the rule; every result's start time is later than that commit's time, and the commit stays visible in the PR's commit list after squash-merge (CEO RW11). Both views keep a median frame interval of at most 16.7 ms (60 fps) and a p95 CPU frame time under 16.7 ms with bloom off at 1x load in all three browsers, or the ADR states which one fails and why. Geometry, texture and program counts return to baseline after disposal settles for the chosen approach. `vp test` covers every row of the bench failure registry (CEO C12) and the stats, scene and store tests; `vp run e2e:local` opens both spike views at load 1 and 4 in all three engines with no console errors (CEO C13), and the two views report equal instance counts, geometry count and draw calls per frame at each load (eng E17).
 - **README:** Add "Architecture" stub noting the chosen integration and link to the ADR. Image: `03-spike.png` (spike scene).
-- **Note:** Delete spike routes in chunk 04. Keep the ADR.
+- **Churn resources (CEO RW6):** in both views each hall owns its geometry, which is disposed when the hall is removed, and all halls share one set of materials, which must survive churn (chunk 04a: shared materials only). R3F disposes JSX-declared materials on unmount unless they are passed by prop or wrapped in `dispose={null}`; the ADR records which pattern kept shared materials alive. After churn, `renderer.info.programs.length` equals its pre-churn value and the shared materials have received 0 `dispose` events, counted through three's `dispose` event on each shared material (eng E9). Churn snapshots also record the fake store's listener count, which must return to baseline: a leaked per-hall subscription is a leak that Safari and Firefox cannot show through a heap number (CEO RW9).
+- **Same work per frame (CEO RW8):** each hall owns its rack and LED InstancedMeshes (the chunk 07 pattern), so churn adds and removes them. Every frame, both views write all live LED colours from the latest store snapshot and flag one upload per mesh. Spike code allocates nothing per frame, including the bench's own sample storage, which uses typed arrays sized up front (eng P-E1). Each churn cycle waits until the view reports the added halls are in the scene (`addHalls` resolves on mount, which under React's scheduler can take more than one frame), renders one frame, then removes them, so React batching cannot skip work that the vanilla view does (eng E16).
+- **Failure behaviour (CEO C12):** the Section 2 registry in the Phase 1 CEO review record is required. An interrupted pass (tab hidden or window blurred, window resized, WebGL context lost, hall component error during churn) stops and writes `valid:false` with the reason and the time; churn and bloom controls are disabled during a pass; a missing GPU timer or JS heap reads `null`, never 0; an unknown `view`, a `load` other than 1 or 4, or a malformed `bench` falls back to the home page or load 1 with a console warning naming the parameter. The shots contract parameters `source`, `scenario`, `seed` and `freeze` are accepted without warnings: the fake store is seeded from `seed`, `freeze=1` renders one fixed frame with no store ticks, and `bench=1` together with `freeze=1` is refused with a warning, since a frozen clock cannot be measured (eng E11). WebGL2 or bloom init failure shows its reason in the view and writes `valid:false`. The ADR table uses only `valid:true` passes. Unit tests on a fake clock cover one valid pass, each interruption, parameter parsing and the null cases.
+- **Tests (CEO C13):** unit tests for `stats.ts` (nearest-rank median, p95 and p99; empty input gives null; the ADR names the method), the scene layout counts per load and per hall, and the seeded fake store (same seed gives the same sequence; values stay in [0,1]). Both spike views at load 1 and 4 join the `vp run e2e:local` smoke in Chromium, Firefox and WebKit (canvas present, no console errors); the spike spec is skipped when `CI` is set, so the CI Chromium and Firefox jobs do not run it. The smoke is a crash check only: headless Chromium renders on SwiftShader and Playwright's WebKit is not Safari, so no ADR number comes from a Playwright run (eng E12). The same smoke reads each view's `snapshot()` through `window.__spikeSnapshot` at load 1 and 4 and asserts equal instance counts, geometry count and draw calls per frame across the two views (eng E17).
+- **Dependency guard (eng E7):** `.github/dependabot.yml` gains ignore rules for `three` and `@types/three` at `>=0.187.0` and `postprocessing` at `>=7.0.0`, with a comment naming the peer ranges they protect (`postprocessing` 6.39.5 needs `three <0.187.0`; `@react-three/postprocessing` 3.2.0 needs `postprocessing ^6.36.0`) and saying to lift each rule when that range widens.
+- **Result records (CEO RW10):** each pass writes one JSON file with view, load, bloom, pass number, `valid` and reason, start time, browser name and version, `devicePixelRatio`, canvas size in pixels, measured refresh interval, GPU renderer string where exposed (else null), three and R3F versions, app version, frame statistics, counts before and after churn, and heap or null. Each result also records draw calls per frame, read with `renderer.info.autoReset = false` and one `renderer.info.reset()` per frame so every composer pass counts; the ADR shows equal counts at 1x and 4x (eng E10). Files are committed under `docs/adr/0001-results/`. The view shows a one-line status (current phase, then done or invalid with its reason), so the operator knows when a pass has ended.
+- **ADR content (CEO RW12):** besides settings, method, rule, results and decision, the ADR's Consequences section lists the known follow-ons: R3F 10 is in alpha and WebGPU-first, so an R3F pick implies a later 9-to-10 migration; R3F 9's React peer range (`<19.4`, eng S3); WebGL2 only, WebGPU not measured; the 4x stress level is not the chunk 36 scene; the M1 Air-class check belongs to chunk 36 (C11).
+- **Note:** Delete the spike views in chunk 04a, together with the `spike-*` entry in `scripts/shots.config.ts` (so `vp run shots` keeps passing) and any dependency the ADR rejected; `03-spike.png` stays as a static image, like `14b-release.png` (CEO RW7). Keep the ADR.
 
 ### Phase 2: Scene foundation
 
@@ -707,7 +715,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [ ] 36. Cross-browser performance pass
 - **Goal:** Meet the budget in all three browsers.
 - **Depends on:** 35.
-- **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night. Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine. Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis. Draw-call and triangle budgets enforced by a test that fails CI when exceeded.
+- **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night. Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine (an M1 Air-class Mac; required here because chunk 03 measured on an M1 Max, CEO C11). Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis. Draw-call and triangle budgets enforced by a test that fails CI when exceeded.
 - **Acceptance:** Measured on the Mac via `vp run e2e:local` (eng review D6). 60 fps median at high or auto-dropped tier in all three; never under 30 fps p95. Results table appended to `docs/adr/0002-perf.md`.
 - **README:** "Performance" section with the results table.
 
@@ -2253,17 +2261,1031 @@ Reality rows (eng):
 - REALITY: deferred-asks pass X3 stays in TODOS.md; nothing else deferred docs/PLAN.md:396
 - REALITY: pr-count pass one PR per chunk (01, 02, 02b); lanes merge into the 02b PR docs/PLAN.md:399
 
+## CEO review record: Phase 1 (/plan-ceo-review, 2026-10-13)
+
+Target: Phase 1 (chunk 03) of `docs/PLAN.md` and the section 1 open decision it settles, branch `phase-1-rendering-spike`, base `main` at `dc8612a`. Reviewer: Claude (in-host). Review depth: implementation-ready, chunk 03 only. No Phase 1 design doc exists; `docs/designs/phase-0-tooling.md` is the Phase 0 CEO summary. Questions in this record are numbered PQ1, PQ2... (shown in chat as D1, D2...); ledger rows continue the CEO series at C10.
+
+### 0A. Premise
+
+- Real problem: about 30 scene chunks (04a-37) will be built on one integration. A wrong pick shows up late, at chunk 20 (hall churn) or 36 (perf), when switching means rewriting every scene file.
+- Target outcome: an ADR whose decision follows from measured numbers and a rule written before measuring.
+- Do-nothing cost (adopt R3F on the section 1 reasoning, no spike): about 1 CC-hour saved; any leak or overhead surfaces at chunk 20 instead of now.
+- Chunk 03 as written solves this only partly:
+  - F1 [P1] The load probably cannot separate the two [inference, not measured]: 12 boxes plus 2 InstancedMeshes is about 20 draw calls, so on this Mac both routes will likely sit at the refresh cap. "Both hit 60" then decides nothing and the ADR falls back to opinion. Pending: C10.
+  - F2 [P1] fps is not comparable across browsers on this Mac [measured: `system_profiler` shows a built-in Liquid Retina XDR (ProMotion) display]: Chrome and Firefox run `requestAnimationFrame` at up to 120 Hz; Safari keeps page rendering near 60 fps by default ("Prefer Page Rendering Updates near 60fps" flag, WebKit bug 294338) [web source, not checked in Safari here]. Applied as RW2.
+  - F3 [P1] Target machine mismatch [measured: `sysctl hw.model` = MacBookPro18,4, Apple M1 Max]: chunk 03 says measure on "M1 Air class"; this Mac's GPU is several times faster than an M1 Air's [estimated]. Pending: C11.
+  - F4 [P2] Unequal defaults would bias the race [verified: R3F `configuration.ts` and `reconciler.tsx` via Context7, master branch]: R3F's Canvas creates its renderer with antialias and alpha on and sets ACES Filmic tone mapping, and its `dpr` defaults to `[1, 2]` (R3F docs); a plain `WebGLRenderer` has no antialias, no tone mapping and pixel ratio 1. R3F disposes unmounted objects on idle (`disposeOnIdle`), so `renderer.info` read right after churn shows a false leak. Applied as RW1, RW3.
+
+### 0B. Existing code leverage
+
+The repo has Playwright with chromium, firefox and webkit projects and a build-and-preview web server (`playwright.config.ts:24-48`), the shots pipeline with the `view=<name>` URL contract (`scripts/shots.config.ts:13`), and the design tokens (`src/styles/tokens.css`). No three, R3F or postprocessing package is installed (`package.json:20-24`). There is no router (`src/app/App.tsx`). Reuse: the shots `view=` parameter for the spike views and `03-spike.png`; the Playwright projects for any automated run. Nothing is rebuilt.
+
+Current versions [measured: `npm view`, 2026-10-13]: three 0.186.1; `@react-three/fiber` 9.8.1 (peer `react >=19 <19.4`; React is pinned `~19.3.0`, `package.json:21`); drei 10.7.9; `@react-three/postprocessing` 3.2.0; `postprocessing` 6.39.5. R3F 10 is in alpha and canary (a canary was published 2026-10-13).
+
+Reality rows:
+- REALITY: premise-table finding unverified=3 (Safari 60 fps default on macOS not checked locally; M1 Max vs M1 Air GPU ratio; WebGPU on by default in Safari 26 and Firefox 147 from secondary web sources) docs/PLAN.md:433
+- REALITY: already-done pass `git log origin/main -- src/spike docs/adr src/scene` shows only `f72dee8` (scaffold `.gitkeep`); no spike code exists docs/PLAN.md:430
+- REALITY: surface-check finding `/spike/r3f` and `/spike/vanilla` have no router (`src/app/App.tsx`) and the shots contract addresses views by `view=<name>` (`scripts/shots.config.ts:13`); `renderer.info.memory` and `renderer.info.programs` exist in three; `performance.memory` is Chromium-only; applied as RW4 docs/PLAN.md:433
+- REALITY: binding-decisions pass section 1 open decision and provisional R3F pick, D1 (3 browsers), D10 (bloom off below 45 fps), D18 (`e2e:local` on the Mac) and eng S3 (React `~19.3` for the R3F peer) honoured; `gstack-decision-search --scope branch` returned none docs/PLAN.md:34
+- REALITY: numbers finding 200 racks exceeds the campus cap of 12 halls x 16 = 192 (D8, chunk 08); 3,200 LEDs is 16 per rack against chunk 07's "e.g. 8"; the 60 fps target and 45 fps bloom floor are [estimated] budgets; applied as RW5 docs/PLAN.md:433
+- REALITY: deferred-asks pass no brief item is scheduled into Phase 1 beyond the integration decision docs/PLAN.md:34
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; Phase 1 is one PR for chunk 03 plus this review's docs PR docs/PLAN.md:31
+
+### 0C. Dream state
+
+```text
+  CURRENT STATE               THIS PLAN (chunk 03)              12-MONTH IDEAL
+  scaffold, CI, 3-engine ---> two throwaway scenes and an  ---> live campus holds 60 fps on an M1 Air in
+  smoke, blank page;          ADR that picks R3F or vanilla      Chrome, Safari and Firefox for hours with
+  no 3D, no perf numbers      from measured numbers              flat GPU memory; perf and leak regressions
+                                                                 are caught per chunk, not at chunk 36
+```
+
+Chunk 03 moves toward the ideal. Gap: as written, its measurement code is deleted in chunk 04, so chunks 07, 10, 20 and 36 each build their own perf or leak check.
+
+### Required work applied without a new choice
+
+Each item cites the approved contract it serves; all are applied to chunk 03 above.
+- RW1 (chunk 03 Goal "numbers, not opinion"; F4): both views use identical renderer settings and the same bloom library, listed in the ADR.
+- RW2 (same contract; F2): the deciding numbers are frame times in ms (CPU median, p95, p99, longest churn frame, GPU where exposed); fps is reported but decides nothing. Acceptance restated as median frame interval at most 16.7 ms plus p95 CPU frame time under 16.7 ms.
+- RW3 (chunk 03 Acceptance "counts return to baseline"; F4): churn counts are read after disposal settles and include `renderer.info.programs.length`.
+- RW4 (surface-check): views are `?view=spike-r3f` and `?view=spike-vanilla`, so `vp run shots` can capture `03-spike.png` without a router.
+- RW5 (numbers): 192 racks and 3,072 LEDs. Chunk 36's "200 racks" has the same overrun; left for its own review.
+- RW6 (Section 1; chunk 04a "shared instances only", chunk 03 churn baseline): churn exercises the product's resource pattern, per-hall geometry plus shared materials that must survive.
+- RW7 (Section 1; section 4 protocol): chunk 04a removes the `spike-*` shots entry and the rejected dependency along with the views; `03-spike.png` becomes a static image.
+- RW8 (Section 4; chunk 03 Goal and chunk 07 pattern): identical per-frame work in both views, per-hall instanced meshes, no per-frame allocation in spike code, one rendered frame per churn cycle before removal.
+- RW9 (Section 4; section 1 criterion "leaks we cannot control"): churn snapshots include the fake store's listener count.
+- RW10 (Section 8; C10 "results table built from those JSON files"): each JSON result carries the run metadata the table and an auditor need; raw files are committed; the view shows the pass status.
+- RW11 (Section 9; C10 "rule committed before the first measured run", D18 squash-merge): the ADR names the rule commit and every result starts after it, which stays checkable after squash-merge.
+- RW12 (Section 10; chunk 03 Acceptance "a decision and reasoning"): the ADR lists known consequences of the pick.
+
+### Decision ledger (CEO, Phase 1)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C10 spike method (Claude) | chunk 03 Goal "Pick the integration with numbers, not opinion"; F1 (light load likely vsync-bound, inference); section 1 provisional R3F pick, docs/PLAN.md:36 | C: both views at 1x and 4x load, scripted bench with JSON per browser, decision rule committed in the ADR before the first run | none | approved | PQ1 answer "Decision-grade race (recommended)", 2026-10-13; scope: chunk 03 load levels, run method and decision rule; RW1-RW5 unchanged; applied to chunk 03 Tasks and Acceptance |
+| C11 measurement machine (user) | chunk 03 "M1 Air class"; F3 dev Mac is M1 Max (`sysctl`) | B: ADR runs on the dev Mac (M1 Max); CPU-time pick valid; 1x 60 fps check labelled "M1 Max, overstates M1 Air GPU"; chunk 36 keeps the M1 Air-class target and must measure on it | none | approved | PQ3 answer "Decide here, label GPU numbers (recommended)", 2026-10-13; scope: measurement machine for chunk 03 and the target-hardware duty of chunk 36; applied to chunks 03 and 36 |
+
+### Mode
+
+HOLD SCOPE, the recommended mode, chosen by the user (PQ2, 2026-10-13; question answer, not auto-decided). Applies to all later sections. Chunk 03 counts about 14 changed files [estimated]: `package.json`, `pnpm-lock.yaml`, `src/spike/` (shared scene parameters, fake store, bench harness, R3F view, vanilla view, one unit test), `src/app/App.tsx`, `scripts/shots.config.ts`, `docs/img/03-spike.png`, `docs/adr/0001-render-integration.md`, `README.md`. A spike is neither greenfield, a feature nor a fix, so the category was unclear; HOLD keeps the gate short because its code is deleted in chunk 04. Not offered under HOLD: keeping the bench for chunks 20 and 36, a WebGPU data point, a glass-overlay cost check.
+
+### 0G. Hold-scope checks
+
+- Complexity: about 14 files [estimated] is over the 8-file mark, with one new module (`src/spike/`). Challenge result: 4 of the 14 are required by the section 4 README and screenshot protocol (`README.md`, `scripts/shots.config.ts`, `docs/img/03-spike.png`) or by the chunk's output (`docs/adr/0001-render-integration.md`); 2 are dependency files. The two views share one scene definition, one fake store and one bench, so no smaller set gives a fair race.
+- Minimum change: everything left is needed for C10's goal. No deferral proposed.
+- Invariants kept: D1 (Chrome, Safari, Firefox), D10 (bloom on, off below 45 fps), D18 (one PR per chunk, Conventional Commit title), section 4 protocol, eng S3 (React `~19.3`), C10 and RW1-RW5.
+
+### 0I. Temporal interrogation (Phase 1)
+
+```text
+  HOUR 1 (foundations):   exact deps (three 0.186.1, @types/three, @react-three/fiber 9.8.1,
+                          @react-three/postprocessing 3.2.0, postprocessing 6.39.5); shared
+                          scene definition at load 1 and 4; seeded fake store at 10 Hz;
+                          one renderer-settings constant (RW1); `view=` switch in App.tsx
+  HOUR 2-3 (core logic):  vanilla view (WebGLRenderer, postprocessing BloomEffect, two
+                          InstancedMeshes, explicit dispose on churn); R3F view (Canvas with the
+                          same settings, refs written in useFrame from a transient store
+                          subscription, halls mount and unmount as components)
+  HOUR 4-5 (integration): bench: one shared timing driver, frame sampler, GPU timer where
+                          present, churn driver, settle wait, renderer.info snapshots, JSON out
+  HOUR 6+ (polish/tests): unit tests for the stats code; shots view; ADR rule committed first,
+                          then runs in Chrome, Safari, Firefox; results table; README stub
+```
+
+What will surprise the implementer:
+- Timing must wrap the same work in both views. R3F owns its render loop; drive both views from one external `requestAnimationFrame` driver (R3F with `frameloop="never"` and `advance()`), or the R3F number includes or skips work the vanilla number does not.
+- Measure the production build (`vp build`, then `vp preview` or `vp run serve`), never `vp dev`: React's development build and StrictMode double-mounting would count against R3F only.
+- `EXT_disjoint_timer_query_webgl2` is expected in Chromium only [unverified for Safari and Firefox]; the GPU column may read "n/a" there.
+- Run order alternates R3F and vanilla with a cool-down between passes, so heat build-up does not favour whichever runs first.
+- Default bench pass: 5 s warm-up, 20 s steady, churn (6 halls added and removed 50 times), 1 s settle, then snapshots [estimated durations].
+
+Feasibility blockers: C11 (measurement machine), below. No other blocker found.
+
+Effort: chunk 03 human ~2 days / CC ~1.5h [estimated, from C10].
+
+### Answered decision C10 (PQ1)
+
+Answer: C, "Decision-grade race (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Fair-test fixes RW1-RW5 | required work (chunk 03 Goal, Acceptance) | applied | yes | yes | yes |
+| Views built | chunk 03 (approved plan) | R3F and vanilla | R3F and vanilla | R3F; vanilla only if R3F misses a bar | R3F and vanilla |
+| Load levels | pending | 1x (12 halls, 192 racks, 3,072 LEDs) | 1x | 1x and 4x instances (768 racks, 12,288 LEDs, same draw calls) | 1x and 4x instances |
+| Decision rule | pending; section 1 says vanilla wins only on overhead or leaks | provisional, no thresholds | provisional, no thresholds | absolute bars: p95 CPU frame under 16.7 ms at 4x, counts back to baseline, longest churn frame under 50 ms [thresholds estimated] | written in the ADR before the first run: R3F unless, in any browser at 4x, its p95 CPU frame exceeds vanilla's by more than 1 ms or 15%, any count misses baseline, or its longest churn frame is over 2x vanilla's [thresholds estimated] |
+| How runs are made | pending | by hand per browser | by hand per browser | in-page scripted bench, JSON per browser | in-page scripted bench (`&bench=1`: warm-up, steady, churn, settle), JSON per browser |
+| Measured R3F overhead in the ADR | chunk 03 Goal | yes, at 1x | yes, at 1x | no | yes, at 1x and 4x |
+| Effort | - | - | M | S | M |
+
+Question: D1 — C10: How should the rendering spike decide between R3F and plain Three.js?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 (the gate before every 3D chunk).
+ELI10: Chunk 03 builds the same small 3D scene twice, once with React Three Fiber and once with plain Three.js, and picks one. The scene is so light that on your Mac both versions will probably hit the screen's refresh limit, so the numbers would tie and the pick would come down to opinion anyway. We can keep it as written, test only R3F against fixed pass/fail bars, or race both under a heavier load with the winning rule written down before measuring.
+Stakes if we pick wrong: every scene chunk from 04a to 37 sits on this choice; a leak or overhead found at chunk 20 or 36 means rewriting the scene layer.
+Recommendation: C because it costs about 30 CC-minutes more than A and is the only option whose numbers can separate the two, with the rule fixed before anyone sees results.
+Completeness: A=6/10, B=7/10, C=9/10
+Net: a cheap race that likely ties (A), a pass/fail check of the favourite (B), or a race built to produce a winner (C).
+Header: Spike method
+A) Keep chunk 03 as written
+Two views of one light scene (12 halls, 192 racks, 3,072 LEDs) with the fair-test fixes RW1-RW5, measured by hand per browser. Effort M (human ~1.5 days / CC ~1h), risk medium. ✅ Smallest change to an already reviewed plan; both integrations are built and compared side by side ✅ The churn check still catches R3F disposal problems before chunk 04 starts ❌ Both views likely sit at the refresh cap on your Mac, so the pick probably falls back to the provisional choice
+B) Bars-first: R3F only, vanilla on failure
+Build only the R3F view and test it at 1x and 4x load against fixed bars for frame time, churn counts and churn hitches; build vanilla only if R3F misses one. Effort S (human ~1 day / CC ~40 min), risk medium. ✅ Tests what the product needs (does it fit the budget) instead of which one is faster ✅ Half the build work when R3F passes, which section 1 already expects ❌ No measured R3F overhead, so the ADR cannot say how much headroom vanilla would have bought
+C) Decision-grade race (recommended)
+Both views at 1x and a 4x stress level, an in-page scripted bench (warm-up, steady, churn, settle) that prints JSON per browser, and the decision rule written into the ADR before the first run. Effort M (human ~2 days / CC ~1.5h), risk low. ✅ The 4x level gives frame-time headroom, so the two views can actually differ in the numbers ✅ A rule fixed up front keeps the ADR honest, and the JSON runs can be repeated later ❌ About 30 CC-minutes more than A, and the 4x scene is bigger than anything the product draws today
+
+### Answered decision C11 (PQ3)
+
+Answer: B, "Decide here, label GPU numbers (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Machine for the ADR runs | chunk 03 "M1 Air class" (approved plan) | M1 Air class | an M1 Air-class Mac | this Mac (M1 Max) | this Mac (M1 Max) |
+| What the integration pick rests on | C10 rule (approved): CPU frame time | - | CPU frame time on target | CPU frame time; M1 Air and M1 Max share the same CPU core design [estimated] | same as B |
+| 1x 60 fps check (GPU-bound part) | chunk 03 Acceptance | on M1 Air class | on target | on this Mac, labelled "M1 Max, overstates M1 Air GPU" | on this Mac, as the target |
+| Target machine in chunks 03 and 36 | chunks 03, 36 | M1 Air class | M1 Air class | M1 Air class kept; chunk 36 must measure on it | changed to M1 Max |
+| Extra effort now | - | - | S (human ~2h of runs / CC 0) plus access to hardware | S (zero extra work) | S (zero extra work) |
+
+Question: D3 — C11: Which Mac should the spike's numbers come from?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 measurements.
+ELI10: The plan says to measure on an "M1 Air class" Mac, but your Mac is an M1 Max with a much stronger graphics chip and a 120 Hz screen. The R3F-or-vanilla pick rests mostly on CPU frame time, and the M1 Air and M1 Max use the same CPU core design, so that part should carry over. The "holds 60 fps" check leans on the graphics chip, so on your Mac it will look better than it would on an M1 Air.
+Stakes if we pick wrong: a 60 fps pass measured on the M1 Max can hide a graphics-bound miss on the cheaper Macs people download the build to.
+Recommendation: B because the integration pick rests on CPU time that carries over and it needs no extra hardware; pick A if an M1 Air-class Mac is at hand.
+Completeness: A=10/10, B=8/10, C=5/10
+Net: real target hardware now (A), an honest caveat with the target check moved to chunk 36 (B), or a cheaper promise (C).
+Header: Bench Mac
+A) Use an M1 Air-class Mac
+Run the scripted bench in all three browsers on an M1 Air-class Mac for the ADR; this Mac is used only while building. Effort S (human ~2h of runs / CC 0 extra), risk low. ✅ The 60 fps check is measured on the hardware the budget is written for ✅ Heat throttling on a fanless Air shows up now instead of after release ❌ Needs an M1 Air-class Mac you can use; without one, chunk 03 cannot pass as written
+B) Decide here, label GPU numbers (recommended)
+Run on this M1 Max; the ADR names the machine, treats the CPU-time pick as valid, and labels the 1x 60 fps check "M1 Max, overstates M1 Air GPU". Chunk 36 keeps the M1 Air-class target and must measure on it. Effort S (zero extra work now), risk medium. ✅ No extra hardware, and the integration pick still rests on numbers that carry over ✅ The graphics caveat is written down instead of hidden inside a passing number ❌ Any M1 Air graphics shortfall stays unknown until chunk 36
+C) Make this Mac the target
+Change "target machine" in chunks 03 and 36 to this M1 Max with its 120 Hz display. Effort S (zero extra work), risk high. ✅ Every number is measured where the budget now lives, with no caveats ✅ Simplest plan text; no other hardware is ever needed ❌ Released builds then promise nothing for the cheaper Macs, Linux and Windows machines people download them to
+
+### Section 1: Architecture (Phase 1)
+
+```text
+ /?view=spike-r3f|spike-vanilla&load=1|4&bench=1
+        │
+ src/main.tsx ─► src/app/App.tsx ── spike view? ──no──► home page (unchanged)
+                                        │ yes
+                                        ▼
+                    src/spike/shared/
+                      scene.ts      hall grid, rack and LED layout per load (pure)
+                      fakeStore.ts  seeded LED colours at 10 Hz, transient subscribe
+                      render.ts     RW1 renderer and bloom settings (one constant)
+                      bench.ts      one rAF driver: warm-up > steady > churn > settle > done
+                      stats.ts      median, p95, p99 (pure)
+                 ┌──────────────┴───────────────┐
+   src/spike/vanilla/                    src/spike/r3f/
+   WebGLRenderer + postprocessing        Canvas frameloop="never" + @react-three/postprocessing
+   2 InstancedMeshes, explicit dispose   <instancedMesh> refs, halls mount/unmount as components
+                 └──────────────┬───────────────┘
+                   per-pass JSON result ──► ADR 0001 results table
+```
+
+Dependencies before: app → react, react-dom, geist, tailwind. After: + three, `@react-three/fiber`, `@react-three/postprocessing`, `postprocessing` (runtime), `@types/three` (dev). Nothing outside `src/spike/` and one branch in `App.tsx` imports the spike, so chunk 04a deletes it in one step. Scaling: at 4x load, per-frame work is one colour upload of 13,056 instances (about 157 KB) plus matrices once; draw calls stay flat; the shadow pass draws both instanced meshes a second time. No endpoints, no single point of failure, no production data. Rollback: revert the PR. Value test: the ADR is consumed by chunk 04a (it gates it); the JSON results are consumed by the ADR table; the views retire in 04a.
+
+- A-1 [P2] (confidence 8/10) Chunk 03 churns halls but does not say which resources a hall owns. If each view creates per-hall materials, the churn test misses the real risk: R3F disposing a shared material when one hall unmounts (R3F `reconciler.tsx` disposes JSX-declared objects on unmount). Required work for chunk 04a's "shared instances only" and chunk 03's baseline check; applied as RW6.
+- A-2 [P2] (confidence 9/10) Chunk 04a deletes the views, but `scripts/shots.config.ts` would still list `spike-*`, so `vp run shots` fails from 04a on. Factual correction; applied as RW7 with a section 4 exception.
+- A-3 [P3] (confidence 7/10) A static import of the spike in `App.tsx` puts three and R3F into the home page bundle until 04a. Non-blocking implementation choice, owner: chunk 03 implementer; check with `vp build` output. Left pending; not a task.
+
+Section 1 dispositions: A-1 applied (RW6), A-2 applied (RW7), A-3 pending implementation choice.
+
+### Section 2: Error & Rescue Map (Phase 1)
+
+Chunk 03 names the happy path for the bench but no failure behaviour. A pass that runs while the tab is hidden, the window is resized or the WebGL context is lost produces plausible numbers that are wrong, and the ADR decision rests on them. Proposed registry (pending C12):
+
+```text
+  CODEPATH              | WHAT CAN GO WRONG                          | ERROR
+  ----------------------|--------------------------------------------|---------------------------
+  spike params          | unknown view, load not 1 or 4, junk bench  | InvalidParam
+  view init (both)      | WebGL2 context not created                 | WebGLUnavailable
+                        | bloom composer throws on init              | ComposerInitError
+  bench pass            | tab hidden or window blurred mid-pass      | PassInterrupted(visibility)
+                        | window resized mid-pass                    | PassInterrupted(resize)
+                        | webglcontextlost mid-pass                  | PassInterrupted(contextlost)
+                        | R3F hall component throws during churn     | ChurnError (error boundary)
+                        | churn or bloom control used mid-pass       | prevented: controls disabled
+  sampler               | EXT_disjoint_timer_query_webgl2 missing    | gpuMs = null
+                        | timer query reports disjoint               | sample dropped and counted
+                        | performance.memory missing                 | heapBytes = null
+  result output         | file download blocked                      | JSON stays in console and window.__benchResult
+
+  ERROR                  | RESCUED | RESCUE ACTION                         | USER SEES
+  -----------------------|---------|---------------------------------------|------------------------------------------
+  InvalidParam           | Y       | fall back to home or load 1, warn     | console warning naming the parameter
+  WebGLUnavailable       | Y       | stop, write result valid:false        | "WebGL2 unavailable: <reason>" in the view
+  ComposerInitError      | Y       | stop, valid:false                     | error text in the view
+  PassInterrupted(*)     | Y       | stop pass, valid:false, reason, time  | banner "Pass invalid: <reason> at <t> s"
+  ChurnError             | Y       | stop pass, valid:false with message   | banner with the error
+  gpuMs / heapBytes null | Y       | null, never 0                         | "n/a" in the ADR table
+```
+
+### Decision ledger additions (Sections 2+)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C12 bench failure behaviour (Claude, Section 2) | Prime Directive 1 (zero silent failures); C10 "the ADR's results table is built from those JSON files"; chunk 03 has no failure behaviour | A: Section 2 registry (invalid-pass detection, locked controls, null not 0, param fallback) plus fake-clock unit tests | none | approved | PQ4 answer "Registry plus unit tests (recommended)", 2026-10-13; scope: spike bench and view failure behaviour and its unit tests; applied to chunk 03 Tasks and Acceptance |
+
+### Answered decision C12 (PQ4)
+
+Answer: A, "Registry plus unit tests (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Invalid-pass detection (hidden tab, resize, context lost, churn error) writes `valid:false` with reason | pending | none | yes | no; operator watches each run | yes |
+| Controls disabled during a bench pass | pending | none | yes | no | yes |
+| Missing GPU timer or heap reads `null`, never 0 | pending | not stated | yes | not stated | yes |
+| Param allowlist (view, load 1 or 4, bench) with fallback and warning | C10 values (approved) | not stated | yes | not stated | yes |
+| Unit tests: bench state machine with a fake clock (one valid pass, each interruption), param parsing, null handling | pending | none | yes | no | no |
+| ADR table excludes invalid passes | C10 (approved) | implied | enforced by `valid` | operator judgement | enforced by `valid` |
+| Effort | - | - | S | S | S |
+
+Question: D4 — C12: What should the spike bench do when a measuring pass goes wrong?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 bench.
+ELI10: The bench runs each scene for about half a minute and writes down timing numbers. If you switch tabs, resize the window or the graphics context resets during that time, the browser slows or pauses the scene and the numbers come out wrong but look normal. The R3F-or-vanilla decision is built from these numbers, so a bad pass can flip it without anyone noticing.
+Stakes if we pick wrong: a silently corrupted pass lands in the ADR table and decides the integration for every later 3D chunk.
+Recommendation: A because it closes every silent-failure path in the bench and proves each one with a fast unit test, for about 15 CC-minutes (zero silent failures, every behaviour tested).
+Completeness: A=9/10, B=3/10, C=6/10
+Net: about 15 CC-minutes for a bench that refuses bad numbers and proves it (A), versus trusting the operator (B), or flags with no proof they fire (C).
+Header: Bench errors
+A) Registry plus unit tests (recommended)
+Adopt the registry above: invalid passes are flagged with a reason, controls lock during a pass, missing timers read null, and bad parameters fall back with a warning, all covered by unit tests on a fake clock. Effort S (human ~3h / CC ~15 min), risk low. ✅ A pass ruined by a tab switch or resize can never reach the ADR table as a valid result ✅ Each failure path has a fast test, so a refactor of the bench cannot quietly remove a guard ❌ About 15 CC-minutes of extra work on code that is deleted in chunk 04a
+B) Happy path only
+Keep chunk 03 as written; the operator watches each run and discards any pass that looks wrong. Effort S (zero extra work), risk high. ✅ No extra code in a spike that is thrown away after one decision ✅ Fewer moving parts for the first 3D code in the repo ❌ A pass slowed by a hidden tab looks like a slow integration, and nothing in the JSON says otherwise
+C) Registry without tests
+Adopt the same detection and fallbacks, but test them only by hand during the measuring runs. Effort S (human ~1.5h / CC ~8 min), risk medium. ✅ Bad passes are still flagged in the JSON and kept out of the ADR table ✅ Roughly half the extra work of A ❌ Nothing proves the guards fire; a missed event listener would leave a silent failure in place
+
+Section 2 dispositions: registry adopted (C12, PQ4); 12 failure rows, 0 gaps after C12.
+
+Bench pass state machine (C12):
+
+```text
+  idle ──start──► warmup (5 s) ──► steady (20 s) ──► churn (50 cycles) ──► settle (1 s) ──► done (valid:true)
+                    │                 │                  │                    │
+                    └──── hidden | blur | resize | contextlost | churn error ─┴──► invalid (valid:false, reason, t)
+  Not allowed: any state ──► start (controls disabled until done or invalid); done | invalid ──► steady (a new pass
+  needs a page load); churn ──► settle before the last removed hall has rendered its final frame (RW8).
+```
+
+### Section 3: Security & threat model (Phase 1)
+
+| Threat | Likelihood | Impact | Mitigated? |
+|---|---|---|---|
+| New runtime dependencies (three, `@react-three/fiber`, `@react-three/postprocessing`, `postprocessing`) | Low | Medium | Yes: widely used MIT packages, lockfile, exact versions, Dependabot weekly (X2); R3F's React peer range held by the React ignore rule (eng S3) |
+| Oversized `load` value allocating huge buffers and hanging the tab | Low | Low | Yes: allowlist, load 1 or 4 only (C12) |
+| Bench JSON leaving the machine | Low | Low | Yes: console, `window.__benchResult` and a local download only; no network call (D16) |
+| GPU name in committed JSON | Low | Low | Accepted: the renderer string names the GPU model only, no user data |
+
+No endpoints, secrets, stored data or injection surfaces are added. No issues found beyond C12's parameter allowlist.
+
+### Section 4: Data flow and interaction edge cases (Phase 1)
+
+```text
+ seed ─► fakeStore.tick (10 Hz) ─► snapshot per hall ─► frame: write instanceColor ─► upload ─► pixels
+   nil:   no tick yet          ──► LEDs keep the colours set at mount
+   empty: 0 extra halls        ──► nothing extra written; the frame is still timed
+   wrong: NaN or outside [0,1] ──► store emits clamped values (test pending C13)
+   stale: hall removed between tick and frame ──► writer walks live halls only; listener removed on unmount (RW9)
+   error: context lost         ──► pass invalid (C12)
+```
+
+R3F churn schedule (baseline 12 halls, churn to 18 and back):
+
+```text
+ frame | churn driver          | React commit               | driver renders | store listeners
+ ------|-----------------------|----------------------------|----------------|----------------
+ n     | add 6 halls           |                            | 12 halls       | 12
+ n..m  | await addHalls        | mount 6, refs attach       | 12 then 18     | 18
+       | (may span frames, E16)|                            |                |
+ m+1   |                       |                            | 18 halls (RW8) | 18
+ m+1   | remove 6 halls        |                            |                |
+ m+2   |                       | unmount, cleanup, dispose  | 12 halls       | 12
+       |                       | scheduled on idle          |                |
+ settle| read counts after 1 s |                            |                | must equal 12
+```
+
+Invariant: a hall's resources are released once, after its last rendered frame. Add and remove in one React batch would never mount the hall, so R3F would skip work vanilla does; RW8 forces one rendered frame per cycle. A frame between unmount and idle disposal does not draw the hall but leaves counts high; RW3's settle wait covers it. Regression proof: the C12 bench unit tests assert one rendered frame per churn cycle (required test for RW8).
+
+| Interaction | Edge case | Handled? | How |
+|---|---|---|---|
+| Churn button | double click, click during a pass | Y | disabled while churn or a pass runs (C12) |
+| Bloom toggle | toggled mid-pass | Y | disabled during a pass (C12) |
+| `bench=1` page | navigate away mid-pass | Y | no result written; an absent result means rerun |
+| Window | resize or tab hidden mid-pass | Y | pass invalid with reason (C12) |
+| URL | `load=999999`, `view=foo` | Y | allowlist fallback and warning (C12) |
+| Back button | returns to the other spike URL | Y | full page load, fresh view |
+
+- D-1 [P2] (confidence 8/10) Chunk 03 did not say whether racks and LEDs are global or per hall, whether both views write the same buffers per frame, or how churn interacts with React batching. Required for the fair race (chunk 03 Goal) and the chunk 07 pattern; applied as RW8.
+- D-2 [P2] (confidence 7/10) A per-hall store subscription that is never released is a leak `renderer.info` cannot see, and Safari and Firefox expose no heap number. Required by the section 1 criterion "leaks we cannot control"; applied as RW9.
+
+### Section 5: Code quality (Phase 1)
+
+- Q-1 [P3] One shared scene definition is the fairness guarantee: both views read instance counts and positions from `src/spike/shared/scene.ts`, never their own copies. Already in RW8 and the Section 1 diagram; no change.
+- Q-2 [P3] Keep the bench spike-local and small; under HOLD SCOPE it is not a general perf framework and is deleted in 04a. No change.
+
+No other issues found.
+
+### Section 6: Test review (Phase 1)
+
+```text
+ NEW THING                         | TYPE        | IN PLAN?           | HAPPY                    | FAILURE                     | EDGE
+ ----------------------------------|-------------|--------------------|--------------------------|-----------------------------|---------------------------
+ bench state machine (C12, RW8)    | unit        | yes (C12)          | one valid pass           | each interruption -> invalid| one frame per churn cycle
+ params parse (C12)                | unit        | yes (C12)          | view, load, bench parsed | junk -> fallback + warning  | load=2 refused
+ sampler nulls (C12)               | unit        | yes (C12)          | GPU ms recorded          | extension missing -> null   | disjoint sample dropped
+ stats: median, p95, p99           | unit        | pending C13        | known array -> values    | empty -> null               | one sample, ties
+ scene layout per load             | unit        | pending C13        | 192/3,072, 768/12,288    | -                           | per hall 16/256, 64/1,024
+ fake store (seeded)               | unit        | pending C13        | same seed, same sequence | -                           | values in [0,1]
+ spike views in 3 engines          | e2e (local) | pending C13        | canvas, no console error | WebGL init error shown      | load 1 and 4
+ churn leak baseline               | measured    | yes (RW3, RW6, RW9)| counts back to baseline  | -                           | listeners, programs
+```
+
+Assertion check for approved items: C12's tests assert `valid:false` plus the exact reason for each interruption (rejects a pass that ends `valid:true` after a hidden tab; `no_claim`=real browser event timing, events are simulated on a fake clock, unit only). RW8's test asserts exactly one rendered frame between add and remove per cycle (rejects zero; `no_claim`=React's real batching, the driver is tested with a fake view).
+
+### Decision ledger additions (Section 6)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C13 spike test scope (Claude, Section 6) | engineering preference "every behaviour tested"; the percentile maths computes the deciding numbers (C10); no test exists for stats, scene or store | A: unit tests for stats, scene layout and seeded store, plus both spike views in the `e2e:local` smoke (3 engines, skipped in CI) | none | approved | PQ5 answer "Unit tests plus local smoke (recommended)", 2026-10-13; scope: spike unit tests and local smoke only; no CI job; applied to chunk 03 Tasks and Acceptance |
+
+### Answered decision C13 (PQ5)
+
+Answer: A, "Unit tests plus local smoke (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| C12 bench, params and null tests | C12 (approved) | yes | yes | yes | yes |
+| Unit tests: stats (nearest-rank median, p95, p99; empty gives null) | pending | no | yes | yes | yes |
+| Unit tests: scene layout counts per load and per hall | pending | no | yes | yes | yes |
+| Unit tests: seeded store (same seed, same sequence; values in [0,1]) | pending | no | yes | yes | yes |
+| Both spike views in `vp run e2e:local` smoke (Chromium, Firefox, WebKit on the Mac) | pending | no | yes | no | yes |
+| Spike smoke in CI (Chromium, Firefox on ubuntu, software WebGL) | pending | no | no | no | yes |
+| Effort | - | - | S | S | S |
+
+Question: D5 — C13: Which tests should guard the spike's own code?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 tests.
+ELI10: C12 already tests how the bench handles failures. Three other small pieces turn raw timings into the numbers the ADR uses: the percentile maths, the scene layout per load, and the seeded fake data. A bug in the percentile maths would flip the decision while every run looks fine. Separately, a quick smoke test can open both spike views in Chrome, Firefox and WebKit to catch a view that crashes in one engine.
+Stakes if we pick wrong: a wrong p95 calculation or a view that fails in one engine feeds a wrong number, or no number, into the decision.
+Recommendation: A because it pins the maths that computes the deciding numbers and catches engine-specific crashes on real GPUs, without adding a CI job that may flake (every behaviour tested, explicit over clever).
+Completeness: A=9/10, B=6/10, C=9/10
+Net: maths plus a real-GPU smoke (A), maths only (B), or both plus a CI job that may flake on software WebGL (C).
+Header: Spike tests
+A) Unit tests plus local smoke (recommended)
+Unit tests for the percentile maths (nearest-rank median, p95, p99; empty input gives null), the scene layout per load and the seeded fake store, plus both spike views in the `vp run e2e:local` smoke in all three engines. Effort S (human ~2h / CC ~10 min), risk low. ✅ The code that computes the deciding numbers is pinned by known-answer tests ✅ A view that crashes only in WebKit or Firefox is caught on the Mac's real GPU before the runs ❌ The spike smoke never runs in CI, so a broken view shows up only when e2e:local runs
+B) Unit tests only
+Unit tests for the percentile maths, the scene layout and the seeded store; no smoke test of the views. Effort S (human ~1h / CC ~5 min), risk medium. ✅ The deciding maths is still pinned by fast known-answer tests ✅ No new browser test to maintain for views deleted in chunk 04a ❌ An engine-specific crash in a view is found only by hand during the measuring runs
+C) Unit tests plus local and CI smoke
+Everything in A, plus the spike smoke in the CI Chromium and Firefox jobs on ubuntu, where WebGL is software-rendered [unverified on these runners]. Effort S (human ~3h / CC ~20 min), risk medium. ✅ A broken spike view fails the PR check, not only the local run ✅ Same unit coverage as A for the deciding maths ❌ Software WebGL on CI runners may fail or flake, adding noise to every PR until chunk 04a
+
+Section 6 dispositions: C13 approved (PQ5); 0 test gaps after C12 and C13. Test ambition: the 2am-Friday test is a hidden-tab pass that must come out `valid:false` (C12); the hostile test is a churn that adds and removes inside one React batch (RW8 test); the chaos test is `WEBGL_lose_context` mid-pass (C12). Pyramid: about 6 unit suites, 1 local e2e spec, no CI e2e for the spike. Flakiness: unit tests use a fake clock and a fixed seed; the local smoke depends on a real GPU and runs only on the Mac.
+
+### Section 7: Performance (Phase 1)
+
+The spike is the performance measurement, so this section checks the measurement itself. Memory at 4x: about 13,056 instance matrices (about 836 KB) and colours (about 157 KB) [estimated from 64 B and 12 B per instance]; trivial. Slowest new paths: the per-frame colour write at 4x (13,056 instances), the shadow pass (instanced meshes drawn twice) and the bloom passes; all are the subject of the measurement, not a defect.
+
+- P-1 [P1] (confidence 7/10) C10's rule compares p95 values with a 1 ms or 15% threshold, but the plan runs each case once. Browser frame times wobble from pass to pass (thermal state, background work, compositor timing) [inference, no local numbers yet], so a single pass can cross the threshold on noise alone and pick the integration for every later 3D chunk. Pending: C14.
+
+### Decision ledger additions (Section 7)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C14 passes per case (Claude, Section 7) | C10 rule (approved) "1 ms or 15%" at 4x; P-1 single-pass noise | C: 3 alternating passes per 4x case (bloom on and off), median p95, gap must exceed both views' pass-to-pass range; 1 pass per 1x case; 48 passes | none | approved | PQ6 answer "Three passes where the rule decides (recommended)", 2026-10-13; scope: pass count and noise guard for the C10 rule; thresholds unchanged; applied to chunk 03 Acceptance |
+
+### Answered decision C14 (PQ6)
+
+Answer: C, "Three passes where the rule decides (recommended)", 2026-10-13.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| C10 thresholds (1 ms or 15%, counts, 2x churn frame) at 4x | C10 (approved) | yes | yes | yes | yes |
+| Passes per case at 4x, bloom on and off (rule inputs) | pending | 1 | 3, alternating R3F and vanilla | 1 | 3, alternating R3F and vanilla |
+| Passes per case at 1x (absolute 60 fps bar only) | pending | 1 | 3 | 1 | 1 |
+| Value used per case | pending | the single pass | median of 3 pass p95 values | the single pass | median of 3 at 4x |
+| Noise guard | pending | none | a gap counts only if larger than both views' pass-to-pass range of p95 | none | same as A, at 4x |
+| Total passes (3 browsers x 2 views x 2 loads x 2 bloom states) | - | 24 | 72 | 24 | 48 |
+| Operator run time [estimated: ~35 s per pass plus reloads and cool-downs] | - | ~25 min | ~1.2 h | ~25 min | ~50 min |
+
+Question: D6 — C14: How many measuring passes should feed the decision rule?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 measuring protocol.
+ELI10: Each pass gives one p95 frame time, and browsers are noisy: the same scene can read, say, 6.1 ms in one pass and 6.9 ms in the next. The rule picks vanilla if R3F is more than 1 ms or 15% slower, so one pass per case could flip the decision on noise. Repeating passes and ignoring gaps smaller than the pass-to-pass wobble makes the result hold up.
+Stakes if we pick wrong: one noisy pass can pick the wrong integration, or rule out the right one, for every later 3D chunk.
+Recommendation: C because the rule only reads the 4x passes, so repeats there buy noise protection where the decision is made, at about two thirds of A's run time.
+Completeness: A=10/10, B=5/10, C=9/10
+Net: full repeats (A), single shots that may decide on noise (B), or repeats where the rule decides (C).
+Header: Pass count
+A) Three passes everywhere
+Run every case three times, alternating R3F and vanilla, use the median p95, and count a gap only when it is larger than both views' pass-to-pass range. Effort S (human ~1.2h of runs / CC ~5 min for the noise guard), risk low. ✅ Every number in the ADR, including the 1x 60 fps check, rests on three passes ✅ Noise can never decide the integration on its own ❌ About 72 passes by hand across three browsers, roughly 1.2 hours of operator time
+B) One pass per case
+Keep the current protocol: one pass per browser, view, load and bloom state, with no noise guard. Effort S (zero extra work), risk high. ✅ Shortest run session, about 25 minutes across three browsers ✅ Nothing to add to the bench or the ADR rule ❌ A single noisy pass can cross the 1 ms or 15% line and pick the wrong integration
+C) Three passes where the rule decides (recommended)
+Run the 4x cases (bloom on and off) three times, alternating R3F and vanilla, with the median and the noise guard from A; run the 1x cases once for the absolute 60 fps check. Effort S (human ~50 min of runs / CC ~5 min), risk low. ✅ Noise protection exactly where the decision rule reads its numbers ✅ About two thirds of A's operator time, 48 passes instead of 72 ❌ The 1x 60 fps check rests on one pass per case, so a borderline 1x miss needs a manual rerun
+
+Section 7 dispositions: P-1 resolved by C14 (PQ6).
+
+### Section 8: Observability (Phase 1)
+
+The bench JSON is this chunk's only telemetry, and the ADR is its dashboard. As written, a result file would not say which browser version, refresh rate, pixel ratio or GPU produced it, so three weeks later nobody could tell whether two numbers are comparable.
+
+- O-1 [P2] (confidence 8/10) Required by C10 ("the ADR's results table is built from those JSON files"): each result carries its run metadata, raw files are committed, and the view shows the pass status. Applied as RW10.
+- Runbook: an invalid pass is rerun; a browser that cannot start WebGL2 is recorded in the ADR as a failure for both views with its reason; a pass with no result file is UNKNOWN and rerun, never counted.
+
+### Section 9: Deployment and rollout (Phase 1)
+
+```text
+ chunk/03 branch:  commit 1: ADR with settings, method, rule (C10, C14)   ──► SHA named in the ADR (RW11)
+                   commit 2: spike views, bench, tests                     ──► vp check, vp test, e2e:local
+                   runs:     48 passes on the M1 Max, production build      ──► JSON start times after commit 1
+                   commit 3: results, table, decision, consequences, README, 03-spike.png
+ PR ──► CI (check, test, Chromium + Firefox smoke without the spike spec) ──► squash-merge ──► release.yml
+ rollback: revert the PR; spike views sit behind ?view=, so users see no change either way
+ chunk 04a: delete src/spike/, the App.tsx branch, the spike-* shots entry, the rejected dependency (RW7)
+```
+
+- Dep-1 [P2] (confidence 8/10) Squash-merge (D18) leaves one commit on `main`, so "rule committed before the first run" (C10) cannot be checked from `main` alone. Required to keep an approved acceptance checkable; applied as RW11.
+- Dep-2 [P3] (confidence 6/10) PR type: CONTRIBUTING maps `feat:` to a minor release. Nothing user-facing ships in chunk 03 (the views sit behind `?view=`), so a non-releasing type such as `chore(spike):` matches D19's intent; `feat:` would cut 0.3.0 with a throwaway view in the CHANGELOG. Guidance for the implementer under existing CONTRIBUTING rules; no plan change.
+- No migrations, flags or deploy-time window. Post-merge check: `release.yml` green, and no release for a non-`feat` title.
+
+### Section 10: Long-term trajectory (Phase 1)
+
+- Reversibility: spike code 5/5 (deleted in 04a); the integration decision 2/5 once chunks 04a-10 build on it.
+- Debt and path dependency: (1) R3F 10 is in alpha and canary, WebGPU-first [measured: `npm view` dist-tags], so an R3F pick implies a later 9-to-10 migration; (2) R3F 9.8.1's peer range holds React below 19.4 (eng S3, Dependabot ignore rule); (3) WebGL2 only: three 0.186 ships `three/webgpu` with a WebGL2 fallback, and secondary sources report WebGPU on by default in Safari 26 and Firefox 147 [unverified]; not measured under HOLD SCOPE; (4) the 4x level is not the chunk 36 scene; (5) the M1 Air-class check moved to chunk 36 (C11).
+- T-1 [P2] (confidence 7/10) An ADR without its known consequences reads as final when it is not; applied as RW12 so these five items sit in the ADR.
+- 1-year question: a new engineer reads ADR 0001, its raw JSON and this record and can see why the integration was picked and what would reopen it.
+
+### Section 11: Design and UX (Phase 1)
+
+The spike adds dev-only views: a canvas, a churn button, a bloom toggle and a one-line pass status. No product screen, token or design-system change; the views are deleted in 04a.
+
+```text
+  FEATURE     | LOADING                     | EMPTY | ERROR                                   | SUCCESS             | PARTIAL
+  spike view  | blank canvas to first frame | n/a   | "WebGL2 unavailable: <reason>" (C12)    | scene and controls  | GPU time "n/a"
+  bench pass  | status: current phase       | n/a   | "Pass invalid: <reason> at <t> s" (C12) | "done" + JSON       | n/a
+
+  open /?view=spike-*  ──► first frame ──► [bench=1] warmup ► steady ► churn ► settle ──► done | invalid
+```
+
+No issues found. `/plan-design-review` is not needed for this phase.
+
+### Outside voice (Phase 1)
+
+`codex_reviews` is disabled by config. Recorded as `outside_status: disabled` (review log, commit `dc8612a`). No external or native challenge ran; this is an opt-out, not missing coverage to replace.
+
+### TODOS.md (Phase 1)
+
+No TODO proposals. Under HOLD SCOPE a TODO must address an evidenced gap in accepted scope; none remains open after C10-C14 and RW1-RW12. Chunk 36's "200 racks" overrun is outside Phase 1 and noted for that chunk's review.
+
+### Approval readiness (Phase 1)
+
+Checked rows and answers: C10 (PQ1), C11 (PQ3), C12 (PQ4), C13 (PQ5), C14 (PQ6). Mode: PQ2 (HOLD SCOPE, user choice; not a remedy approval). Required work without a new choice, each citing its contract: RW1-RW5 (chunk 03 Goal and Acceptance, surface check, numbers), RW6-RW7 (Section 1), RW8-RW9 (Section 4), RW10 (Section 8), RW11 (Section 9), RW12 (Section 10). Every plan edit in chunks 03, 36 and section 4 maps to one of these; no unanswered remedy is in the plan.
+
+Approval readiness: PASS
+
+### NOT in scope (Phase 1)
+
+- Not offered under HOLD SCOPE (PQ2): keeping the bench for chunks 20 and 36; a WebGPU renderer data point; a glass-overlay cost check.
+- Rejected by user choice: keeping chunk 03 as written and R3F-only bars (PQ1); measuring on an M1 Air now and retargeting to the M1 Max (PQ3); happy-path bench (PQ4); CI spike smoke (PQ5); three passes at 1x and one pass at 4x (PQ6).
+- Moved, not cut: the M1 Air-class measurement to chunk 36 (C11).
+- Outside Phase 1: chunk 36's "200 racks" overrun of the 192-rack campus cap.
+
+### What already exists (Phase 1)
+
+Playwright with three engines and a build-and-preview server, the shots pipeline and its `view=` contract, design tokens, CI, Dependabot. Reused: the `view=` contract (RW4) and Playwright for the local spike smoke (C13). No three, R3F or postprocessing code exists; nothing is rebuilt.
+
+### Dream state delta (Phase 1)
+
+After chunk 03: an integration decision backed by 48 passes, a pre-registered rule and committed raw data, with the shared-material and listener leak paths tested. Still missing from the 12-month ideal: numbers on M1 Air-class hardware (chunk 36), a perf and leak harness that outlives the spike (not taken under HOLD), and the campus itself (04a-10).
+
+### Error and rescue registry (Phase 1)
+
+See "Section 2: Error & Rescue Map (Phase 1)": 12 failure rows, all rescued, each with a named user-visible result and a unit test (C12).
+
+### Failure modes registry (Phase 1)
+
+```text
+  CODEPATH           | FAILURE MODE                         | RESCUED? | TEST?            | USER SEES?                      | LOGGED?
+  -------------------|--------------------------------------|----------|------------------|---------------------------------|--------
+  spike params       | unknown view, bad load, junk bench   | Y        | Y (unit)         | fallback + console warning      | Y
+  view init          | no WebGL2, bloom init throws         | Y        | Y (unit)         | reason in the view              | Y
+  bench pass         | hidden tab, blur, resize             | Y        | Y (unit)         | "Pass invalid: <reason> at <t>" | Y (JSON)
+  bench pass         | context lost                         | Y        | Y (unit)         | same banner                     | Y (JSON)
+  churn (R3F)        | hall throws during mount or unmount  | Y        | Y (unit)         | banner with error               | Y (JSON)
+  churn (R3F)        | add and remove in one batch          | Y        | Y (unit, RW8)    | none needed                     | n/a
+  churn (both)       | shared material disposed             | Y        | measured (RW6)   | ADR row fails; black hall shot  | Y (JSON)
+  churn (both)       | listener leak                        | Y        | measured (RW9)   | ADR row fails                   | Y (JSON)
+  sampler            | no GPU timer, no heap                | Y        | Y (unit)         | "n/a"                           | Y (null)
+  result output      | download blocked                     | Y        | N (browser)      | JSON in console                 | Y
+  stats              | wrong percentile maths               | Y        | Y (unit, C13)    | none needed                     | n/a
+  measurement        | single noisy pass decides            | Y        | protocol (C14)   | ADR shows 3-pass spread         | Y (JSON)
+```
+CRITICAL GAPS: 0.
+
+### Diagrams produced (Phase 1)
+
+Dream state (0C), temporal sequence (0I), system architecture (Section 1), bench state machine and error flow (Section 2), data flow with shadow paths and churn schedule (Section 4), test map (Section 6), deployment sequence and rollback (Section 9), user flow and states (Section 11).
+
+### Stale diagram audit (Phase 1)
+
+- Section 3 architecture picture: accurate (the spike sits outside the data path).
+- Section 6 dependency summary: accurate (`02 → 03 (gate) → 04a`).
+- Section 4b interaction state table: unaffected (spike views are dev-only).
+- Eng review and Phase 0 diagrams: unaffected.
+
+### Reality rows (Phase 1)
+
+- REALITY: premise-table finding unverified=3 (Safari 60 fps default on macOS not checked locally; M1 Max vs M1 Air GPU ratio; WebGPU on by default in Safari 26 and Firefox 147 from secondary web sources) docs/PLAN.md:433
+- REALITY: already-done pass `git log origin/main -- src/spike docs/adr src/scene` shows only `f72dee8` (scaffold `.gitkeep`); no spike code exists docs/PLAN.md:430
+- REALITY: surface-check finding `/spike/*` paths had no router and the shots contract uses `view=<name>`; applied as RW4 docs/PLAN.md:433
+- REALITY: binding-decisions pass section 1 open decision, D1, D10, D18, eng S3 honoured; C10-C14 logged with `gstack-decision-log` docs/PLAN.md:34
+- REALITY: numbers finding 200 racks exceeded the 192-rack cap (RW5); thresholds, durations and effort figures are [estimated]; package versions [measured: `npm view`] docs/PLAN.md:433
+- REALITY: deferred-asks pass no brief item is scheduled into Phase 1 beyond the integration decision docs/PLAN.md:34
+- REALITY: pr-count pass no ship policy; one PR for chunk 03 plus this review's docs PR docs/PLAN.md:31
+
+PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=3 verdict=complete
+
+## Implementation Tasks (CEO review, Phase 1)
+
+Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratios assumed: features ~30x, tests ~50x, docs ~30x; operator measuring runs are human time with no CC share.
+
+- [ ] **T1 (P1, human: ~1 day / CC: ~40min)** — spike — Shared scene, fake store and renderer settings; vanilla and R3F views with per-hall instancing, shared materials and identical per-frame work
+  - Surfaced by: C10 (PQ1); RW1, RW4, RW5, RW6, RW8, RW9
+  - Files: package.json, pnpm-lock.yaml, src/spike/shared/scene.ts, src/spike/shared/fakeStore.ts, src/spike/shared/render.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx, src/app/App.tsx
+  - Verify: `/?view=spike-r3f&load=4` and `/?view=spike-vanilla&load=4` render 18-hall churn with shared materials intact; `vp check`
+- [ ] **T2 (P1, human: ~4h / CC: ~20min)** — spike bench — Driver, sampler, settle, churn cycles, JSON records with metadata, failure registry and fake-clock tests
+  - Surfaced by: C10 (PQ1), C12 (PQ4); RW2, RW3, RW8, RW10
+  - Files: src/spike/shared/bench.ts, src/spike/shared/params.ts, src/spike/shared/bench.test.ts, src/spike/shared/params.test.ts
+  - Verify: `vp test` covers all 12 registry rows and one rendered frame per churn cycle
+- [ ] **T3 (P2, human: ~2h / CC: ~10min)** — spike tests — Stats, scene and store unit tests; local three-engine smoke skipped in CI
+  - Surfaced by: C13 (PQ5)
+  - Files: src/spike/shared/stats.ts, src/spike/shared/stats.test.ts, src/spike/shared/scene.test.ts, src/spike/shared/fakeStore.test.ts, e2e/spike.spec.ts
+  - Verify: `vp test`; `vp run e2e:local` opens both views at load 1 and 4 in all three engines with no console errors; CI log shows the spike spec skipped
+- [ ] **T4 (P1, human: ~30min / CC: ~5min)** — docs — ADR 0001 with settings, method, decision rule and pass protocol, committed before any run
+  - Surfaced by: C10 (PQ1), C14 (PQ6); RW1, RW11
+  - Files: docs/adr/0001-render-integration.md
+  - Verify: the rule commit's SHA is named in the ADR and precedes every result's start time
+- [ ] **T5 (P1, human: ~1.5h / CC: none)** — measurement — 48 passes on the M1 Max production build in Chrome, Safari and Firefox; raw JSON, results table, decision, consequences
+  - Surfaced by: C10, C11 (PQ3), C14 (PQ6); RW10, RW12
+  - Files: docs/adr/0001-results/*.json, docs/adr/0001-render-integration.md
+  - Verify: table built only from `valid:true` files; rule applied as written; 1x rows labelled "M1 Max, overstates M1 Air GPU"
+- [ ] **T6 (P2, human: ~30min / CC: ~5min)** — docs — README "Architecture" stub linking the ADR; `spike-r3f` shots view and `03-spike.png`
+  - Surfaced by: RW4; section 4 protocol
+  - Files: README.md, scripts/shots.config.ts, docs/img/03-spike.png
+  - Verify: `vp run shots` writes `03-spike.png` under 200 KB
+- [ ] **T7 (P3, human: ~30min / CC: ~5min)** — chunk 04a cleanup — Delete spike views, App branch, spike shots entry and the rejected dependency
+  - Surfaced by: Section 1 — A-2, RW7
+  - Files: src/spike/, src/app/App.tsx, scripts/shots.config.ts, package.json, pnpm-lock.yaml
+  - Verify: `vp run shots` and `vp test` pass after deletion; `03-spike.png` unchanged
+
+### Completion summary (Phase 1)
+
+```text
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | HOLD SCOPE                                  |
+  | System Audit         | no 3D code yet; dev Mac is M1 Max on a      |
+  |                      | 120 Hz display; Safari near 60 fps; R3F 9.8 |
+  |                      | peer React <19.4; R3F 10 in alpha           |
+  | Step 0               | C10 decision-grade race; C11 measure on M1  |
+  |                      | Max, M1 Air check to chunk 36; RW1-RW5      |
+  | Section 1  (Arch)    | 3 issues found (A-1, A-2 applied; A-3 open  |
+  |                      | implementation choice)                      |
+  | Section 2  (Errors)  | 12 error paths mapped, 0 GAPS after C12     |
+  | Section 3  (Security)| 0 issues found, 0 High severity             |
+  | Section 4  (Data/UX) | 11 edge cases mapped, 0 unhandled (RW8, RW9)|
+  | Section 5  (Quality) | 0 issues found (2 P3 notes)                 |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps after C13          |
+  | Section 7  (Perf)    | 1 issue found (P-1, resolved by C14)        |
+  | Section 8  (Observ)  | 1 gap found (O-1, RW10)                     |
+  | Section 9  (Deploy)  | 2 risks flagged (RW11 applied; type note)   |
+  | Section 10 (Future)  | Reversibility: 5/5 code, 2/5 decision;      |
+  |                      | debt items: 5                               |
+  | Section 11 (Design)  | 0 issues (dev-only views)                   |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (4 groups, 11 items)                |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 12 rows, 0 CRITICAL GAPS                    |
+  | Failure modes        | 12 total, 0 CRITICAL GAPS                   |
+  | TODOS.md updates     | 0 items proposed                            |
+  | Scope proposals      | 0 proposed, 0 accepted (HOLD SCOPE)         |
+  | CEO plan             | skipped by mode                             |
+  | Outside voice        | codex disabled (config)                     |
+  | Lake Score           | 0/2 recommendations chose complete option   |
+  | Diagrams produced    | 8 (dream, temporal, arch, state/error,      |
+  |                      | data flow + schedule, tests, deploy, flow)  |
+  | Stale diagrams found | 0                                           |
+  | Unresolved decisions | 0                                           |
+  | Reality rows         | 7/7 rows (PLAN_REALITY complete), 3 unverif.|
+  +====================================================================+
+```
+
+Lake Score basis: two answered questions offered a 10/10 option (C11, C14); both answers took the recommended 9/10 or 8/10 option. C10, C12 and C13 offered no 10/10 option and are excluded.
+
+### Unresolved decisions (Phase 1)
+
+None. Open verifications (not decisions): Safari's 60 fps default on this Mac; WebGPU defaults in Safari and Firefox; `EXT_disjoint_timer_query_webgl2` in Safari and Firefox; A-3 bundle split left to the implementer.
+
+## Eng review record: Phase 1 (/plan-eng-review, 2026-10-13)
+
+Target: `docs/PLAN.md` Phase 1 (chunk 03) as amended by the Phase 1 CEO review (C10-C14, RW1-RW12), branch `phase-1-rendering-spike`, base `dc8612a` plus uncommitted CEO review edits. Reviewer: Claude (in-host). Report file: this plan. Question numbers D1, D2... are this review's own sequence; ledger rows continue the eng series at E6. Design doc found by the finder is `docs/designs/phase-0-tooling.md` (Phase 0 only); no Phase 1 design doc.
+
+### Scope record
+
+feature answers: none proposed (no feature cuts); structure: A, Original arrangement (eng D1, 2026-10-13); accepted scope: chunk 03 as amended by CEO C10-C14 and RW1-RW12, one module per concern in `src/spike/shared/` with one test file each; pending remedies: E6, E7.
+
+Scope Challenge result: scope accepted as-is.
+
+### Scope Challenge findings
+
+Evidence probes (bounded, current behaviour only): a Playwright 1.64 script in the session scratchpad loaded a static page in headless Chromium 156, Firefox 157 and WebKit 27.2 on this Mac, with and without COOP/COEP headers on `127.0.0.1` [measured]:
+
+| Engine | WebGL2 | `EXT_disjoint_timer_query_webgl2` | Renderer | `performance.now()` step, plain | step, cross-origin isolated |
+|---|---|---|---|---|---|
+| Chromium 156 (headless) | yes | no | SwiftShader (software) | 0.1 ms | 0.005 ms |
+| Firefox 157 (headless) | yes | no | "Apple M1, or similar" | 1 ms | 0.02 ms |
+| WebKit 27.2 (headless) | yes | no | "Apple GPU" | 1 ms | 0.02 ms |
+
+Real Chrome, Safari and Firefox were not probed; Playwright's WebKit and Firefox builds are close to, not the same as, the shipping browsers [unverified for real browsers].
+
+- E6 [P1] (confidence 9/10) docs/PLAN.md chunk 03 Tasks: "CPU frame time (update + render, `performance.now()`) median, p95 and p99". On this Mac, Firefox and WebKit step `performance.now()` in 1 ms units unless the page is cross-origin isolated (probe above). C10's rule fires on a gap "more than 1 ms", so in Firefox and Safari the deciding gap is one timer tick, and rounding alone can decide the integration. Pending: E6.
+- E7 [P2] (confidence 8/10) `postprocessing` 6.39.5 declares peer `three: ">=0.168.0 <0.187.0"` [measured: `npm view`]; the plan adds three 0.186.1, and `.github/dependabot.yml:17-35` groups all npm updates weekly with ignore rules only for React. When three 0.187 ships, Dependabot proposes it; pnpm only warns on peer mismatch, and the spike smoke is skipped in CI (C13), so the bump can merge green while bloom breaks. Pending: E7.
+- E8 [P1] (confidence 9/10) RW1 requires "the same bloom library", but the two entry points have different composer defaults: `@react-three/postprocessing` 3.2.0 `EffectComposer` defaults to `multisampling = 8` and `frameBufferType = HalfFloatType` (react-postprocessing `EffectComposer.tsx`, via Context7), while `postprocessing` 6.39.5's `EffectComposer` defaults to `multisampling = 0` and `UnsignedByteType` (`build/index.js:948-949` in the published tarball). Left to defaults, the R3F view would do 8x MSAA on half-float targets and the vanilla view none, and every bloom-on number would favour vanilla. Required work under C10 (PQ1) and RW1 ("RW1 renderer and bloom settings (one constant)"); applied below.
+- E9 [P2] (confidence 8/10) RW6's "no hall renders black" has no check that a JSON result can carry. three dispatches a `dispose` event from `Material.dispose()`, so the bench can count dispose events on the shared materials during churn (must be 0). Required proof for RW6; applied.
+- E10 [P2] (confidence 8/10) C10 claims the 4x level keeps "the same draw-call count". With a composer, three resets `renderer.info.render` on every `render()` call (`info.autoReset` defaults to true), so a single read sees only the last pass. Proof needs `info.autoReset = false` with one `info.reset()` per frame, and draw calls per frame in each JSON result. Required proof for C10's stated invariant; applied.
+- E11 [P2] (confidence 8/10) `scripts/shots.config.ts:13` opens every view as `/?source=mock&scenario=steady&seed=1&freeze=1&view=<name>`, and section 4 says `freeze=1` stops the animation clock. C12's parameter parsing must accept `source`, `scenario`, `seed` and `freeze` without warnings, the spike views must seed the fake store from `seed` and render one fixed frame under `freeze=1`, and `bench=1` with `freeze=1` must be refused with a warning (a frozen clock cannot be measured). Required by the section 4 URL contract and C12; applied.
+- E12 [P3] (confidence 9/10) Headless Playwright Chromium renders WebGL on SwiftShader (probe above), and Playwright's WebKit is not Safari. The C13 smoke is a crash check only; no number in the ADR may come from a Playwright run. Factual clarification; applied.
+- E13 [P3] (confidence 5/10) Medium confidence, verify this is actually an issue: the repo runs TypeScript `~7.0.2` (`package.json`) and R3F 9 adds its JSX elements by augmenting React's JSX types. Nothing has checked that the augmentation type-checks under TypeScript 7. Verification step for T1 (run `vp check` right after installing R3F); no plan change.
+- E14 [P3] (confidence 9/10) Outside Phase 1: plan chunk 01 still says Dependabot uses `fix(deps)` for runtime dependencies and that the dev server host is `127.0.0.1`, but `main` now uses `build(deps)` (`b17f26e`, #8) and `localhost` (`dc8612a`, #9). Stale plan text, flagged for a docs fix; no Phase 1 change.
+
+Search check: the R3F-specific pattern (driving `frameloop="never"` with `advance()` from an external `requestAnimationFrame` loop) is documented R3F API [Layer 1]; cross-origin isolation for high-resolution timers is the standard platform mechanism [Layer 1, confirmed by the probe]. TODOS.md holds only `vp run doctor` (X3); nothing blocks or overlaps chunk 03. Distribution: no new artifact; the spike rides in the existing web bundle until chunk 04a.
+
+### Decision ledger (eng review, Phase 1)
+
+### E6: Timer resolution for the measuring runs
+Finding: E6, P1, confidence 9/10, docs/PLAN.md chunk 03 Tasks ("CPU frame time (update + render, `performance.now()`)"), reviewer Claude (in-host)
+Plan baseline: CEO C10 (PQ1) and RW2: per-frame CPU time, p95 and p99; runs on the production build via `vp preview` or `vp run serve` (Phase 1 0I); no timer-resolution requirement.
+Runtime evidence: Playwright probe on this Mac: plain pages step 0.1 ms (Chromium), 1 ms (Firefox, WebKit); with COOP `same-origin` and COEP `require-corp` on `127.0.0.1`, `crossOriginIsolated` is true and steps are 0.005 ms, 0.02 ms, 0.02 ms. Real browsers unknown.
+Comparison grid:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| C10 rule thresholds and C14 pass protocol | C10 (PQ1), C14 (PQ6) approved | unchanged | unchanged | unchanged | unchanged |
+| Per-frame p95 and p99 of CPU time | RW2 (C10 contract) | per frame | per frame | per 10-frame batch (changes RW2) | per frame |
+| Timer step in Firefox and Safari [Playwright probe] | - | 1 ms | 0.02 ms | 1 ms, averaged over 10 frames | 1 ms |
+| Server for measuring runs | Phase 1 0I | `vp preview` or `vp run serve` | `vp build` + `vp preview --host 127.0.0.1` only | either | either |
+| COOP/COEP headers | pending | none | `preview.headers` in `vite.config.ts` | none | none |
+| JSON records `crossOriginIsolated` and measured timer step | pending | no | yes | yes | yes |
+| Pass with a timer step coarser than 0.1 ms | pending | counted | `valid:false`, reason `coarse-timer`, unit-tested | counted | counted |
+| Effort | - | - | S | S | S |
+
+Question D2:
+D2 — E6: How should the bench get timings fine enough for the 1 ms rule?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 bench timing.
+ELI10: The bench times each frame with the browser's stopwatch. On this Mac, Firefox and Safari's engine round that stopwatch to whole milliseconds unless the page opts into a stricter security mode called cross-origin isolation; with it, they report steps of 0.02 ms (probe on this Mac). The decision rule picks vanilla when R3F is more than 1 ms slower, so without isolation a single rounding step can decide the integration in two of the three browsers.
+Stakes if we pick wrong: the ADR picks the integration for every later 3D chunk from numbers that are rounded to the size of the deciding gap.
+Recommendation: A because two response headers give 20x (Chromium) to 50x (Firefox, WebKit) finer timing on the measured probe, and a coarse-timer pass is then refused instead of trusted (zero silent failures, every behaviour tested).
+Completeness: A=10/10, B=7/10, C=3/10
+Net: fine timers through two headers (A), coarse timers smoothed over batches at the cost of per-frame spikes (B), or rounding left in the decision (C).
+Header: Timer res
+Options:
+A) Isolate the measuring page (recommended)
+Add COOP `same-origin` and COEP `require-corp` to `preview.headers` in `vite.config.ts`; measuring runs use `vp build` then `vp preview --host 127.0.0.1`, not `vp run serve`; each result records `crossOriginIsolated` and the measured timer step, and a pass with a step coarser than 0.1 ms is `valid:false` (`coarse-timer`), with a unit test. Effort S (human ~1h / CC ~5 min), risk low. ✅ Probe on this Mac: steps drop from 1 ms to 0.02 ms in Firefox and WebKit, 0.1 ms to 0.005 ms in Chromium ✅ A run that loses isolation is refused automatically, never averaged into the ADR ❌ The headers also apply to e2e and shots previews; harmless while every asset is same-origin, but a future cross-origin asset there would need CORP
+B) Time 10-frame batches
+Keep plain timers; time batches of 10 frames and compute p95 and p99 over batch averages, recording the timer step. Effort S (human ~1h / CC ~10 min), risk medium. ✅ No server or header change, and works the same under `vp run serve` ✅ Rounding error per batch falls to about 0.1 ms in Firefox and Safari ❌ Changes RW2: averaging 10 frames hides the single slow frames that p95, p99 and the churn hitch check exist to catch
+C) Record resolution only
+Add the timer step to each result and note the rounding in the ADR; the rule and timers stay as they are. Effort S (zero extra work beyond one field), risk high. ✅ Smallest change; the rounding is at least visible in the ADR ✅ Keeps the current server choice and plain timers ❌ In Firefox and Safari the 1 ms threshold equals one timer tick, so rounding can still decide the pick
+
+State: approved
+Actual answer: A, "Isolate the measuring page (recommended)", eng D2, 2026-10-13
+Accepted scope: COOP `same-origin` and COEP `require-corp` in `preview.headers` (`vite.config.ts`); measuring runs on `vp build` + `vp preview --host 127.0.0.1` only; each result records `crossOriginIsolated` and the measured timer step; a step coarser than 0.1 ms makes the pass `valid:false` (`coarse-timer`), with a unit test. C10 thresholds, C14 protocol and RW2 per-frame statistics unchanged. Applied to chunk 03 Tasks.
+History: none
+
+### E7: Guard against three and postprocessing drifting apart
+Finding: E7, P2, confidence 8/10, `.github/dependabot.yml:17-35` (npm group, weekly, React-only ignore rules) with `postprocessing` 6.39.5 peer `three: ">=0.168.0 <0.187.0"` and `@react-three/postprocessing` 3.2.0 peer `postprocessing: "^6.36.0"`, reviewer Claude (in-host)
+Plan baseline: chunk 03 adds three 0.186.1, `postprocessing` 6.39.5 and `@react-three/postprocessing` 3.2.0 (Phase 1 0I); X2 (Q4) Dependabot weekly grouped updates; eng S3 React ignore rule; no rule for three or postprocessing.
+Runtime evidence: `npm view` peer ranges above [measured 2026-10-13]; `pnpm-workspace.yaml` sets no strict peer checking, so pnpm only warns on a peer mismatch; the spike smoke is skipped in CI (C13). Whether today's tree already has unmet peers is unknown (not probed).
+Comparison grid:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Dependabot weekly grouped npm updates, React ignore rules | X2 (Q4), eng S3 approved | unchanged | unchanged | unchanged | unchanged |
+| Spike smoke skipped in CI | C13 (PQ5) approved | unchanged | unchanged | unchanged | unchanged |
+| Dependabot ignore `three` and `@types/three` `>=0.187.0`, `postprocessing` `>=7.0.0`, with a comment naming the peer ranges | pending | no | yes | no | no |
+| `strictPeerDependencies: true` in `pnpm-workspace.yaml` (any unmet peer fails install) | pending | no | no | yes | no |
+| What catches a three bump past `postprocessing`'s range | - | `vp run e2e:local` before a tick | Dependabot never proposes it | CI install fails on the Dependabot PR | `vp run e2e:local` before a tick |
+| Effort | - | - | S | S | S |
+
+Question D3:
+D3 — E7: How should the repo stop a three upgrade from silently breaking bloom?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 dependencies.
+ELI10: The bloom library (`postprocessing` 6.39.5) says it works only with three versions below 0.187, and chunk 03 installs three 0.186.1. When three 0.187 comes out, Dependabot will propose it in its weekly bundle. The package manager only prints a warning about the mismatch, and the spike's browser test does not run in CI, so the update could merge green while bloom quietly breaks. The repo already holds React back the same way for R3F.
+Stakes if we pick wrong: a green Dependabot merge ships a three version the bloom code does not support, found only at the next local run or by a user.
+Recommendation: A because it copies the React rule that already works here, cannot disturb today's install, and is lifted with one line when postprocessing widens its range (explicit over clever).
+Completeness: A=8/10, B=10/10, C=3/10
+Net: a narrow hold on the two known pairs (A), a repo-wide strict check whose effect on today's tree is unprobed (B), or reliance on the local run (C).
+Header: Peer guard
+Options:
+A) Hold three and postprocessing (recommended)
+Add Dependabot ignore rules for `three` and `@types/three` at `>=0.187.0` and `postprocessing` at `>=7.0.0`, with a comment naming the peer ranges and when to lift them. Effort S (human ~15 min / CC ~2 min), risk low. ✅ Same pattern as the React rule already in `.github/dependabot.yml`, so nothing new to learn ✅ Cannot break today's install, since it only stops future update proposals ❌ Covers only these two pairs; another peer mismatch elsewhere would still only warn
+B) Strict peer checks in pnpm
+Set `strictPeerDependencies: true` in `pnpm-workspace.yaml` so any unmet peer fails `pnpm install`, in CI and locally. Effort S (human ~30 min / CC ~5 min, plus fixing any mismatch it exposes), risk medium. ✅ Catches every peer mismatch in the tree, including R3F's React range, not just three ✅ Dependabot PRs that break a peer range go red in CI instead of merging ❌ Today's tree is not probed for unmet peers, so the switch may fail installs until those are fixed
+C) No guard
+Rely on pnpm's warning and the `vp run e2e:local` run before a chunk is ticked. Effort S (zero extra work), risk medium. ✅ No configuration change at all ✅ The local smoke still exercises bloom before any chunk is ticked ❌ A Dependabot merge between chunks can ship a broken three and bloom pairing to `main` and a release
+
+State: approved
+Actual answer: A, "Hold three and postprocessing (recommended)", eng D3, 2026-10-13
+Accepted scope: Dependabot ignore rules for `three` and `@types/three` `>=0.187.0` and `postprocessing` `>=7.0.0`, with a comment naming the peer ranges and the lift condition; no pnpm strict-peer change. Applied to chunk 03 Tasks.
+History: none
+
+### Scope Challenge dispositions
+
+E6 approved (eng D2); E7 approved (eng D3); E8, E9, E10, E11 applied as required proof or work of approved contracts (C10 and RW1, RW6, C10's draw-call claim, section 4 URL contract and C12); E12 applied as a factual clarification; E13 kept as a T1 verification step; E14 outside Phase 1, flagged.
+
+### 1. Architecture review (eng, Phase 1)
+
+```text
+ bench.ts: one requestAnimationFrame loop            SpikeView seam, implemented by vanilla/view.ts and r3f/View.tsx
+   rAF(t) ─► interval = t - tPrev (wall clock) ─┐      frame(t)        write LED colours, render all passes
+           ─► cpu = now() around view.frame(t)  │      addHalls(n)     Promise, resolves when the halls are in the scene
+   churn:  await view.addHalls(6) ─► 1 frame ───┤      removeHalls(n)  Promise, resolves when they are unmounted
+           await view.removeHalls(6)            │      snapshot()      geometries, textures, programs, draw calls,
+   settle: 1 s ─► view.snapshot()               │                      listeners, shared-material dispose events
+   result: JSON (RW10) ◄────────────────────────┘
+ R3F only: frameloop="never"; frame(t) calls advance(t). React commits for addHalls/removeHalls run in
+ scheduler tasks between rAF callbacks, outside frame(t): they lengthen the wall-clock interval, not cpu.
+ Served by vp preview --host 127.0.0.1 with COOP + COEP (E6): crossOriginIsolated, 5-20 µs timer steps.
+```
+
+- E15 [P1] (confidence 8/10) docs/PLAN.md chunk 03 Tasks: "the longest frame during churn" sits in the CPU-time list, and C10's rule compares "its longest churn frame". React applies `addHalls`/`removeHalls` state changes in scheduler tasks between animation frames, outside the timed `frame(t)` call, so a CPU-time hitch metric cannot see R3F's reconciliation cost, the very overhead section 1 says decides for vanilla. Required for the fair race (C10, PQ1); applied: the churn hitch is the longest wall-clock rAF interval.
+- E16 [P2] (confidence 7/10) RW8: "Each churn cycle lets the added halls render one frame before they are removed." A React state update outside a discrete event can commit after more than one frame, so counting one frame from the call is not enough. Required for RW8; applied: `addHalls` resolves when the halls are in the scene, then one frame, then removal.
+- CEO A-3 (static vs lazy import of the spike) stays an implementation choice: chunk 04a makes the 3D canvas the home view, so a split would be undone there; owner chunk 03 implementer.
+- Production failure per path: a view that throws on init shows its reason and writes `valid:false` (C12); a run served without isolation is refused (`coarse-timer`, E6); a Dependabot three bump past `postprocessing`'s range is held back (E7). Security: no endpoint; COOP/COEP only tightens the preview server. Distribution: no new artifact.
+
+Dispositions: E15 applied (required, C10); E16 applied (required, RW8); A-3 pending implementation choice.
+
+### 2. Code quality review (eng, Phase 1)
+
+- Q-E1 [P3] (confidence 9/10) The CEO Section 4 churn schedule showed the halls mounting in exactly one frame; with E16 that is stale. Fixed in place (mount may span frames).
+- Shared code: `src/spike/shared/` has two proposed callers (the two views) and exists to make the race fair; rubric met on proposed callers [assumption: both views import it]. No extraction beyond that.
+- The bench state machine has about 7 transitions; implement it as a transition table so each guard is one row and one test (C12).
+
+Dispositions: Q-E1 applied (factual diagram fix). No other issues found.
+
+### 3. Test review (eng, Phase 1)
+
+Framework: Vitest through `vp test` (`vite.config.ts` `test` block) and Playwright (`playwright.config.ts`, build-and-preview web server). Existing tests read: `e2e/smoke.spec.ts` (home page title, heading, version meta, no console errors) and `e2e/repeat.spec.ts` (home view captured twice within 0.5%).
+
+```text
+CODE PATHS (planned, src/spike/)                                   USER FLOWS (operator)
+[+] shared/params.ts                                               [+] /?view=spike-*&load=N&bench=1
+  ├── [★★★ PLANNED] view, load, bench parse; fallback (C12)          ├── [★★★ PLANNED] valid pass -> JSON (C12)
+  └── [★★★ PLANNED] shots params accepted; freeze+bench refused (E11) ├── [★★★ PLANNED] hidden tab, resize -> invalid (C12)
+[+] shared/stats.ts                                                  └── [★★★ PLANNED] not isolated -> coarse-timer (E6)
+  └── [★★★ PLANNED] nearest-rank median, p95, p99; empty -> null    [+] vp run shots -> 03-spike.png
+[+] shared/scene.ts                                                  └── [★   PLANNED] size and console checks (shots.ts)
+  └── [★★  PLANNED] counts per load and per hall (C13)              [+] Home page unchanged under the new headers
+[+] shared/fakeStore.ts                                              ├── [★★  TESTED] smoke.spec.ts:7
+  └── [★★  PLANNED] seed determinism, [0,1], listeners (C13, RW9)    └── [★★  TESTED] repeat.spec.ts:6
+[+] shared/bench.ts (fake views)
+  ├── [★★★ PLANNED] state machine, each interruption (C12)
+  ├── [★★★ PLANNED] addHalls awaited, then one frame (E16, RW8)
+  ├── [★★★ PLANNED] hitch = longest wall-clock interval (E15)
+  ├── [★★★ PLANNED] timer-step check (E6)
+  ├── [★★★ PLANNED] shared-material dispose events counted (E9)
+  └── [★★★ PLANNED] draw calls with autoReset off (E10)
+[+] vanilla/view.ts, r3f/View.tsx
+  ├── [★   PLANNED] e2e:local smoke, 3 engines, load 1 and 4 (C13)
+  └── [GAP]         both views draw the same scene: nothing compares them -> E17
+COVERAGE: 16/17 paths planned or tested | QUALITY: ★★★:12 ★★:4 ★:2 (smoke, not counted) | GAPS: 1
+```
+
+Required proofs carried forward without a new question (approved behaviour): E6, E9, E10, E11, E15 and E16 each get a bench or params unit test against fake views. Value card for the group: `protects=each approved bench rule (E6, E9, E10, E15, E16); fails_when=a guard is removed or measures the wrong window; why_new=no spike code exists; seam=none (fake SpikeView); no_claim=real React scheduling and real GPU behaviour (fake views, unit only)`.
+
+Regression rule: the home page is touched by the `App.tsx` view branch and by the new COOP/COEP preview headers (E6). `smoke.spec.ts` and `repeat.spec.ts` already run against that same preview server and assert the home page's behaviour; carried forward as the regression contract, unchanged. No test is made obsolete.
+
+### E17: Check that both views draw the same scene
+Finding: E17, P2, confidence 8/10, docs/PLAN.md chunk 03 Tasks ("each rendering the same thing") and CEO RW8; the planned tests check `scene.ts` counts, not what each view renders; reviewer Claude (in-host)
+Plan baseline: C13 (PQ5): unit tests for stats, scene and store; local smoke "canvas present, no console errors" at load 1 and 4 in three engines. RW10 puts counts and draw calls in each JSON result.
+Runtime evidence: no spike code exists; unknown.
+Comparison grid:
+
+| Commitment | Source/approval or pending | Current | A | B |
+|---|---|---|---|---|
+| C13 unit tests and local smoke (crash check), skipped in CI | C13 (PQ5) approved | unchanged | unchanged | unchanged |
+| Counts and draw calls in each JSON result | RW10, E10 approved | unchanged | unchanged | unchanged |
+| Automated check that both views report equal instance counts, geometry count and draw calls per frame at load 1 and 4 | pending | none | local smoke reads each view's `snapshot()` (exposed on the spike page as `window.__spikeSnapshot`) and asserts equality | none; the operator compares the JSON files before applying the rule |
+| Effort | - | - | S | S |
+
+Question D4:
+D4 — E17: Should a test prove both spike views draw the same scene?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, chunk 03 tests.
+ELI10: The whole race assumes both versions draw exactly the same thing. Today's planned tests check the shared layout numbers, but nothing checks what each view actually puts on screen. If the R3F view quietly drew fewer LEDs, or the vanilla view skipped a bloom pass, it would look faster and win for the wrong reason.
+Stakes if we pick wrong: an unequal scene makes one integration look faster, and the ADR picks it for every later 3D chunk.
+Recommendation: A because one assertion in the existing local smoke catches an unequal race on every run, which hand-checking JSON files does not (every behaviour tested).
+Completeness: A=9/10, B=6/10
+Net: an automatic fairness check in the smoke (A), or a manual comparison of 48 JSON files (B).
+Header: Same scene
+Options:
+A) Assert equal scenes in the smoke (recommended)
+Extend the local spike smoke: at load 1 and 4 it reads each view's `snapshot()` through `window.__spikeSnapshot` and asserts equal instance counts, geometry count and draw calls per frame across the two views. Effort S (human ~1h / CC ~5 min), risk low. ✅ Catches a view that drops halls, racks, LEDs or a render pass before any measuring run ✅ Runs in all three engines on the Mac with the existing smoke, no new spec file ❌ Adds a debug hook on the spike page that only the test reads, deleted with the spike in 04a
+B) Compare JSON by hand
+Keep the smoke as a crash check; before applying the rule, the operator checks that both views' JSON results show equal counts and draw calls. Effort S (zero extra code), risk medium. ✅ No debug hook and no change to the approved smoke ✅ The JSON already carries every number needed for the comparison ❌ 48 files compared by eye; an unequal scene can slip through and decide the pick
+
+State: approved
+Actual answer: A, "Assert equal scenes in the smoke (recommended)", eng D4, 2026-10-13
+Accepted scope: the local spike smoke reads `window.__spikeSnapshot` for each view at load 1 and 4 and asserts equal instance counts, geometry count and draw calls per frame; the hook exists only on the spike page and goes with it in 04a. C13 scope otherwise unchanged (local only, skipped in CI). Applied to chunk 03 Tests and Acceptance.
+History: none
+
+Value card (E17): `protects=both spike views draw the same scene at load 1 and 4; fails_when=one view drops halls, racks, LEDs or a render pass; why_new=planned unit tests check scene.ts counts, not what each view renders; seam=window.__spikeSnapshot (spike page only); no_claim=visual equality and frame timing (counts only, headless engines)`.
+
+Test Plan artifact: written to the gstack project directory (see Required outputs).
+
+Dispositions: E17 approved (eng D4); 0 test gaps remain.
+
+### 4. Performance review (eng, Phase 1)
+
+- P-E1 [P3] (confidence 7/10) RW8: "Spike code allocates nothing per frame." A sampler that pushes into growing JS arrays allocates during the measured window, and its garbage-collection pauses land in p99 for whichever view runs while they happen. Required by RW8; applied as a clarification: the bench's sample storage is typed arrays sized up front (steady plus churn at 120 Hz with headroom [estimated]).
+- Scale: per frame at 4x, one colour upload per hall LED mesh (18 halls x 1,024 instances x 12 B, about 221 KB at peak churn [estimated]); `renderer.info` reads only at snapshots, draw-call reads one integer per frame. JSON results: 48 files of frame statistics, no raw samples [estimated under 10 KB each].
+- Bundle: a static spike import adds three, R3F and postprocessing to the home bundle until 04a [size unmeasured]; stays CEO A-3, implementation choice.
+
+Dispositions: P-E1 applied (required clarification of RW8). No other issues found.
+
+### Outside voice (eng, Phase 1)
+
+`codex_reviews` is disabled (stored config). Recorded as `outside_status: disabled` (review log, commit `dc8612a`). No external or native challenge ran.
+
+### E18: TODO, reconcile the plan with merged PRs #8 and #9
+Finding: E14 (Scope Challenge), P3, confidence 9/10, docs/PLAN.md:372-373 (chunk 01 "`commit-message.prefix: "fix(deps)"`", "Set the Vite dev server host to `127.0.0.1`") against `b17f26e` (#8, `.github/dependabot.yml` prefix `build(deps)`) and `dc8612a` (#9, `vite.config.ts` host `localhost`), reviewer Claude (in-host)
+Plan baseline: CEO C8 (Q13): runtime dependency bumps use `fix(deps)` so they cut a patch release; CEO C2 and eng A1: dev server on `127.0.0.1`, the only host the Origin check and C6 Host gate accept; chunk 14's plugin imports that gate into `vp dev`.
+Runtime evidence: `main` uses `build(deps)` (no release under D19 and CONTRIBUTING) and serves `vp dev` on `localhost:5173` (`git show b17f26e`, `git show dc8612a`). Whether these reversals were meant to supersede C8 and C2 is unknown.
+Comparison grid:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Phase 1 scope | C10-C14, E6, E7, E17 approved | unchanged | unchanged | unchanged | unchanged |
+| TODOS.md entry to reconcile C8 and C2 with #8 and #9 before chunk 14 | pending | none | added (P2) | none | none |
+| Plan text for chunk 01 and the C8 ledger row | C8, C2 approved | stale vs `main` | unchanged until the TODO is worked | unchanged, stays stale | rewritten now to match `main`, C8 and C2 marked superseded |
+| Effort | - | - | S | S | S |
+
+Question D5:
+D5 — E18: What should happen to plan text that no longer matches PRs #8 and #9?
+Project/branch/task: Synapse Horizon, branch phase-1-rendering-spike, outside Phase 1 (chunk 01 text, CEO C8 and C2).
+ELI10: Two merged PRs changed decisions the plan still records. #8 switched Dependabot's runtime-library updates from `fix(deps)` to `build(deps)`, so those updates no longer cut a release, which means a security fix in a library like `ws` would not reach the downloadable builds. #9 moved the dev server from `127.0.0.1` to `localhost`, while chunk 14 plans to reuse a Host check that accepts only `127.0.0.1`. Either the plan or the code needs to change, and that is a policy call.
+Stakes if we pick wrong: chunk 14 builds on a Host rule the dev server no longer meets, or library fixes stop reaching binaries without anyone deciding that.
+Recommendation: A because whether library fixes should cut releases is a policy decision that deserves its own look before chunk 14, not a silent text edit inside the Phase 1 review.
+Note: options differ in kind, not coverage — no completeness score.
+Net: park it as a tracked P2 with a deadline (A), leave the plan stale (B), or accept the merged PRs as the decision now (C).
+Header: PR 8 and 9
+Options:
+A) Add to TODOS.md (recommended)
+Add a P2 TODO: decide whether #8 and #9 supersede CEO C8 and C2, then update chunk 01, the C8 row and chunk 14's Host-gate text to match, before chunk 14 starts. Effort S (human ~1h / CC ~10 min when worked), risk low. ✅ The release-policy question gets an explicit answer instead of drifting ✅ Deadline tied to chunk 14, the first chunk the Host rule affects ❌ The plan stays out of step with `main` until someone works the TODO
+B) Skip
+Leave the plan text as it is and record nothing. Effort S (zero work), risk medium. ✅ No new backlog item for a single-contributor repo ✅ The code on `main` already reflects the current choice ❌ Chunk 14 will be planned against a `127.0.0.1` rule the dev server no longer uses
+C) Fix it in this PR
+Treat the merged PRs as the decision: rewrite chunk 01 and chunk 14 text to `build(deps)` and `localhost`, and mark C8 and C2 superseded in the ledger. Effort S (human ~1h / CC ~10 min), risk medium. ✅ The plan matches `main` as soon as this branch merges ✅ No backlog item to remember ❌ Decides that library fixes no longer cut releases without weighing it, inside a review about the rendering spike
+
+State: approved
+Actual answer: A, "Add to TODOS.md (recommended)", eng D5, 2026-10-13
+Accepted scope: P2 entry in `TODOS.md` (reconcile #8 and #9 with C8 and C2 before chunk 14); no plan text or code change in this review.
+History: none
+
+Approval readiness: PASS. Checked: E6 (eng D2), E7 (eng D3), E17 (eng D4), E18 (eng D5); structure (eng D1) is a scope selector, not a remedy approval. Required work applied without a new choice, each citing its approved contract: E8 (C10 PQ1, RW1), E9 (RW6), E10 (C10's draw-call claim), E11 (section 4 URL contract, C12 PQ4), E12 (factual), E15 (C10 PQ1 fair race), E16 (RW8), P-E1 (RW8), Q-E1 (factual diagram fix). No unanswered remedy is in the plan.
+
+### NOT in scope (eng, Phase 1)
+
+- Strict peer checks in pnpm: declined (E7, eng D3), because today's tree was not probed for unmet peers.
+- 10-frame batch timing: declined (E6, eng D2); it would have hidden single slow frames.
+- Comparing the two views by hand from JSON: declined (E17, eng D4).
+- Rewriting chunk 01 and the C8/C2 rows to match #8 and #9 now: deferred to `TODOS.md` (E18, eng D5); it needs a release-policy decision first.
+- GPU time in Safari and Firefox: no engine probed exposes `EXT_disjoint_timer_query_webgl2`; recorded as null, not pursued.
+- Lazy import of the spike (CEO A-3): implementation choice, not a review remedy.
+
+### What already exists (eng, Phase 1)
+
+- Playwright's build-and-preview web server (`playwright.config.ts:44-49`): reused for the local smoke; its `vp preview --host 127.0.0.1` command is also the measuring server.
+- Vite `preview.headers` (`CommonServerOptions.headers`, `node_modules/vite/dist/vite/node/index.d.ts:878`, extended by `PreviewOptions` at `:2019`): reused for cross-origin isolation (E6); no custom server.
+- Shots URL contract (`scripts/shots.config.ts:13`) and Dependabot ignore pattern (`.github/dependabot.yml:27-35`): reused (E11, E7).
+- pmndrs `postprocessing` composer in both views: reused, with its options pinned (E8). Nothing is rebuilt.
+
+### Failure modes (eng, Phase 1)
+
+```text
+  NEW PATH                  | REALISTIC FAILURE                               | TEST                 | HANDLING                    | USER SEES
+  --------------------------|-------------------------------------------------|----------------------|-----------------------------|----------------------------
+  measuring server (E6)     | run served by vp run serve or vp dev            | unit (timer step)    | valid:false, coarse-timer   | "Pass invalid: coarse-timer"
+  bloom composer (E8)       | a view falls back to library defaults           | E17 smoke draw calls | one pinned options constant | smoke fails before runs
+  R3F churn (E16)           | React commits the added halls a frame later     | unit (fake view)     | await addHalls              | none needed
+  churn hitch (E15)         | React work lands outside the timed frame        | unit (fake view)     | wall-clock interval metric  | ADR churn row
+  shared materials (E9)     | unmount disposes a shared material              | unit + measured      | dispose events counted      | ADR row fails
+  draw calls (E10)          | autoReset hides composer passes                 | unit (fake info)     | autoReset off, reset/frame  | ADR shows equal counts
+  three upgrade (E7)        | Dependabot proposes three 0.187                 | none (config)        | ignore rule                 | no PR proposed
+  preview headers (E6)      | a future cross-origin asset is blocked by COEP  | smoke, repeat specs  | same-origin assets only     | home smoke fails
+  shots capture (E11)       | spike view warns on contract params or animates | params unit test     | params accepted, freeze     | shots fails on console error
+```
+Critical gaps: 0 (no row lacks both a test and handling while failing silently).
+
+### Worktree parallelization strategy (eng, Phase 1)
+
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| ADR settings, method and rule (CEO T4) | `docs/adr/` | — |
+| Shared core and both views (CEO T1, eng T3) | `src/spike/`, `src/app/`, `vite.config.ts`, `.github/`, package files | — |
+| Bench, params and tests (CEO T2, T3; eng T1, T4-T6) | `src/spike/shared/`, `e2e/` | shared core and views |
+| Measuring runs and results (CEO T5) | `docs/adr/` | ADR rule commit, bench |
+| README, shots, image (CEO T6) | `README.md`, `scripts/`, `docs/img/` | views |
+
+Lane A: shared core → views → bench and tests (`src/spike/` shared, sequential). Lane B: ADR rule (`docs/adr/`, independent). Execution order: launch A and B; commit B's rule before any measured run; after A, run the passes, then README and shots. Conflict flags: `docs/adr/0001-render-integration.md` is written by lane B and later by the results step, so those stay sequential.
+
+### Implementation Tasks (eng review, Phase 1)
+
+Synthesized from this review's findings; they extend the CEO Phase 1 tasks T1-T6 rather than replace them. Effort ratios assumed: features ~30x, tests ~50x, config ~30x.
+
+- [ ] **T1 (P1, human: ~1h / CC: ~5min)** — tooling, bench — Cross-origin isolated measuring server and timer-step check
+  - Surfaced by: Scope Challenge — E6 (eng D2)
+  - Files: vite.config.ts, src/spike/shared/bench.ts, src/spike/shared/bench.test.ts, docs/adr/0001-render-integration.md
+  - Verify: `vp test`; on `vp build` then `vp preview --host 127.0.0.1`, `crossOriginIsolated === true`; `smoke.spec.ts` and `repeat.spec.ts` still green
+- [ ] **T2 (P2, human: ~15min / CC: ~2min)** — deps — Dependabot ignore rules for three, @types/three and postprocessing with peer-range comment
+  - Surfaced by: Scope Challenge — E7 (eng D3)
+  - Files: .github/dependabot.yml
+  - Verify: Dependabot config check shows no error; the three rules are present
+- [ ] **T3 (P1, human: ~1h / CC: ~5min)** — spike render — Pin composer options in the shared constant and pass them in both views
+  - Surfaced by: Scope Challenge — E8
+  - Files: src/spike/shared/render.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx
+  - Verify: both views' snapshots report the same multisampling and frame buffer type; E17 smoke passes
+- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — spike bench — SpikeView seam, wall-clock churn hitch, awaited addHalls, dispose-event count, draw calls with autoReset off, preallocated samples, fake-view unit tests
+  - Surfaced by: Scope Challenge — E9, E10; Architecture — E15, E16; Performance — P-E1
+  - Files: src/spike/shared/bench.ts, src/spike/shared/bench.test.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx
+  - Verify: `vp test` covers each rule against a fake SpikeView
+- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — spike params — Accept shots contract params, seed the store, freeze one frame, refuse bench with freeze
+  - Surfaced by: Scope Challenge — E11
+  - Files: src/spike/shared/params.ts, src/spike/shared/params.test.ts, src/spike/shared/fakeStore.ts
+  - Verify: `vp test`; `vp run shots` captures the spike view with no console warning
+- [ ] **T6 (P2, human: ~1h / CC: ~5min)** — e2e — Equal-scene assertion across views in the local spike smoke
+  - Surfaced by: Test review — E17 (eng D4)
+  - Files: e2e/spike.spec.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx
+  - Verify: `vp run e2e:local` green in three engines; CI log shows the spec skipped
+- [ ] **T7 (P3, human: ~5min / CC: ~1min)** — verify — Run `vp check` immediately after adding R3F to prove its JSX types under TypeScript 7
+  - Surfaced by: Scope Challenge — E13
+  - Files: package.json, pnpm-lock.yaml
+  - Verify: `vp check` green with one R3F element in a spike file
+
+_No new tasks from Code Quality review beyond the diagram fix already applied (Q-E1)._
+
+### Reality rows (eng, Phase 1)
+
+- REALITY: premise-table finding unverified=3 (real Safari and Firefox timer policy under isolation, probe used Playwright builds; GPU timer extension in real Chrome; R3F JSX types under TypeScript 7) docs/PLAN.md:433
+- REALITY: already-done pass `git log origin/main --since=2026-10-12` on the named paths shows Phase 0 commits plus #8 and #9; no spike code docs/PLAN.md:430
+- REALITY: surface-check pass `vp preview --host 127.0.0.1 --port --strictPort` in use (`playwright.config.ts:45`); Vite `preview.headers` exists (`node_modules/vite/dist/vite/node/index.d.ts:878`); R3F `advance` and `frameloop="never"` from R3F docs via Context7 docs/PLAN.md:433
+- REALITY: binding-decisions finding CEO C10-C14 honoured; #8 and #9 reverse CEO C8 and C2 in code, logged as TODO E18 docs/PLAN.md:372
+- REALITY: numbers finding timer steps [measured: Playwright probe]; composer defaults [measured: tarball `build/index.js:948-949` and Context7]; peer ranges [measured: `npm view`]; thresholds, sample sizes and effort [estimated] docs/PLAN.md:433
+- REALITY: deferred-asks pass nothing requested for Phase 1 is left out; E18 deferred with a trigger docs/PLAN.md:434
+- REALITY: pr-count pass one PR for chunk 03 plus this branch's review-docs PR docs/PLAN.md:31
+
+### Unresolved decisions (eng, Phase 1)
+
+None. Open verifications (not decisions): timer resolution in real Safari and Firefox under isolation (checked by E6's `coarse-timer` guard at run time); E13 TypeScript 7 check; CEO A-3 bundle split.
+
+### Completion summary (eng, Phase 1)
+
+- Step 0: Scope Challenge — scope accepted as-is (original arrangement, eng D1)
+- Reality rows: 7/7 applicable rows emitted (`PLAN_REALITY` complete), 3 unverified premises
+- Architecture Review: 2 issues found (E15, E16)
+- Code Quality Review: 1 issue found (Q-E1)
+- Test Review: diagram produced, 1 gap identified (E17, closed by eng D4)
+- Performance Review: 1 issue found (P-E1)
+- Scope Challenge findings, reported separately: 9 (E6-E14); E6 and E7 decided, E8-E12 applied, E13 verification, E14 to TODO
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 1 item proposed to user (E18, added)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (config)
+- Parallelization: 2 lanes, 1 parallel / 3 sequential steps
+- Lake Score: 1/3 (eng D2 picked its 10/10 option; D3 picked the 8/10 option over a 10/10; D4's best option scored 9/10)
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 3 proposals, 2 accepted, 1 deferred |
-| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` | Independent 2nd opinion | 2 | disabled | `codex_reviews` disabled; no completed external review |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 3 | ISSUES OPEN | 7 issues, 0 critical gaps (this run: Phase 0 + 14b; all mapped to tasks, 0 unresolved) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (on main) |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 2 | CLEAR | mode: HOLD_SCOPE, 0 critical gaps (Phase 1, chunk 03, 2026-10-13) |
+| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` | Independent 2nd opinion | 4 | disabled | `codex_reviews` disabled; no completed external review |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 4 | ISSUES OPEN | 5 issues, 0 critical gaps (this run: Phase 1, chunk 03; all mapped to tasks T1-T7, 0 unresolved; not yet in the review log when this report was saved) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (on main, 2026-10-12) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex disabled by config for both the CEO and eng reviews on this branch (logged as skipped/disabled). The CEO spec loop used a native Claude refuter subagent (in-host, not outside coverage).
-- **VERDICT:** CEO CLEARED. Eng review ISSUES OPEN means 7 findings mapped to tasks T1-T6 with 0 unresolved decisions and 0 critical gaps; eng review required status per dashboard rules.
+- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled by config for the Phase 1 CEO and eng reviews (logged skipped/disabled at commit `dc8612a`), as for Phase 0. No external or native challenge ran.
+- **VERDICT:** CEO CLEARED for Phase 1. Eng Review ISSUES OPEN means 5 findings mapped to tasks T1-T7 with 0 unresolved decisions and 0 critical gaps; eng review required status per dashboard rules.
 
 NO UNRESOLVED DECISIONS
+
+
