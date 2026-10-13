@@ -1,6 +1,6 @@
 # ADR 0001: Render integration, React Three Fiber or direct three.js
 
-Status: proposed. Measured runs are pending; the decision is blank until they are in. Chunk 03 of [docs/PLAN.md](../PLAN.md).
+Status: decided. React Three Fiber, by the decision rule below applied to 48 measured passes (see Results and Decision). Chunk 03 of [docs/PLAN.md](../PLAN.md).
 
 This file was first committed with the method and decision rule below and with empty results, before any measured run (CEO RW11). That commit has the subject `docs: add ADR 0001 render spike method and decision rule`. Find it with `git log --format='%H %cI %s' --grep='add ADR 0001 render spike method'`; the results commit records its SHA here, because a commit cannot contain its own SHA. Every result file's `startedAt` must be later than that commit's committer date.
 
