@@ -35,7 +35,7 @@ The spike spec (`e2e/spike.spec.ts`) opens both render-spike views at 1x and 4x 
 
 ## Architecture
 
-How three.js is integrated into the app, React Three Fiber or direct three.js, is pending ADR 0001 measurements. The method and decision rule are in [docs/adr/0001-render-integration.md](docs/adr/0001-render-integration.md).
+How three.js is integrated into the app: React Three Fiber (R3F), chosen by ADR 0001 from 48 measured passes under a decision rule written before the runs. See [docs/adr/0001-render-integration.md](docs/adr/0001-render-integration.md).
 
 ![Render spike: 12 halls, 192 racks, 3,072 LEDs](docs/img/03-spike.png)
 

@@ -95,11 +95,83 @@ Geometry, texture and program counts must return to baseline after disposal sett
 
 ## Results
 
-Pending runs. No measured pass exists at the time of this commit. The results table will be built from the JSON files in `docs/adr/0001-results/`.
+All numbers come from the 48 files in `docs/adr/0001-results/`, computed with a throwaway script that applies the nearest-rank median and the decision rule as written. Rule commit: `a41b923` (committer date 2026-10-13T10:13:37+02:00).
+
+**Validity.** 48 files; 48 `valid:true`; 48 with `timer.crossOriginIsolated: true`; timer step 0.005 to 0.020 ms (limit 0.1 ms); `startedAt` from 2026-10-13T10:57:03Z to 11:32:18Z, all after the rule commit.
+
+**Environment** (M1 Max MacBook Pro, real browsers; three 0.186.1, R3F 9.8.1, app 0.2.1 in every file).
+
+| Browser | Version | Refresh interval (ms) | Canvas (px) | DPR | GPU renderer string |
+|---|---|---|---|---|---|
+| Chrome | 155.0.0.0 | 16.68 | 2864 x 1654 | 2 | ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Max, Unspecified Version) |
+| Firefox | 157.0 | 8.18 to 8.38 across passes (about 120 Hz) | 2560 x 1536 | 2 | Apple M1, or similar |
+| Safari | 27.0.1 | 16.68 | 2620 x 1388 | 2 | Apple GPU |
+
+**Rule 1: steady CPU p95 at 4x (ms).** Three pass values per view in pass order 1, 2, 3; value is their median, range is max minus min. Gap is R3F minus vanilla; the percentage is of vanilla's value. "Counts" means the gap is larger than both ranges.
+
+| Browser | Bloom | R3F p95 passes | R3F value / range | Vanilla p95 passes | Vanilla value / range | Gap ms | Gap % | Counts | Fires (>1 ms or >15%) |
+|---|---|---|---|---|---|---|---|---|---|
+| Chrome | off | 2.55, 2.30, 2.61 | 2.55 / 0.31 | 2.655, 2.53, 2.975 | 2.655 / 0.445 | -0.105 | -4.0 | no | no |
+| Chrome | on | 2.46, 2.365, 2.55 | 2.46 / 0.185 | 2.745, 2.61, 2.49 | 2.61 / 0.255 | -0.15 | -5.7 | no | no |
+| Firefox | off | 2.80, 2.98, 2.96 | 2.96 / 0.18 | 2.84, 2.88, 2.54 | 2.84 / 0.34 | 0.12 | 4.2 | no | no |
+| Firefox | on | 1.98, 2.70, 1.64 | 1.98 / 1.06 | 2.52, 2.26, 1.92 | 2.26 / 0.60 | -0.28 | -12.4 | no | no |
+| Safari | off | 2.22, 1.86, 1.34 | 1.86 / 0.88 | 1.90, 1.64, 1.54 | 1.64 / 0.36 | 0.22 | 13.4 | no | no |
+| Safari | on | 2.66, 2.68, 2.64 | 2.66 / 0.04 | 2.44, 2.48, 2.40 | 2.44 / 0.08 | 0.22 | 9.0 | yes | no (0.22 ms, 9.0%) |
+
+Rule 1 verdict: does not fire. The only gap that counts under the noise guard (Safari, bloom on) is 0.22 ms and 9.0%, under both thresholds.
+
+**Rule 3: longest churn interval at 4x (ms), `stats.churn.longestIntervalMs`.**
+
+| Browser | Bloom | R3F passes | R3F median | Vanilla passes | Vanilla median | R3F / vanilla | Fires (>2x) |
+|---|---|---|---|---|---|---|---|
+| Chrome | off | 17.27, 17.66, 17.61 | 17.61 | 17.68, 17.35, 17.17 | 17.35 | 1.02 | no |
+| Chrome | on | 17.19, 17.47, 17.57 | 17.47 | 17.68, 17.59, 17.40 | 17.59 | 0.99 | no |
+| Firefox | off | 17.58, 8.72, 9.24 | 9.24 | 9.10, 8.70, 9.32 | 9.10 | 1.02 | no |
+| Firefox | on | 16.64, 8.54, 8.68 | 8.68 | 9.82, 9.34, 8.36 | 9.34 | 0.93 | no |
+| Safari | off | 18.28, 19.96, 17.98 | 18.28 | 17.84, 21.38, 17.78 | 17.84 | 1.02 | no |
+| Safari | on | 17.30, 17.24, 17.46 | 17.30 | 17.64, 17.46, 19.82 | 17.64 | 0.98 | no |
+
+Rule 3 verdict: does not fire. Every 50-cycle churn pass completed (`stats.churn.cycles` is 50 in all files).
+
+**Rule 2: counts before and after churn, all 48 passes.** In every pass, for both views and all three browsers, `geometries`, `textures`, `programs` and `storeListeners` are equal before and after churn, `sharedMaterialDisposeEvents` is 0, and `baseline.all` is true. The values are identical across browsers and views and depend only on the bloom state:
+
+| Load | Bloom | Passes per view per browser | Geometries | Textures | Programs | Store listeners | Shared-material dispose events | Draw calls | Rack / LED instances | Halls |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1x | off | 1 | 36 | 3 | 4 | 12 | 0 | 48 | 192 / 3,072 | 12 |
+| 1x | on | 1 | 37 | 20 | 8 | 12 | 0 | 65 | 192 / 3,072 | 12 |
+| 4x | off | 3 | 36 | 3 | 4 | 12 | 0 | 48 | 768 / 12,288 | 12 |
+| 4x | on | 3 | 37 | 20 | 8 | 12 | 0 | 65 | 768 / 12,288 | 12 |
+
+Rule 2 verdict: does not fire. R3F and vanilla drew the same scene in every pair of passes: same draw calls, instance counts and geometry count.
+
+**60 fps check** (1x, bloom off; M1 Max, overstates M1 Air GPU). Limit: median frame interval at most 16.7 ms and CPU p95 under 16.7 ms.
+
+| Browser | View | Median interval (ms) | CPU p95 (ms) | Passes |
+|---|---|---|---|---|
+| Chrome | R3F | 16.68 | 1.97 | yes |
+| Chrome | vanilla | 16.68 | 2.45 | yes |
+| Firefox | R3F | 8.32 | 2.64 | yes |
+| Firefox | vanilla | 8.36 | 2.14 | yes |
+| Safari | R3F | 16.68 | 2.32 | yes |
+| Safari | vanilla | 16.68 | 2.22 | yes |
+
+**GPU time (informational; decides nothing).** Only Chrome exposed `EXT_disjoint_timer_query_webgl2`; `stats.steady.gpu` is null in all Firefox and Safari files. Chrome, 4x, median over the three passes of each pass's median and p95 (ms):
+
+| View | Bloom | GPU median | GPU p95 |
+|---|---|---|---|
+| R3F | off | 1.55 | 1.82 |
+| R3F | on | 8.13 | 12.49 |
+| Vanilla | off | 1.69 | 1.82 |
+| Vanilla | on | 7.95 | 12.34 |
 
 ## Decision
 
-Pending. It follows from the rule above.
+R3F is chosen.
+
+- Rule 1 did not fire: no browser or bloom state has an R3F p95 CPU gap above 1 ms or 15% that counts under the noise guard (largest counting gap: 0.22 ms, 9.0%, Safari bloom on).
+- Rule 2 did not fire: all 48 passes returned to baseline with 0 shared-material dispose events.
+- Rule 3 did not fire: the largest R3F to vanilla ratio of median longest churn interval is 1.02.
+- 60 fps check: both views pass in all three browsers at 1x with bloom off (M1 Max, overstates M1 Air GPU).
 
 ## Consequences
 
@@ -112,3 +184,4 @@ Known follow-ons, whichever integration is picked (CEO RW12):
 - The 4x stress level is not the chunk 36 scene.
 - The M1 Air-class check belongs to chunk 36 (CEO C11); this ADR measures on an M1 Max.
 - Delete the spike views in chunk 04a, with the `spike-*` entry in `scripts/shots.config.ts` and any dependency this ADR rejects. `docs/img/03-spike.png` stays as a static image.
+- Bloom costs about 6.3 to 6.6 ms of median GPU time and about 10.5 to 10.7 ms of p95 GPU time per frame at 4x on the M1 Max in Chrome (R3F 1.55 to 8.13 ms median, vanilla 1.69 to 7.95 ms; informational, single browser). Relevant to the D10 bloom auto-disable and to the chunk 36 M1 Air check.
