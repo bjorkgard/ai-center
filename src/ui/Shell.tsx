@@ -33,7 +33,10 @@ const rectOf = (el: Element, origin: DOMRect): Rect => {
 
 // The empty dashboard frame (design D5). Sizes are the same at every window size; the 3D
 // area takes the extra space. Panels block pointer events; the gaps pass them through.
-export function Shell() {
+// `stage` (the 3D canvas, its backdrop and the loader) sits right after the top bar in the DOM,
+// so the canvas is the next Tab stop after the top bar (DR12); the top bar's z-index keeps it
+// painted above the stage.
+export function Shell({ stage }: { stage: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
   const rightPanelOpen = useStore((s) => s.rightPanelOpen);
 
@@ -75,12 +78,13 @@ export function Shell() {
         data-panel
         data-testid="slot-top-bar"
         rounded={false}
-        className="absolute inset-x-0 top-0 flex h-14 items-center border-x-0 border-t-0 px-4"
+        className="absolute inset-x-0 top-0 z-10 flex h-14 items-center border-x-0 border-t-0 px-4"
       >
         <span data-testid="wordmark" className="text-body-strong font-semibold text-text">
           Synapse Horizon
         </span>
       </GlassPanel>
+      {stage}
       <div data-panel className="absolute top-[72px] left-4 flex gap-3">
         {KPI_TITLES.map((t) => (
           <Slot

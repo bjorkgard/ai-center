@@ -32,6 +32,10 @@ export interface DriverState {
 export interface DriverOptions {
   // Called with scene time in seconds and the real interval since the last render in ms.
   render(sceneSeconds: number, intervalMs: number): void;
+  // Runs before each render with the time and the interval since the last render, in ms.
+  // True means the camera is moving, damping included: that counts as input, so calm mode
+  // waits and a frozen frame draws again (CEO S-RW16, S-RW21).
+  update?(nowMs: number, intervalMs: number): boolean;
   onFatal(message: string): void;
   calm?: boolean;
   freeze?: boolean;
@@ -100,6 +104,10 @@ export function createRenderDriver(options: DriverOptions): RenderDriver {
     }
     lastRender = now;
     try {
+      if (options.update?.(now, interval)) {
+        lastActivity = now;
+        frozenPending = true;
+      }
       options.render(sceneSeconds, interval);
       consecutiveErrors = 0;
     } catch (err) {

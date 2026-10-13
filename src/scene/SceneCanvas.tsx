@@ -12,7 +12,16 @@ import {
   INITIAL_COMPOSER,
   type ComposerDeps,
 } from "./composerState.ts";
-import { createCameraRig, type CameraRig } from "./camera.ts";
+import { uiDurationMs } from "../ui/duration.ts";
+import { createCameraRig, ORTHO_ZOOM, type CameraRig } from "./camera.ts";
+import {
+  createCameraControls,
+  stepCamera,
+  wakeOnRigMotion,
+  type CameraControls,
+} from "./controls.ts";
+import { attachCameraKeys } from "./keyboard.ts";
+import { isEmptyGround } from "./pick.ts";
 import { installSceneDev } from "./devHooks.ts";
 import { DrawCallCounter } from "./drawCalls.ts";
 import { createRenderDriver, type RenderDriver } from "./loop/driver.ts";
@@ -33,6 +42,13 @@ import { glFactory, precheckWebgl, watchContext } from "./webgl.ts";
 
 // RenderPass, MarkPass and the merged EffectPass.
 const COMPOSER_PASSES = 3;
+
+const CAMERA_HELP_ID = "camera-help";
+const CAMERA_HELP =
+  "Arrow keys pan, plus and minus zoom, Q and E rotate, 0 returns home, P switches perspective.";
+
+// The dev-menu glide test (DR11) flies out to this spot and back home.
+const GLIDE_TEST = { far: new Vector3(8, 0, -6), zoom: 140 };
 
 // Mutable bridge between the React tree and the frame callback (no re-render per frame).
 class SceneControl {
@@ -153,7 +169,9 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
   const set = useThree((s) => s.set);
   const quality = useStore((s) => s.quality);
   const driverRef = useRef<RenderDriver | null>(null);
+  const controlsRef = useRef<CameraControls | null>(null);
   const firstApply = useRef(true);
+  const interactive = params.view !== "lookdev";
 
   useEffect(() => {
     applyTier(gl, quality, firstApply.current);
@@ -167,6 +185,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
 
   useEffect(() => {
     rig.setViewport({ width: size.width, height: size.height });
+    controlsRef.current?.syncLimits();
     driverRef.current?.invalidateFrozen();
   }, [rig, size]);
 
@@ -174,11 +193,75 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
     () =>
       rig.subscribe((camera) => {
         set({ camera });
+        controlsRef.current?.syncLimits();
         driverRef.current?.notifyCameraMotion();
         driverRef.current?.invalidateFrozen();
       }),
     [rig, set],
   );
+
+  // A glide or key step wakes the loop from calm mode and drops any damping left from a drag.
+  useEffect(
+    () =>
+      wakeOnRigMotion(
+        rig,
+        () => controlsRef.current,
+        () => {
+          driverRef.current?.notifyCameraMotion();
+          driverRef.current?.invalidateFrozen();
+        },
+      ),
+    [rig],
+  );
+
+  // The glide frames the target inside the safe area and follows it while it changes (S-RW37).
+  useEffect(() => {
+    rig.setSafeArea(useStore.getState().safeArea);
+    return useStore.subscribe((state, previous) => {
+      if (state.safeArea !== previous.safeArea) rig.setSafeArea(state.safeArea);
+    });
+  }, [rig]);
+
+  // Map controls, the keyboard and the double-click home. The look-dev view stays a fixed shot.
+  useEffect(() => {
+    if (!interactive) return;
+    const el = gl.domElement;
+    const controls = createCameraControls(rig, el, {
+      reducedMotion: () => useStore.getState().reducedMotion,
+      onChange: () => {
+        driverRef.current?.notifyCameraMotion();
+        driverRef.current?.invalidateFrozen();
+      },
+    });
+    controlsRef.current = controls;
+    const stopReduced = useStore.subscribe((state, previous) => {
+      if (state.reducedMotion !== previous.reducedMotion) {
+        controls.setReducedMotion(state.reducedMotion);
+      }
+    });
+    const detachKeys = attachCameraKeys(
+      el,
+      { rig, safeArea: () => useStore.getState().safeArea, stepMs: uiDurationMs },
+      CAMERA_HELP_ID,
+    );
+    const onDoubleClick = (event: MouseEvent) => {
+      const box = el.getBoundingClientRect();
+      const ndc = {
+        x: ((event.clientX - box.left) / box.width) * 2 - 1,
+        y: -((event.clientY - box.top) / box.height) * 2 + 1,
+      };
+      if (isEmptyGround(scene, rig.active, ndc)) rig.home();
+    };
+    el.addEventListener("dblclick", onDoubleClick);
+
+    return () => {
+      el.removeEventListener("dblclick", onDoubleClick);
+      detachKeys();
+      stopReduced();
+      controls.dispose();
+      controlsRef.current = null;
+    };
+  }, [gl, scene, rig, interactive]);
 
   useEffect(
     () =>
@@ -207,6 +290,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
     const driver = createRenderDriver({
       calm: params.calm,
       freeze: params.freeze,
+      update: (now, interval) => stepCamera(rig, controlsRef.current, now, interval),
       render: (sceneSeconds) => {
         if (control.frameThrow) throw new Error(control.frameThrow);
         if (useStore.getState().webgl !== "ok") return;
@@ -247,6 +331,20 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
         composerGen: control.composerGen,
       }),
       toggleProjection: () => rig.toggle(),
+      glideTest: () => {
+        const out = rig.framing.target.distanceTo(GLIDE_TEST.far) > 0.5;
+        if (out) rig.glideTo(GLIDE_TEST.far, GLIDE_TEST.zoom);
+        else rig.glideTo(new Vector3(0, 0, 0), ORTHO_ZOOM.default);
+      },
+      camera: () => ({
+        target: rig.framing.target.toArray(),
+        zoom: rig.framing.zoom,
+        azimuth: rig.framing.azimuth,
+        elevation: rig.framing.elevation,
+        projection: rig.projection,
+        animating: rig.animating,
+      }),
+      project: (point: [number, number, number]) => rig.project(new Vector3(...point)),
       lights: () => {
         const counts: Record<string, number> = {};
         scene.traverse((object) => {
@@ -288,7 +386,10 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
   const settings = qualitySettings(quality);
   const lookdev = params.view === "lookdev";
   const [rig] = useState(() => {
-    const created = createCameraRig({ width: window.innerWidth, height: window.innerHeight });
+    const created = createCameraRig(
+      { width: window.innerWidth, height: window.innerHeight },
+      { reducedMotion: () => useStore.getState().reducedMotion },
+    );
     if (lookdev) {
       created.setFraming({
         target: new Vector3(...LOOKDEV_FRAMING.target),
@@ -333,7 +434,12 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
   }, [params.dev, control]);
 
   return (
-    <div className="absolute inset-0">
+    <div className="pointer-events-auto absolute inset-0">
+      {!lookdev && (
+        <p id={CAMERA_HELP_ID} className="sr-only">
+          {CAMERA_HELP}
+        </p>
+      )}
       <Canvas
         frameloop="never"
         dpr={pixelRatio(settings.pixelRatioCap)}

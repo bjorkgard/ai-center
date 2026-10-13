@@ -15,6 +15,9 @@ interface SceneDevHooks {
   throwInComposer(): void;
   // Unmounts the scene content, then mounts it again (04c dispose check).
   remountContent(): Promise<void>;
+  // The camera framing and a world point's screen position (05 camera checks).
+  camera(): import("../scene/stats.ts").CameraView | null;
+  project(point: [number, number, number]): { x: number; y: number } | null;
   // Lights in the scene by three.js type (04c rig completeness check).
   rigLights(): Record<string, number>;
   // Dispose events the shared material library received since the hooks installed.

@@ -35,8 +35,11 @@ const RIG = { HemisphereLight: 1, DirectionalLight: 1, AmbientLight: 1 };
 test("the test cube and ground render with the library under the whole rig", async ({ page }) => {
   await open(page, "dev=1&freeze=1");
   expect(await page.evaluate("window.__sceneDev.rigLights()")).toEqual(RIG);
-  // The glass panels would blur the frame, so look at the bare 3D area.
-  await page.addStyleTag({ content: "[data-testid^=slot-] { visibility: hidden !important }" });
+  // The glass panels would blur the frame and the dev menu grew over the lower right (05), so
+  // look at the bare 3D area.
+  await page.addStyleTag({
+    content: "[data-testid^=slot-], [data-testid=perf-hud] { visibility: hidden !important }",
+  });
   const [top, ground, farGround, leftFace] = await pixels(page, [
     [640, 262],
     [800, 420],

@@ -53,6 +53,10 @@ A low-poly isometric campus in dark slate and concrete, lit by cool moonlight wi
 
 ![Look-dev view: hall, rack row with six status LEDs, fibre, vendor trim](docs/img/04c-lookdev.png)
 
+## Controls
+
+Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` returns home, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.
+
 ## Known limits
 
 - **"Your browser could not start 3D (WebGL)."** The browser could not create a WebGL2 context. Turn on hardware acceleration in the browser settings and reload; Safari has no such setting, so update the browser and system. The panels still work.

@@ -20,7 +20,12 @@ export function Ground() {
   useEffect(() => () => grid.dispose(), [grid]);
   return (
     <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} material={MATERIALS.ground} receiveShadow>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        material={MATERIALS.ground}
+        userData={{ ground: true }}
+        receiveShadow
+      >
         <planeGeometry args={[SIZE, SIZE]} />
       </mesh>
       <lineSegments geometry={grid} material={MATERIALS.grid} position={[0, 0.01, 0]} />

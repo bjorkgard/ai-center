@@ -19,9 +19,23 @@ export interface SceneStats {
   composerGen: number;
 }
 
+export interface CameraView {
+  target: [number, number, number];
+  zoom: number;
+  azimuth: number;
+  elevation: number;
+  projection: Projection;
+  animating: boolean;
+}
+
 export interface SceneProbe {
   read(): SceneStats;
   toggleProjection(): void;
+  // Dev-menu glide test: flies out to a fixed spot, then back home (DR11).
+  glideTest(): void;
+  camera(): CameraView;
+  // Screen position in CSS pixels of a world point.
+  project(point: [number, number, number]): { x: number; y: number };
   // Lights in the scene by three.js type, e.g. { HemisphereLight: 1 }.
   lights(): Record<string, number>;
 }

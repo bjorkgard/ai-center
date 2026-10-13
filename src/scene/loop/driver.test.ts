@@ -76,6 +76,37 @@ test("notifyCameraMotion also resets calm mode", () => {
   expect(driver.state.mode).toBe("active");
 });
 
+test("a moving camera holds the 60 fps cap with no input, and calm mode waits 5 s after it stops", () => {
+  let movingUntil = 0;
+  const { fake, driver, times } = setup({ update: (now) => now < movingUntil });
+  driver.start();
+  run(fake, 60, 6000);
+  expect(driver.state.mode).toBe("calm");
+  // A glide of 8 s (no pointer or key input): never calm while it runs.
+  movingUntil = fake.now + 8000;
+  driver.notifyCameraMotion();
+  const before = times.length;
+  for (let i = 0; i < 8; i++) {
+    run(fake, 60, 1000);
+    expect(driver.state).toEqual({ capFps: 60, mode: "active" });
+  }
+  expect(times.length - before).toBeLessThanOrEqual(8 * 60 + 1);
+  expect(times.length - before).toBeGreaterThanOrEqual(8 * 59);
+  run(fake, 60, 4000);
+  expect(driver.state.mode).toBe("active");
+  run(fake, 60, 1500);
+  expect(driver.state).toEqual({ capFps: 30, mode: "calm" });
+});
+
+test("a frozen frame draws again while the camera is moving, then stops", () => {
+  let moves = 3;
+  const { fake, driver, times } = setup({ freeze: true, update: () => moves-- > 0 });
+  driver.start();
+  run(fake, 60, 1000);
+  expect(times.length).toBe(4);
+  expect(driver.state.mode).toBe("frozen");
+});
+
 test("calm=false never drops below 60 fps", () => {
   const { fake, driver } = setup({ calm: false });
   driver.start();
