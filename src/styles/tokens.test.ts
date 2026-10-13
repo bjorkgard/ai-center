@@ -10,3 +10,13 @@ test("tokens define the brand cyan and the six status colours", () => {
     expect(css).toContain(`--status-shape-${status}:`);
   }
 });
+
+test("tokens define the motion durations, the one easing and the secondary text colour", () => {
+  const css = readFileSync(new URL("./tokens.css", import.meta.url), "utf8");
+  expect(css).toContain("--dur-fast: 150ms;");
+  expect(css).toContain("--dur-ui: 250ms;");
+  expect(css).toContain("--dur-scene: 600ms;");
+  expect(css).toContain("--ease: cubic-bezier(0.22, 1, 0.36, 1);");
+  expect(css).toContain("--color-text-2: #a3acbd;");
+  expect(css).toContain("--color-text-3: #8a93a6;");
+});

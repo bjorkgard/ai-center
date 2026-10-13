@@ -26,12 +26,24 @@ vp run e2e:local   # all three engines, then regenerates the screenshots
 vp run shots       # builds, then writes docs/img/*.png (1280x720, under 200 KB)
 ```
 
-The smoke spec checks the page title, the heading, the `app-version` meta tag and that
+The smoke spec waits for the scene's ready signal, then checks the page title, the canvas, the `app-version` meta tag and that
 the console stays clean. A repeat-run spec captures the same view twice and asserts the two
-images agree within a 0.5% pixel diff. `vp run shots` fails with `ShotFailed` (exit 1) if a
-page logs a console error or an image is over 200 KB.
+images agree within a 0.5% pixel diff. The scene specs cover the draw-call bar, the 30 fps
+calm mode, reduced motion, the projection toggle, the WebGL card, context loss and restore,
+and the scene-error card. `vp run shots` waits on the ready signal for every image and fails
+with `ShotFailed` (exit 1) if a page logs a console error or an image is over 200 KB.
 
-The spike spec (`e2e/spike.spec.ts`) opens both render-spike views at 1x and 4x load and checks they draw the same scene. It runs under `vp run e2e:local` and is skipped when `CI` is set.
+## Scene core (chunk 04a)
+
+One persistent 3D canvas fills the viewport behind the DOM overlay layer. It shows a test cube on a ground plane, drawn through an orthographic isometric camera that the perf HUD can switch to perspective. Add `?dev=1` to show the perf HUD (fps, scene and post-processing draw calls, triangles, `renderer.info` counts, frame cap and mode, quality tier, WebGL state) and the `window.__sceneDev` hooks. `?webgl=0` forces the WebGL card, `?calm=0` keeps the 60 fps cap and `?freeze=1` renders one fixed frame.
+
+![Test cube with the perf HUD](docs/img/04a-core.png)
+
+## Known limits
+
+- **"Your browser could not start 3D (WebGL)."** The browser could not create a WebGL2 context. Turn on hardware acceleration in the browser settings and reload; Safari has no such setting, so update the browser and system. The panels still work.
+- **"The 3D view lost its graphics connection."** The graphics context was lost and did not come back within 10 s. Reload the page; if it comes back by itself later the card hides.
+- **"The 3D view stopped after an error."** The scene threw an error. Reload to restart it, and report the `[scene]` lines in the browser console; "Copy error details" puts them on the clipboard with the app version.
 
 ## Architecture
 
