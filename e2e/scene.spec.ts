@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { skipFrameSpecInCiFirefox } from "./ci-skip.ts";
 
 const READY = "window.__sceneReady === true";
+
+test.beforeEach(({ browserName }, testInfo) => skipFrameSpecInCiFirefox(browserName, testInfo));
 
 async function open(page: Page, query: string) {
   await page.goto(`/?${query}`);

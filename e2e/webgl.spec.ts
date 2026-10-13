@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { skipFrameSpecInCiFirefox } from "./ci-skip.ts";
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
 const READY = "window.__sceneReady === true";
+
+// Every spec except the webgl=0 card one needs a rendered frame.
+test.beforeEach(({ browserName }, testInfo) => {
+  if (!testInfo.title.startsWith("webgl=0")) skipFrameSpecInCiFirefox(browserName, testInfo);
+});
 
 async function open(page: Page, query: string) {
   await page.goto(`/?${query}`);

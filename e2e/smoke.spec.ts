@@ -1,9 +1,14 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import { skipFrameSpecInCiFirefox } from "./ci-skip.ts";
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
 
-test("page loads with a canvas, no console errors and the right version", async ({ page }) => {
+test("page loads with a canvas, no console errors and the right version", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
   const errors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") errors.push(msg.text());

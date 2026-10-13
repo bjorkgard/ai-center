@@ -20,6 +20,7 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 720 } },
+      testIgnore: /ci-firefox\.spec\.ts/,
     },
     {
       name: "firefox",
@@ -30,12 +31,14 @@ export default defineConfig({
         // (CEO S-RW30); force it on so the scene can draw.
         launchOptions: { firefoxUserPrefs: { "webgl.force-enabled": true } },
       },
-      testIgnore: /repeat\.spec\.ts/,
+      // The CI-only smoke (S-RW30) asserts the card-or-scene path; locally the full
+      // specs run, and repeat.spec.ts never runs on Firefox.
+      testIgnore: process.env.CI ? /repeat\.spec\.ts/ : /repeat\.spec\.ts|ci-firefox\.spec\.ts/,
     },
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"], viewport: { width: 1280, height: 720 } },
-      testIgnore: /repeat\.spec\.ts/,
+      testIgnore: /repeat\.spec\.ts|ci-firefox\.spec\.ts/,
     },
   ],
   webServer: {
