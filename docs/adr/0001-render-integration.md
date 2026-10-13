@@ -2,7 +2,7 @@
 
 Status: decided. React Three Fiber, by the decision rule below applied to 48 measured passes (see Results and Decision). Chunk 03 of [docs/PLAN.md](../PLAN.md).
 
-This file was first committed with the method and decision rule below and with empty results, before any measured run (CEO RW11). That commit has the subject `docs: add ADR 0001 render spike method and decision rule`. Find it with `git log --format='%H %cI %s' --grep='add ADR 0001 render spike method'`; the results commit records its SHA here, because a commit cannot contain its own SHA. Every result file's `startedAt` must be later than that commit's committer date.
+This file was first committed with the method and decision rule below and with empty results, before any measured run (CEO RW11). That commit has the subject `docs: add ADR 0001 render spike method and decision rule`. The chunk 03 PR (#11) was squash-merged, so that commit is not on `main`; it stays in the PR's commit list. Find it with `git fetch origin pull/11/head` and then `git log --format='%H %cI %s' --grep='add ADR 0001 render spike method' FETCH_HEAD`; the results section records its SHA, because a commit cannot contain its own SHA. Every result file's `startedAt` must be later than that commit's committer date.
 
 ## Context
 
@@ -95,7 +95,7 @@ Geometry, texture and program counts must return to baseline after disposal sett
 
 ## Results
 
-All numbers come from the 48 files in `docs/adr/0001-results/`, computed with a throwaway script that applies the nearest-rank median and the decision rule as written. Rule commit: `a41b923` (committer date 2026-10-13T10:13:37+02:00).
+All numbers come from the 48 files in `docs/adr/0001-results/`, computed with a throwaway script that applies the nearest-rank median and the decision rule as written. Rule commit: `1a95ba6` in PR #11 (committer date 2026-10-13T10:13:37+02:00; `a41b923` before the branch was rebased onto `main` with dates kept).
 
 **Validity.** 48 files; 48 `valid:true`; 48 with `timer.crossOriginIsolated: true`; timer step 0.005 to 0.020 ms (limit 0.1 ms); `startedAt` from 2026-10-13T10:57:03Z to 11:32:18Z, all after the rule commit.
 
