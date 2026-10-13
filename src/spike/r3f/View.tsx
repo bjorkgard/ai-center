@@ -42,6 +42,7 @@ export type R3FErrorKind = "init" | "composer" | "churn";
 
 interface HallEntry {
   index: number;
+  racks: InstancedMesh;
   leds: InstancedMesh;
   seen: number;
 }
@@ -109,7 +110,7 @@ class Controller {
       let leds = 0;
       for (const entry of this.entries) {
         leds += entry.leds.count;
-        racks += racksPerHall(this.load);
+        racks += entry.racks.count;
       }
       return {
         halls: this.entries.length,
@@ -209,7 +210,7 @@ class Controller {
   }
 }
 
-class Boundary extends Component<
+export class Boundary extends Component<
   { onError: (error: Error) => void; children?: ReactNode },
   { failed: boolean }
 > {
@@ -243,7 +244,7 @@ function Hall({ index, ctl }: { index: number; ctl: Controller }) {
       3,
     );
     writeLedColors(ledMesh.instanceColor.array as Float32Array, ctl.store.values(index));
-    const entry: HallEntry = { index, leds: ledMesh, seen: 0 };
+    const entry: HallEntry = { index, racks: rackMesh, leds: ledMesh, seen: 0 };
     const unsubscribe = ctl.store.subscribe((version) => {
       entry.seen = version;
     });

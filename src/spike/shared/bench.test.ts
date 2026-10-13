@@ -4,7 +4,9 @@ import {
   DrawCallCounter,
   TRANSITIONS,
   bannerText,
+  browserEnv,
   controlsDisabled,
+  createGpuTimer,
   detectBrowser,
   initFailureText,
   isCoarseTimer,
@@ -13,6 +15,7 @@ import {
   resultFileName,
   transition,
   type BenchEnv,
+  type BrowserGlobals,
   type BenchMeta,
   type BenchResult,
   type BenchState,
@@ -355,10 +358,177 @@ test("a timer step coarser than 0.1 ms makes the pass invalid with coarse-timer 
   expect(coarse.h.scheduled).toBe(false);
   const fine = await runPass({ timerStep: 0.1 });
   expect(fine.result.valid).toBe(true);
-  expect(isCoarseTimer(0.1)).toBe(false);
-  expect(isCoarseTimer(0.1 + 1e-12)).toBe(false);
-  expect(isCoarseTimer(0.5)).toBe(true);
-  expect(isCoarseTimer(1)).toBe(true);
+  expect(isCoarseTimer(0.5, true)).toBe(true);
+  expect(isCoarseTimer(1, true)).toBe(true);
+});
+
+test("isCoarseTimer refuses a page that is not cross-origin isolated (E6)", () => {
+  expect(isCoarseTimer(0.005, true)).toBe(false);
+  expect(isCoarseTimer(0.1, true)).toBe(false);
+  expect(isCoarseTimer(0.1 + 1e-12, true)).toBe(false);
+  expect(isCoarseTimer(0.1, false)).toBe(true);
+  expect(isCoarseTimer(0.005, false)).toBe(true);
+  expect(isCoarseTimer(1, true)).toBe(true);
+});
+
+test("a run that lost cross-origin isolation is invalid with coarse-timer", async () => {
+  const h = makeHarness();
+  h.env.crossOriginIsolated = false;
+  const result = await new BenchRunner({
+    env: h.env,
+    view: makeView(h).view,
+    meta,
+    durations,
+  }).start();
+  expect(result).toMatchObject({
+    valid: false,
+    reason: "coarse-timer",
+    timer: { crossOriginIsolated: false, stepMs: 0.02 },
+  });
+});
+
+interface Fake {
+  listeners: Map<string, Set<() => void>>;
+  addEventListener(type: string, fn: () => void): void;
+  removeEventListener(type: string, fn: () => void): void;
+  fire(type: string): void;
+  count(): number;
+}
+
+function fakeTarget(): Fake {
+  const listeners = new Map<string, Set<() => void>>();
+  return {
+    listeners,
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(fn);
+    },
+    removeEventListener(type, fn) {
+      listeners.get(type)?.delete(fn);
+    },
+    fire(type) {
+      for (const fn of [...(listeners.get(type) ?? [])]) fn();
+    },
+    count() {
+      let n = 0;
+      for (const set of listeners.values()) n += set.size;
+      return n;
+    },
+  };
+}
+
+function fakeGlobals(init: { isolated?: boolean; memory?: { usedJSHeapSize: number } } = {}) {
+  const win = Object.assign(fakeTarget(), {
+    crossOriginIsolated: init.isolated,
+    requestAnimationFrame: () => 7,
+    cancelAnimationFrame: () => {},
+  });
+  const doc = Object.assign(fakeTarget(), { hidden: false });
+  const canvas = fakeTarget();
+  const perf = { now: () => 0, memory: init.memory };
+  return {
+    win,
+    doc,
+    canvas,
+    globals: { window: win, document: doc, performance: perf } as unknown as BrowserGlobals,
+  };
+}
+
+test("browserEnv.listen maps each browser event to its interrupt reason", () => {
+  const f = fakeGlobals();
+  const env = browserEnv(f.canvas as unknown as HTMLCanvasElement, f.globals);
+  const seen: [string, string][] = [];
+  env.listen((reason, message) => seen.push([reason, message]));
+  f.doc.hidden = true;
+  f.doc.fire("visibilitychange");
+  f.win.fire("blur");
+  f.win.fire("resize");
+  f.canvas.fire("webglcontextlost");
+  expect(seen).toEqual([
+    ["visibility", "tab hidden"],
+    ["visibility", "window blurred"],
+    ["resize", "window resized"],
+    ["contextlost", "webglcontextlost"],
+  ]);
+  f.doc.hidden = false;
+  f.doc.fire("visibilitychange");
+  expect(seen).toHaveLength(4);
+});
+
+test("browserEnv.listen cleanup removes all four listeners", () => {
+  const f = fakeGlobals();
+  const env = browserEnv(f.canvas as unknown as HTMLCanvasElement, f.globals);
+  const stop = env.listen(() => {});
+  expect(f.win.count() + f.doc.count() + f.canvas.count()).toBe(4);
+  stop();
+  expect(f.win.count()).toBe(0);
+  expect(f.doc.count()).toBe(0);
+  expect(f.canvas.count()).toBe(0);
+});
+
+test("browserEnv reads heap as null when missing and the number when present", () => {
+  const none = browserEnv(fakeTarget() as unknown as HTMLCanvasElement, fakeGlobals().globals);
+  expect(none.heapBytes()).toBeNull();
+  const some = browserEnv(
+    fakeTarget() as unknown as HTMLCanvasElement,
+    fakeGlobals({ memory: { usedJSHeapSize: 123 } }).globals,
+  );
+  expect(some.heapBytes()).toBe(123);
+});
+
+test("browserEnv.crossOriginIsolated mirrors the global", () => {
+  const canvas = fakeTarget() as unknown as HTMLCanvasElement;
+  expect(browserEnv(canvas, fakeGlobals({ isolated: true }).globals).crossOriginIsolated).toBe(
+    true,
+  );
+  expect(browserEnv(canvas, fakeGlobals({ isolated: false }).globals).crossOriginIsolated).toBe(
+    false,
+  );
+  expect(browserEnv(canvas, fakeGlobals().globals).crossOriginIsolated).toBe(false);
+});
+
+function fakeGl(opts: { ext: boolean; disjoint?: boolean; ns?: number }) {
+  const ext = { TIME_ELAPSED_EXT: 1, GPU_DISJOINT_EXT: 2 };
+  return {
+    QUERY_RESULT_AVAILABLE: 10,
+    QUERY_RESULT: 11,
+    getExtension: () => (opts.ext ? ext : null),
+    createQuery: () => ({}),
+    beginQuery: () => {},
+    endQuery: () => {},
+    getQueryParameter: (_q: unknown, p: number) => (p === 10 ? true : (opts.ns ?? 0)),
+    getParameter: () => opts.disjoint ?? false,
+  } as unknown as WebGL2RenderingContext;
+}
+
+test("createGpuTimer is null without EXT_disjoint_timer_query_webgl2", () => {
+  expect(createGpuTimer(fakeGl({ ext: false }))).toBeNull();
+  expect(createGpuTimer(fakeGl({ ext: true }))).not.toBeNull();
+});
+
+test("createGpuTimer reports a normal query in ms and counts a disjoint frame as dropped", () => {
+  const ok = createGpuTimer(fakeGl({ ext: true, ns: 2_500_000 }))!;
+  const samples: number[] = [];
+  let disjoint = 0;
+  ok.begin();
+  ok.end();
+  ok.poll(
+    (ms) => samples.push(ms),
+    () => disjoint++,
+  );
+  expect(samples).toEqual([2.5]);
+  expect(disjoint).toBe(0);
+
+  const bad = createGpuTimer(fakeGl({ ext: true, disjoint: true, ns: 2_500_000 }))!;
+  const badSamples: number[] = [];
+  bad.begin();
+  bad.end();
+  bad.poll(
+    (ms) => badSamples.push(ms),
+    () => disjoint++,
+  );
+  expect(badSamples).toEqual([]);
+  expect(disjoint).toBe(1);
 });
 
 test("measureTimerStep finds the smallest step of a quantised clock", () => {

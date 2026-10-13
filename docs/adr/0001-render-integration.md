@@ -21,7 +21,7 @@ Both views read one constant, `src/spike/shared/render.ts`, and pass it explicit
 | Output colour space | sRGB |
 | Tone mapping, bloom off | ACES Filmic on the renderer |
 | Tone mapping, bloom on | `ToneMappingEffect` in ACES Filmic mode as the last effect; the renderer is set to no tone mapping while the composer is active (R3F's composer does this itself, the vanilla view does the same) |
-| Shadows | one directional light, shadow map 2048, type `PCFSoftShadowMap`. three 0.186 has removed `PCFSoftShadowMap`: it logs a warning and uses `PCFShadowMap`. Both views behave identically, so the effective type is `PCFShadowMap` in both |
+| Shadows | one directional light, shadow map 2048, type `PCFShadowMap`, set explicitly in the shared constant for both views (three 0.186 removed `PCFSoftShadowMap`) |
 | Materials | `MeshStandardMaterial`, flat-shaded, shared by all halls |
 | Bloom library | pmndrs `postprocessing` 6.39.5 (the vanilla view directly, the R3F view through `@react-three/postprocessing` 3.2.0) |
 | Composer | `multisampling: 4`, `frameBufferType: HalfFloatType`, `depthBuffer: true`, `stencilBuffer: false` |

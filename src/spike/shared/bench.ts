@@ -61,8 +61,9 @@ export function controlsDisabled(state: BenchState): boolean {
 
 export const COARSE_TIMER_MS = 0.1;
 
-export function isCoarseTimer(stepMs: number): boolean {
-  return stepMs > COARSE_TIMER_MS + 1e-9;
+// A run that is not cross-origin isolated is refused whatever the step reads (E6).
+export function isCoarseTimer(stepMs: number, crossOriginIsolated: boolean): boolean {
+  return !crossOriginIsolated || stepMs > COARSE_TIMER_MS + 1e-9;
 }
 
 // Median gap between successive different readings of the clock: its real step.
@@ -160,34 +161,49 @@ export interface BenchEnv {
   heapBytes(): number | null;
 }
 
-export function browserEnv(canvas: HTMLCanvasElement): BenchEnv {
+type Listenable = Pick<EventTarget, "addEventListener" | "removeEventListener">;
+
+// The globals browserEnv reads, injectable so tests can pass plain fakes.
+export interface BrowserGlobals {
+  window: Listenable &
+    Pick<Window, "requestAnimationFrame" | "cancelAnimationFrame"> & {
+      crossOriginIsolated?: boolean;
+    };
+  document: Listenable & { hidden: boolean };
+  performance: { now(): number; memory?: { usedJSHeapSize: number } };
+}
+
+export function browserEnv(
+  canvas: Listenable,
+  globals: BrowserGlobals = { window, document, performance },
+): BenchEnv {
+  const { window: win, document: doc, performance: perf } = globals;
   return {
-    now: () => performance.now(),
+    now: () => perf.now(),
     epochMs: () => Date.now(),
-    raf: (cb) => requestAnimationFrame(cb),
-    cancelRaf: (id) => cancelAnimationFrame(id),
+    raf: (cb) => win.requestAnimationFrame(cb),
+    cancelRaf: (id) => win.cancelAnimationFrame(id),
     listen(handler) {
       const onVisibility = () => {
-        if (document.hidden) handler("visibility", "tab hidden");
+        if (doc.hidden) handler("visibility", "tab hidden");
       };
       const onBlur = () => handler("visibility", "window blurred");
       const onResize = () => handler("resize", "window resized");
       const onLost = () => handler("contextlost", "webglcontextlost");
-      document.addEventListener("visibilitychange", onVisibility);
-      window.addEventListener("blur", onBlur);
-      window.addEventListener("resize", onResize);
+      doc.addEventListener("visibilitychange", onVisibility);
+      win.addEventListener("blur", onBlur);
+      win.addEventListener("resize", onResize);
       canvas.addEventListener("webglcontextlost", onLost);
       return () => {
-        document.removeEventListener("visibilitychange", onVisibility);
-        window.removeEventListener("blur", onBlur);
-        window.removeEventListener("resize", onResize);
+        doc.removeEventListener("visibilitychange", onVisibility);
+        win.removeEventListener("blur", onBlur);
+        win.removeEventListener("resize", onResize);
         canvas.removeEventListener("webglcontextlost", onLost);
       };
     },
-    timerStep: () => measureTimerStep(() => performance.now()),
-    crossOriginIsolated: window.crossOriginIsolated === true,
-    heapBytes: () =>
-      (performance as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
+    timerStep: () => measureTimerStep(() => perf.now()),
+    crossOriginIsolated: win.crossOriginIsolated === true,
+    heapBytes: () => perf.memory?.usedJSHeapSize ?? null,
   };
 }
 
@@ -409,10 +425,12 @@ export class BenchRunner {
     this.startNow = this.env.now();
     this.startEpoch = this.env.epochMs();
     this.timerStep = this.env.timerStep();
-    if (isCoarseTimer(this.timerStep)) {
+    if (isCoarseTimer(this.timerStep, this.env.crossOriginIsolated)) {
       this.invalidate(
         "coarse-timer",
-        `performance.now() steps ${this.timerStep} ms, coarser than ${COARSE_TIMER_MS} ms`,
+        this.env.crossOriginIsolated
+          ? `performance.now() steps ${this.timerStep} ms, coarser than ${COARSE_TIMER_MS} ms`
+          : `page is not cross-origin isolated (performance.now() steps ${this.timerStep} ms)`,
       );
       return this.result;
     }

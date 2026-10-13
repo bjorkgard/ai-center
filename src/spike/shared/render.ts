@@ -4,7 +4,7 @@ import {
   Color,
   HalfFloatType,
   MeshStandardMaterial,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   SRGBColorSpace,
   type DirectionalLight,
   type PerspectiveCamera,
@@ -20,7 +20,7 @@ export const RENDER = {
   renderer: { antialias: true, alpha: false, powerPreference: "high-performance" } as const,
   toneMapping: ACESFilmicToneMapping,
   outputColorSpace: SRGBColorSpace,
-  shadow: { type: PCFSoftShadowMap, mapSize: 2048 },
+  shadow: { type: PCFShadowMap, mapSize: 2048 },
   composer: {
     multisampling: 4,
     frameBufferType: HalfFloatType,
@@ -43,6 +43,16 @@ export const RENDER = {
 } as const;
 
 export class ComposerInitError extends Error {}
+
+// A composer that throws while being built becomes a ComposerInitError, which the
+// page reports as composer-init instead of a generic init failure.
+export function guardComposer<T>(build: () => T): T {
+  try {
+    return build();
+  } catch (err) {
+    throw new ComposerInitError(err instanceof Error ? err.message : String(err));
+  }
+}
 
 export function pixelRatio(): number {
   return Math.min(window.devicePixelRatio, RENDER.maxPixelRatio);

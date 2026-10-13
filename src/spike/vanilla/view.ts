@@ -22,12 +22,12 @@ import {
 import { DrawCallCounter, type SpikeViewHandle } from "../shared/bench.ts";
 import { writeLedColors, type FakeStore } from "../shared/fakeStore.ts";
 import {
-  ComposerInitError,
   RENDER,
   applyRendererSettings,
   configureCamera,
   configureLight,
   createSharedMaterials,
+  guardComposer,
 } from "../shared/render.ts";
 import {
   fillLedMatrices,
@@ -137,7 +137,7 @@ export function createVanillaView(
   }
 
   function buildComposer(): EffectComposer {
-    try {
+    return guardComposer(() => {
       const built = new EffectComposer(renderer, { ...RENDER.composer });
       built.addPass(new RenderPass(scene, camera));
       built.addPass(
@@ -149,9 +149,7 @@ export function createVanillaView(
       );
       built.setSize(size.width, size.height);
       return built;
-    } catch (err) {
-      throw new ComposerInitError(err instanceof Error ? err.message : String(err));
-    }
+    });
   }
 
   function setBloom(on: boolean) {
