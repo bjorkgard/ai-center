@@ -30,14 +30,17 @@ function FocusBrackets() {
 
 export function App() {
   const [params] = useState(() => loadParams(window.location.search));
-  const [ready, setReady] = useState(false);
+  const [frame, setFrame] = useState(false);
   const safeArea = useStore((s) => s.safeArea);
   const backdrop = useStore((s) => backdropFor(s.webgl, s.sceneError));
 
-  const onReady = useCallback((value: boolean) => {
-    window.__sceneReady = value;
-    setReady(value);
-  }, []);
+  // Ready is a frame drawn once the sign atlas settled (CEO W-RW29, see SceneCanvas). The WebGL
+  // card path never gets a frame.
+  const ready = frame;
+  useEffect(() => {
+    window.__sceneReady = ready;
+  }, [ready]);
+  const onReady = useCallback((value: boolean) => setFrame(value), []);
 
   // The look-dev view is the bare vignette: no shell, HUD, loader or toasts (CEO C17).
   const lookdev = params.view === "lookdev";

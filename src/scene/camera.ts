@@ -1,6 +1,7 @@
 import { MathUtils, OrthographicCamera, PerspectiveCamera, Vector3 } from "three";
 import type { SafeArea } from "../app/store/ui.ts";
 import { ease } from "./easing.ts";
+import { SIGN } from "./hall/hallLayout.ts";
 import { RENDER } from "./render.ts";
 
 export type Projection = "orthographic" | "perspective";
@@ -13,6 +14,10 @@ export const ISO_ELEVATION = Math.atan(1 / Math.SQRT2);
 
 // Orthographic zoom is pixels per world unit. The controls and the rig clamp to these.
 export const ORTHO_ZOOM = { min: 10, default: 80, max: 240 } as const; // [estimated]
+// The ortho zoom at which a hall sign's project-name capital measures 12 CSS px at the isometric
+// pose: a vertical segment of `nameCap` units spans cos(elevation) of its length on screen.
+// In perspective the effective zoom is zoomForDistance at the target distance (CEO W-RW17).
+export const SEMANTIC_ZOOM = SIGN.minLetterPx / (SIGN.nameCap * Math.cos(ISO_ELEVATION));
 export const PERSPECTIVE_FOV = 35; // degrees [estimated]
 const ORTHO_DISTANCE = 100; // far from the scene so the ortho frustum never clips it
 
@@ -107,7 +112,8 @@ export interface CameraRig {
   // The controls moved the active camera: read the angles and zoom back.
   adopt(angles: { azimuth: number; polar: number }): void;
   // Screen position in CSS pixels (y down) of a world point.
-  project(point: Vector3): { x: number; y: number };
+  // `out`, when given, receives the result so a per-frame caller allocates nothing.
+  project(point: Vector3, out?: { x: number; y: number }): { x: number; y: number };
   // Fires when a glide or nudge starts, so the render loop wakes from calm mode.
   onMotion(listener: () => void): () => void;
   subscribe(listener: CameraListener): () => void;
@@ -144,6 +150,8 @@ export function clampTarget(target: Vector3): Vector3 {
 
 const clampElevation = (elevation: number) =>
   MathUtils.clamp(elevation, ELEVATION_RANGE.min, ELEVATION_RANGE.max);
+
+const projectScratch = new Vector3();
 
 export function createCameraRig(initial: Viewport, options: RigOptions = {}): CameraRig {
   const now = options.now ?? (() => performance.now());
@@ -479,12 +487,11 @@ export function createCameraRig(initial: Viewport, options: RigOptions = {}): Ca
         framing.zoom = clampZoom(zoomForDistance(distance, viewport.height));
       }
     },
-    project(point) {
-      const p = point.clone().project(active());
-      return {
-        x: ((p.x + 1) / 2) * viewport.width,
-        y: ((1 - p.y) / 2) * viewport.height,
-      };
+    project(point, out = { x: 0, y: 0 }) {
+      const p = projectScratch.copy(point).project(active());
+      out.x = ((p.x + 1) / 2) * viewport.width;
+      out.y = ((1 - p.y) / 2) * viewport.height;
+      return out;
     },
     onMotion(listener) {
       motionListeners.add(listener);

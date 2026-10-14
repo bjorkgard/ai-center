@@ -13,6 +13,7 @@ export const views: ShotView[] = [
   { name: "home", file: "docs/img/04b-shell.png", ready: readyExpression },
   { name: "home", file: "docs/img/04c-scene.png", ready: readyExpression },
   { name: "lookdev", file: "docs/img/04c-lookdev.png", ready: readyExpression },
+  { name: "hall", file: "docs/img/06-hall.png", ready: readyExpression },
 ];
 
 export const viewport = { width: 1280, height: 720 };

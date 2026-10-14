@@ -8,6 +8,7 @@ import {
   watchContext,
   type WebglChange,
 } from "./webgl.ts";
+import { reportShaderError } from "./shaderErrors.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -122,4 +123,12 @@ test("stop removes the listeners and the pending timeout", () => {
   vi.advanceTimersByTime(RESTORE_TIMEOUT_MS * 2);
   expect(canvas.listeners()).toBe(0);
   expect(changes).toEqual([{ status: "restoring" }]);
+});
+
+test("the gl factory routes shader compile failures to the [scene] reporter (CEO W-RW30)", () => {
+  class Fake {
+    debug: { onShaderError: unknown } = { onShaderError: null };
+  }
+  const renderer = createGlFactory(Fake as never)({} as never) as unknown as Fake;
+  expect(renderer.debug.onShaderError).toBe(reportShaderError);
 });

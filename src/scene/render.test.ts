@@ -70,3 +70,22 @@ test("guardDisposeEvents counts dispose events and stops after release (E9)", ()
   guard.release();
   expect(listeners.size).toBe(0);
 });
+
+test("applyRendererSettings turns local clipping on in every tier (CEO W-RW14)", () => {
+  vi.stubGlobal("window", { devicePixelRatio: 1 });
+  try {
+    for (const tier of ["high", "medium", "low"] as const) {
+      const r = {
+        setPixelRatio: vi.fn(),
+        toneMapping: 0,
+        outputColorSpace: "",
+        localClippingEnabled: false,
+        shadowMap: { enabled: false, type: 0 },
+      };
+      applyRendererSettings(r as never, tier);
+      expect(r.localClippingEnabled, tier).toBe(true);
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

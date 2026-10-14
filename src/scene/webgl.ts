@@ -1,6 +1,7 @@
 import { WebGLRenderer } from "three";
 import type { WebglReason, WebglStatus } from "../app/store/ui.ts";
 import { RENDER } from "./render.ts";
+import { reportShaderError } from "./shaderErrors.ts";
 
 // Thrown by the WebGL2 pre-check and by the gl factory, so the boundary can tell
 // WebGL failures from scene errors by class (E24, C23).
@@ -35,7 +36,11 @@ type RendererCtor = new (params: ConstructorParameters<typeof WebGLRenderer>[0])
 export function createGlFactory(Ctor: RendererCtor = WebGLRenderer) {
   return (defaultProps: Record<string, unknown>): WebGLRenderer => {
     try {
-      return new Ctor({ ...defaultProps, ...RENDER.renderer });
+      const renderer = new Ctor({ ...defaultProps, ...RENDER.renderer });
+      // A shader that fails to compile logs one [scene] line and counts as a frame error;
+      // rendering goes on without that mesh (CEO W-RW30).
+      if (renderer.debug) renderer.debug.onShaderError = reportShaderError;
+      return renderer;
     } catch (err) {
       throw new WebGLUnavailableError(err instanceof Error ? err.message : String(err));
     }

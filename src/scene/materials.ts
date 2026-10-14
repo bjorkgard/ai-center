@@ -1,4 +1,13 @@
-import { LineBasicMaterial, MeshStandardMaterial } from "three";
+import {
+  Color,
+  LineBasicMaterial,
+  MeshStandardMaterial,
+  Plane,
+  Vector3,
+  type CanvasTexture,
+  type Material,
+} from "three";
+import { ROOF_CUT_CONSTANT } from "./hall/hallLayout.ts";
 
 // Status palette (design D17); the same table drives LEDs, dots and table cells.
 export const STATUS_COLORS = {
@@ -25,13 +34,112 @@ const matte = (color: string) => new MeshStandardMaterial({ color, roughness: 0.
 // Emits `color` and stays dark otherwise. Intensities put the glow above the bloom threshold
 // (RENDER.bloom.luminanceThreshold); a test checks it.
 const glow = (color: string, emissiveIntensity: number) =>
-  new MeshStandardMaterial({
-    color: "#0b0e14",
-    emissive: color,
-    emissiveIntensity,
-    roughness: 0.6,
-    metalness: 0,
-  });
+  glowing(
+    new MeshStandardMaterial({
+      color: "#0b0e14",
+      emissive: color,
+      emissiveIntensity,
+      roughness: 0.6,
+      metalness: 0,
+    }),
+  );
+
+// Every glow material with its emissive intensity while bloom is on. While bloom is off the
+// glow is scaled so it still reads (design-review Phase 3 WD4); the order is unchanged.
+const GLOW_BASE = new Map<MeshStandardMaterial, number>();
+export const BLOOM_OFF_GLOW = 1.5; // [estimated]
+
+function glowing(material: MeshStandardMaterial): MeshStandardMaterial {
+  GLOW_BASE.set(material, material.emissiveIntensity);
+  return material;
+}
+
+// Called whenever the bloom state changes; a uniform change, so nothing recompiles.
+export function setBloomGlow(bloomOn: boolean): void {
+  for (const [material, base] of GLOW_BASE) {
+    material.emissiveIntensity = bloomOn ? base : base * BLOOM_OFF_GLOW;
+  }
+}
+
+export const INSTANCE_OPACITY = "instanceOpacity";
+export const INSTANCE_UV_RECT = "instanceUvRect";
+
+// Per-instance fades on a shared material (eng-review Phase 3 E27): an `instanceOpacity`
+// attribute multiplies the alpha and, for atlas text, an `instanceUvRect` (u, v, w, h)
+// attribute remaps the map UVs, so one InstancedMesh fades and relabels each instance alone.
+// The cache key is fixed per variant, so every use shares one program.
+export function addInstanceFade(material: Material, options: { atlas?: boolean } = {}): void {
+  const atlas = options.atlas === true;
+  const hook = (shader: { vertexShader: string; fragmentShader: string }) => {
+    const patch = (source: string, marker: string, add: string, where: "after" | "before") => {
+      if (!source.includes(marker)) {
+        throw new Error(
+          `instance fade: ${marker} not found in the shader of material "${material.name}"`,
+        );
+      }
+      return source.replace(marker, where === "after" ? `${marker}\n${add}` : `${add}\n${marker}`);
+    };
+    const attributes = `attribute float ${INSTANCE_OPACITY};\nvarying float vInstanceOpacity;${
+      atlas ? `\nattribute vec4 ${INSTANCE_UV_RECT};` : ""
+    }`;
+    let vertex = patch(shader.vertexShader, "#include <common>", attributes, "after");
+    if (atlas) {
+      vertex = patch(
+        vertex,
+        "#include <uv_vertex>",
+        `#ifdef USE_MAP
+vMapUv = vMapUv * ${INSTANCE_UV_RECT}.zw + ${INSTANCE_UV_RECT}.xy;
+#endif
+#ifdef USE_EMISSIVEMAP
+vEmissiveMapUv = vEmissiveMapUv * ${INSTANCE_UV_RECT}.zw + ${INSTANCE_UV_RECT}.xy;
+#endif`,
+        "after",
+      );
+    }
+    vertex = patch(
+      vertex,
+      "#include <begin_vertex>",
+      `vInstanceOpacity = ${INSTANCE_OPACITY};`,
+      "after",
+    );
+    shader.vertexShader = vertex;
+    shader.fragmentShader = patch(
+      patch(
+        shader.fragmentShader,
+        "#include <common>",
+        `varying float vInstanceOpacity;\n// material: ${material.name}`,
+        "after",
+      ),
+      "#include <opaque_fragment>",
+      "gl_FragColor.a *= vInstanceOpacity;",
+      "after",
+    );
+  };
+  material.onBeforeCompile = (shader) => hook(shader);
+  material.customProgramCacheKey = () => (atlas ? "instance-fade-atlas" : "instance-fade");
+}
+
+// The hall sign panels (chunk 06): atlas text under emissive 0.5, below the 0.6 bloom threshold.
+function signMaterial(): MeshStandardMaterial {
+  const material = glowing(
+    new MeshStandardMaterial({
+      color: "#ffffff",
+      emissive: new Color("#ffffff"),
+      emissiveIntensity: 0.5,
+      roughness: 0.8,
+      metalness: 0,
+      transparent: true,
+      depthWrite: false,
+      name: "sign",
+    }),
+  );
+  addInstanceFade(material, { atlas: true });
+  return material;
+}
+
+// One clipping plane for every hall body: normal (0, -1, 0), so a point is kept while it sits
+// below `constant`. Starts cut at the wall top; roof.ts moves the constant, never the plane.
+const ROOF_PLANE = new Plane(new Vector3(0, -1, 0), ROOF_CUT_CONSTANT);
 
 // Below the glow of the windows and fibre: at 2.4 the tone mapping pushed thinking to white and
 // idle and done to near the same grey, so the six statuses read as fewer colours.
@@ -49,6 +157,15 @@ export const MATERIALS = {
   slate: matte("#3a4559"),
   roof: matte("#232b3a"),
   rack: new MeshStandardMaterial({ color: "#242c3b", roughness: 0.6, metalness: 0.1 }),
+  hall: new MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.92,
+    metalness: 0,
+    clippingPlanes: [ROOF_PLANE],
+    clipShadows: true,
+    name: "hall",
+  }),
+  sign: signMaterial(),
   window: glow(WINDOW_COLOR, 2),
   fibre: glow(FIBRE_COLOR, 2.6),
   claude: new MeshStandardMaterial({
@@ -68,6 +185,16 @@ export const MATERIALS = {
 
 export function statusLed(status: Status): MeshStandardMaterial {
   return LEDS[status];
+}
+
+// The shared atlas texture reaches the sign material here (the material exists before the
+// atlas does); both maps sample it, the second one so the text glows.
+export function bindSignTexture(texture: CanvasTexture): void {
+  const sign = MATERIALS.sign;
+  if (sign.map === texture) return;
+  sign.map = texture;
+  sign.emissiveMap = texture;
+  sign.needsUpdate = true;
 }
 
 export function allMaterials(): (MeshStandardMaterial | LineBasicMaterial)[] {

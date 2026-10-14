@@ -3,6 +3,7 @@ import { Bloom, EffectComposer, ToneMapping } from "@react-three/postprocessing"
 import type { EffectComposer as EffectComposerImpl } from "postprocessing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Vector3, type WebGLRenderer } from "three";
+import { signAtlasReady } from "./hall/signAtlas.ts";
 import type { AppParams } from "../app/params.ts";
 import { useStore, type QualityTier } from "../app/store/index.ts";
 import {
@@ -29,13 +30,17 @@ import { createFrameMonitor } from "./loop/monitor.ts";
 import { Ground } from "./Ground.tsx";
 import { LightRig } from "./LightRig.tsx";
 import { LookDevScene } from "./LookDev.tsx";
+import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
+import { HALL_FRAMING } from "./hall/hallLayout.ts";
+import { subscribeRoof } from "./hall/roof.ts";
 import { LOOKDEV_FRAMING } from "./lookdevFraming.ts";
 import { MarkPass } from "./MarkPass.ts";
-import { MATERIALS } from "./materials.ts";
+import { MATERIALS, setBloomGlow } from "./materials.ts";
 import { applyRendererSettings, pixelRatio, qualitySettings, RENDER } from "./render.ts";
 import { logScene } from "./sceneLog.ts";
 import { reportSceneFailure } from "./failure.ts";
 import { SceneBoundary, SceneContentBoundary } from "./SceneBoundary.tsx";
+import { shaderErrorCount } from "./shaderErrors.ts";
 import { setSceneProbe } from "./stats.ts";
 import { transitionSceneError, transitionWebgl } from "./transitions.ts";
 import { glFactory, precheckWebgl, watchContext } from "./webgl.ts";
@@ -49,6 +54,26 @@ const CAMERA_HELP =
 
 // The dev-menu glide test (DR11) flies out to this spot and back home.
 const GLIDE_TEST = { far: new Vector3(8, 0, -6), zoom: 140 };
+
+// The hall view: one hall with the roof cut away, under the shared rig (chunk 06).
+function HallScene({
+  shadows,
+  rig,
+  frozen,
+}: {
+  shadows: boolean;
+  rig: CameraRig;
+  frozen: boolean;
+}) {
+  return (
+    <>
+      <LightRig shadows={shadows} />
+      <Ground />
+      <Hall />
+      <SignPanelMesh rig={rig} frozen={frozen} />
+    </>
+  );
+}
 
 // Mutable bridge between the React tree and the frame callback (no re-render per frame).
 class SceneControl {
@@ -157,11 +182,12 @@ interface RuntimeProps {
   control: SceneControl;
   onReady: (ready: boolean) => void;
   onRestored: () => void;
+  bloom: boolean;
 }
 
 // Everything that needs the R3F state: the driver, the monitor, the context watcher,
 // the camera hand-over and the renderer settings. Each effect returns its stop (E25).
-function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProps) {
+function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: RuntimeProps) {
   const advance = useThree((s) => s.advance);
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -182,6 +208,14 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
     });
     driverRef.current?.invalidateFrozen();
   }, [gl, scene, quality]);
+
+  // Glow materials get x1.5 while bloom is off (WD4); a roof toggle redraws a frozen frame.
+  useEffect(() => {
+    setBloomGlow(bloom);
+    driverRef.current?.invalidateFrozen();
+  }, [bloom]);
+
+  useEffect(() => subscribeRoof(() => driverRef.current?.invalidateFrozen()), []);
 
   useEffect(() => {
     rig.setViewport({ width: size.width, height: size.height });
@@ -285,6 +319,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
     const monitor = createFrameMonitor();
     let frames = 0;
     let ready = false;
+    let atlasSettled = false;
     control.setMark(() => counter.markScene());
 
     const driver = createRenderDriver({
@@ -302,7 +337,9 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
         advance(sceneSeconds);
         counter.end();
         frames++;
-        if (!ready) {
+        // Ready is a frame drawn once the sign atlas has settled (its font loaded or given up on),
+        // so shots and baselines always capture one font (CEO W-RW29).
+        if (!ready && atlasSettled) {
           ready = true;
           onReady(true);
         }
@@ -313,6 +350,12 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
       onDiscontinuity: () => monitor.discontinuity(),
     });
     driverRef.current = driver;
+    let live = true;
+    void signAtlasReady().then(() => {
+      if (!live) return;
+      atlasSettled = true;
+      driver.invalidateFrozen();
+    });
 
     const probe = {
       read: () => ({
@@ -325,7 +368,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
         programs: gl.info.programs?.length ?? 0,
         capFps: driver.state.capFps,
         mode: driver.state.mode,
-        frameErrors: driver.errorCount,
+        frameErrors: driver.errorCount + shaderErrorCount(),
         projection: rig.projection,
         bloom: control.bloom,
         composerGen: control.composerGen,
@@ -365,6 +408,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored }: RuntimeProp
 
     return () => {
       for (const type of inputs) window.removeEventListener(type, onInput);
+      live = false;
       stopDriver();
       control.setStop(null);
       monitor.stop();
@@ -394,6 +438,11 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
       created.setFraming({
         target: new Vector3(...LOOKDEV_FRAMING.target),
         zoom: LOOKDEV_FRAMING.zoom,
+      });
+    } else if (params.view === "hall") {
+      created.setFraming({
+        target: new Vector3(...HALL_FRAMING.target),
+        zoom: HALL_FRAMING.zoom,
       });
     }
     return created;
@@ -454,12 +503,15 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
           control={control}
           onReady={onReady}
           onRestored={onRestored}
+          bloom={bloom}
         />
         <SceneContentBoundary stopDriver={() => control.stopDriver()}>
           {contentMounted && (
             <>
               {lookdev ? (
-                <LookDevScene shadows={settings.shadows} />
+                <LookDevScene shadows={settings.shadows} rig={rig} />
+              ) : params.view === "hall" ? (
+                <HallScene shadows={settings.shadows} rig={rig} frozen={params.freeze} />
               ) : (
                 <TestScene shadows={settings.shadows} />
               )}

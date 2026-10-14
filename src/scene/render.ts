@@ -70,6 +70,9 @@ export function applyRendererSettings(renderer: WebGLRenderer, tier: QualityTier
   renderer.outputColorSpace = RENDER.outputColorSpace;
   renderer.shadowMap.enabled = q.shadows;
   renderer.shadowMap.type = RENDER.shadow.type;
+  // The hall body's roof plane is a local clipping plane; three's shadow pass checks this too
+  // (WebGLShadowMap.js:442).
+  renderer.localClippingEnabled = true;
 }
 
 interface DisposeSource {

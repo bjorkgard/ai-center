@@ -87,3 +87,7 @@ test("calm=1 and dev=0 are the defaults and do not warn", () => {
     warnings: [],
   });
 });
+
+test("view=hall is accepted", () => {
+  expect(parseParams("?view=hall")).toMatchObject({ params: { view: "hall" }, warnings: [] });
+});

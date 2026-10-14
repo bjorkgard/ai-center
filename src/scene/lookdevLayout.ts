@@ -1,10 +1,18 @@
+import { HALL, RACK_ROW } from "./hall/hallLayout.ts";
 import { STATUS_ORDER, type Status } from "./materials.ts";
 
 export type Vec3 = [number, number, number];
 
-export const SLAB = { width: 8, depth: 4, height: 0.2 };
+// The slab is the hall of buildHall; the rack row stands in its back row, facing the cold aisle.
+export const SLAB = { width: HALL.width, depth: HALL.depth, height: HALL.slabHeight };
 export const RACKS = 8;
-export const RACK = { width: 0.55, height: 1.1, depth: 0.8, pitch: 0.8, z: -0.6 };
+export const RACK = {
+  width: 0.55,
+  height: 1.1,
+  depth: 0.8,
+  pitch: 0.8,
+  z: -(RACK_ROW.coldAisle / 2 + RACK_ROW.depth / 2),
+};
 export const LEDS_PER_RACK = 4;
 export const LED = { size: [0.34, 0.09, 0.04] as Vec3, firstY: 0.3, pitch: 0.2 };
 
