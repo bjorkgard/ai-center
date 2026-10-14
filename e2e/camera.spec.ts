@@ -330,6 +330,23 @@ for (const projection of ["orthographic", "perspective"]) {
       expect(Math.abs(dragged[0])).toBeLessThanOrEqual(HALF + 1e-6);
       expect(Math.abs(dragged[2])).toBeLessThanOrEqual(HALF + 1e-6);
     }
+    // The last drag's damping tail ends with no later input, so only the per-frame clamp holds it.
+    await camerasStill(page);
+    const tail = (await camera(page)).target;
+    expect(Math.abs(tail[0])).toBeLessThanOrEqual(HALF + 1e-6);
+    expect(Math.abs(tail[2])).toBeLessThanOrEqual(HALF + 1e-6);
+    // The rig clamps what the camera hook reports, so the zoom is measured on the drawn camera:
+    // pixels per world unit at the target along the screen's right axis.
+    const drawnZoom = async () => {
+      const { target, azimuth } = await camera(page);
+      const at = await project(page, target);
+      const right = await project(page, [
+        target[0] + Math.cos(azimuth),
+        target[1],
+        target[2] - Math.sin(azimuth),
+      ]);
+      return Math.hypot(right.x - at.x, right.y - at.y);
+    };
     await page.mouse.move(640, 300);
     for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -500);
     await camerasStill(page);
@@ -337,8 +354,11 @@ for (const projection of ["orthographic", "perspective"]) {
     expect(Math.abs(view.target[0])).toBeLessThanOrEqual(HALF + 1e-6);
     expect(Math.abs(view.target[2])).toBeLessThanOrEqual(HALF + 1e-6);
     expect(view.zoom).toBeLessThanOrEqual(240 + 1e-6);
-    for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 500);
+    expect(await drawnZoom()).toBeLessThanOrEqual(240 + 1e-3);
+    for (let i = 0; i < 20; i++) await page.mouse.wheel(0, 500);
+    await camerasStill(page);
     expect((await camera(page)).zoom).toBeGreaterThanOrEqual(10 - 1e-6);
+    expect(await drawnZoom()).toBeGreaterThanOrEqual(10 - 1e-3);
   });
 }
 
