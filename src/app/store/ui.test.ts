@@ -48,3 +48,16 @@ test("resetStore restores the defaults", () => {
   expect(useStore.getState().quality).toBe("high");
   expect(useStore.getState().sceneError).toBeNull();
 });
+
+test("resetStore clears pending toast timers", () => {
+  vi.useFakeTimers();
+  try {
+    useStore.getState().pushToast("old", 1000);
+    expect(vi.getTimerCount()).toBe(1);
+    resetStore();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(useStore.getState().toasts).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});

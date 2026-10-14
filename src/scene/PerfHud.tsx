@@ -10,6 +10,7 @@ const SAMPLE_MS = 250;
 export function PerfHud({ frozen }: { frozen: boolean }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
+  const rightPanelOpen = useStore((s) => s.rightPanelOpen);
   const [view, setView] = useState<{ stats: SceneStats | null; fps: number }>({
     stats: null,
     fps: 0,
@@ -51,6 +52,14 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
         onClick={() => getSceneProbe()?.toggleProjection()}
       >
         Switch to {other}
+      </button>
+      <button
+        type="button"
+        aria-pressed={rightPanelOpen}
+        className="mt-2 w-full rounded-control border border-white/12 px-2 py-1 text-caption text-text-2 hover:text-text"
+        onClick={() => useStore.getState().setRightPanelOpen(!rightPanelOpen)}
+      >
+        {rightPanelOpen ? "Hide" : "Show"} right panel
       </button>
     </div>
   );

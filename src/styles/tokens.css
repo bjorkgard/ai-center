@@ -17,8 +17,8 @@
 @theme {
   /* Surfaces and accents */
   --color-bg: #070a12;
-  --color-glass: rgb(255 255 255 / 0.06);
-  --color-glass-border: rgb(255 255 255 / 0.08);
+  --color-glass: rgb(255 255 255 / 0.08);
+  --color-glass-border: rgb(255 255 255 / 0.12);
   --color-text: #e6ebf5;
   --color-text-2: #a3acbd;
   --color-text-3: #8a93a6;

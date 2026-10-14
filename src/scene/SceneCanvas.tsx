@@ -74,7 +74,7 @@ class SceneControl {
 // and one temporary neutral material. 04c brings the rig and the material library.
 function TestScene({ shadows }: { shadows: boolean }) {
   const material = useMemo(
-    () => new MeshStandardMaterial({ color: "#4b5468", roughness: 0.9, metalness: 0 }),
+    () => new MeshStandardMaterial({ color: "#1f2535", roughness: 0.9, metalness: 0 }),
     [],
   );
   useEffect(() => () => material.dispose(), [material]);

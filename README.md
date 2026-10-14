@@ -39,6 +39,12 @@ One persistent 3D canvas fills the viewport behind the DOM overlay layer. It sho
 
 ![Test cube with the perf HUD](docs/img/04a-core.png)
 
+## UI shell (chunk 04b)
+
+The empty dashboard frame sits above the scene: top bar, KPI tiles, job tracker, tab strip and a right panel that `?dev=1` toggles from the HUD, all on `GlassPanel` (8% white tint over an adaptive dark layer, 16 px blur, solid fallback under slow frames). The store `safeArea` is the canvas minus the visible panels. A loader covers the 3D area until the first frame, and a toast host announces "Restoring 3D view" and "3D view restored".
+
+![Empty UI shell over the test scene](docs/img/04b-shell.png)
+
 ## Known limits
 
 - **"Your browser could not start 3D (WebGL)."** The browser could not create a WebGL2 context. Turn on hardware acceleration in the browser settings and reload; Safari has no such setting, so update the browser and system. The panels still work.

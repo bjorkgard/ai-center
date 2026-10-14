@@ -18,6 +18,7 @@ export interface UiState {
   webglReason: WebglReason | null;
   sceneError: { message: string } | null;
   safeArea: SafeArea;
+  rightPanelOpen: boolean;
 }
 
 export interface UiActions {
@@ -26,6 +27,7 @@ export interface UiActions {
   setWebgl(status: WebglStatus, reason?: WebglReason): void;
   setSceneError(error: { message: string } | null): void;
   setSafeArea(area: SafeArea): void;
+  setRightPanelOpen(open: boolean): void;
 }
 
 export type UiSlice = UiState & UiActions;
@@ -44,6 +46,7 @@ export function initialUi(): UiState {
       width: inWindow ? window.innerWidth : 0,
       height: inWindow ? window.innerHeight : 0,
     },
+    rightPanelOpen: false,
   };
 }
 
@@ -55,4 +58,5 @@ export const createUiSlice: StateCreator<UiSlice, [], [], UiSlice> = (set) => ({
     set({ webgl, webglReason: webgl === "ok" ? null : (reason ?? null) }),
   setSceneError: (sceneError) => set({ sceneError }),
   setSafeArea: (safeArea) => set({ safeArea }),
+  setRightPanelOpen: (rightPanelOpen) => set({ rightPanelOpen }),
 });
