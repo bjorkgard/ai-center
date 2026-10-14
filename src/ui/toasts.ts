@@ -17,3 +17,14 @@ export function restoreToastFor(
   if (next !== "ok" || card !== null) return false;
   return prev.status === "restoring" || (prev.status === "unavailable" && prev.reason === "lost");
 }
+
+// Items that left the wanted list keep an exit animation, except the restoring toast when a card
+// is shown: it must not linger over the card (DR5).
+export function departedToasts<T extends { id: number; restoring: boolean }>(
+  previous: T[],
+  wanted: { id: number }[],
+  card: CardKind | null,
+): T[] {
+  const ids = new Set(wanted.map((w) => w.id));
+  return previous.filter((p) => !ids.has(p.id) && !(p.restoring && card !== null));
+}
