@@ -299,7 +299,7 @@ export function createCameraRig(initial: Viewport, options: RigOptions = {}): Ca
     begin(goalPose(goal), ms, goal);
   };
 
-  // Zoom that fits the campus box, seen from the isometric angle, inside the safeArea.
+  // Zoom that fits the campus box (ground to maxY), seen from the isometric angle, inside the safeArea.
   const homeZoom = () => {
     const rect = safeRect();
     const { right, up } = axes(ISO_AZIMUTH, ISO_ELEVATION);
@@ -307,9 +307,11 @@ export function createCameraRig(initial: Viewport, options: RigOptions = {}): Ca
     let halfH = 0;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const corner = new Vector3(sx * CAMPUS_BOUNDS.halfX, 0, sz * CAMPUS_BOUNDS.halfZ);
-        halfW = Math.max(halfW, Math.abs(corner.dot(right)));
-        halfH = Math.max(halfH, Math.abs(corner.dot(up)));
+        for (const y of [0, CAMPUS_BOUNDS.maxY]) {
+          const corner = new Vector3(sx * CAMPUS_BOUNDS.halfX, y, sz * CAMPUS_BOUNDS.halfZ);
+          halfW = Math.max(halfW, Math.abs(corner.dot(right)));
+          halfH = Math.max(halfH, Math.abs(corner.dot(up)));
+        }
       }
     }
     const fit = Math.min(rect.width / (2 * halfW), rect.height / (2 * halfH)) * HOME_MARGIN || 1;
@@ -341,14 +343,19 @@ export function createCameraRig(initial: Viewport, options: RigOptions = {}): Ca
       let dy = 0;
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
-          const p = new Vector3(sx * CAMPUS_BOUNDS.halfX, 0, sz * CAMPUS_BOUNDS.halfZ).project(
-            scratch,
-          );
-          dx = Math.max(dx, Math.abs(((p.x + 1) / 2) * viewport.width - (rect.x + rect.width / 2)));
-          dy = Math.max(
-            dy,
-            Math.abs(((1 - p.y) / 2) * viewport.height - (rect.y + rect.height / 2)),
-          );
+          for (const y of [0, CAMPUS_BOUNDS.maxY]) {
+            const p = new Vector3(sx * CAMPUS_BOUNDS.halfX, y, sz * CAMPUS_BOUNDS.halfZ).project(
+              scratch,
+            );
+            dx = Math.max(
+              dx,
+              Math.abs(((p.x + 1) / 2) * viewport.width - (rect.x + rect.width / 2)),
+            );
+            dy = Math.max(
+              dy,
+              Math.abs(((1 - p.y) / 2) * viewport.height - (rect.y + rect.height / 2)),
+            );
+          }
         }
       }
       const ratio = Math.min(

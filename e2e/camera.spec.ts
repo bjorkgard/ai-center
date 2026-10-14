@@ -51,6 +51,7 @@ async function focusCanvas(page: Page) {
 }
 
 const HALF = 14; // CAMPUS_BOUNDS half extent
+const MAX_Y = 3; // CAMPUS_BOUNDS height
 
 test("the canvas is the first Tab stop after the top bar, named and described for assistive tech", async ({
   page,
@@ -113,7 +114,7 @@ test("a mouse click on the canvas does not show the keyboard brackets", async ({
 
 // The smallest supported window (docs/PLAN.md:497): home frames the whole campus in the safe area.
 for (const projection of ["orthographic", "perspective"]) {
-  test(`home frames all four campus corners inside the safe area at 1280x720 (${projection})`, async ({
+  test(`home frames all eight campus corners inside the safe area at 1280x720 (${projection})`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -130,11 +131,13 @@ for (const projection of ["orthographic", "perspective"]) {
     const safe = (await page.getByTestId("safe-area").boundingBox())!;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const p = await project(page, [sx * HALF, 0, sz * HALF]);
-        expect(p.x).toBeGreaterThan(safe.x);
-        expect(p.x).toBeLessThan(safe.x + safe.width);
-        expect(p.y).toBeGreaterThan(safe.y);
-        expect(p.y).toBeLessThan(safe.y + safe.height);
+        for (const y of [0, MAX_Y]) {
+          const p = await project(page, [sx * HALF, y, sz * HALF]);
+          expect(p.x).toBeGreaterThan(safe.x);
+          expect(p.x).toBeLessThan(safe.x + safe.width);
+          expect(p.y).toBeGreaterThan(safe.y);
+          expect(p.y).toBeLessThan(safe.y + safe.height);
+        }
       }
     }
   });

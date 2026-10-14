@@ -215,7 +215,7 @@ test("under reduced motion a glide is an instant cut", () => {
 const SAFE_1280 = { x: 0, y: 192, width: 1280, height: 352 };
 
 for (const projection of ["orthographic", "perspective"] as const) {
-  test(`home frames the whole campus inside the safeArea at 1280x720 (${projection})`, () => {
+  test(`home frames all eight campus corners inside the safeArea at 1280x720 (${projection})`, () => {
     const { rig, run } = rigAt({ safe: SAFE_1280 });
     if (projection === "perspective") rig.toggle();
     rig.setFraming({ azimuth: 1, elevation: 0.8, target: new Vector3(7, 0, 7), zoom: 200 });
@@ -226,11 +226,37 @@ for (const projection of ["orthographic", "perspective"] as const) {
     expect(rig.framing.zoom).toBeGreaterThan(ORTHO_ZOOM.min);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const p = rig.project(new Vector3(sx * CAMPUS_BOUNDS.halfX, 0, sz * CAMPUS_BOUNDS.halfZ));
-        expect(p.x).toBeGreaterThan(SAFE_1280.x + 8);
-        expect(p.x).toBeLessThan(SAFE_1280.x + SAFE_1280.width - 8);
-        expect(p.y).toBeGreaterThan(SAFE_1280.y + 8);
-        expect(p.y).toBeLessThan(SAFE_1280.y + SAFE_1280.height - 8);
+        for (const y of [0, CAMPUS_BOUNDS.maxY]) {
+          const p = rig.project(new Vector3(sx * CAMPUS_BOUNDS.halfX, y, sz * CAMPUS_BOUNDS.halfZ));
+          expect(p.x).toBeGreaterThan(SAFE_1280.x + 8);
+          expect(p.x).toBeLessThan(SAFE_1280.x + SAFE_1280.width - 8);
+          expect(p.y).toBeGreaterThan(SAFE_1280.y + 8);
+          expect(p.y).toBeLessThan(SAFE_1280.y + SAFE_1280.height - 8);
+        }
+      }
+    }
+  });
+}
+
+// A narrow safeArea makes the width the binding side, where each corner's own projection counts.
+const SAFE_NARROW = { x: 300, y: 0, width: 500, height: 720 };
+
+for (const projection of ["orthographic", "perspective"] as const) {
+  test(`home keeps all eight campus corners inside the margin of a narrow safeArea (${projection})`, () => {
+    const { rig, run } = rigAt({ safe: SAFE_NARROW });
+    if (projection === "perspective") rig.toggle();
+    rig.home();
+    run(600);
+    const slack = (1 - 0.92) / 2;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        for (const y of [0, CAMPUS_BOUNDS.maxY]) {
+          const p = rig.project(new Vector3(sx * CAMPUS_BOUNDS.halfX, y, sz * CAMPUS_BOUNDS.halfZ));
+          expect(p.x).toBeGreaterThanOrEqual(SAFE_NARROW.x + SAFE_NARROW.width * slack - 0.5);
+          expect(p.x).toBeLessThanOrEqual(SAFE_NARROW.x + SAFE_NARROW.width * (1 - slack) + 0.5);
+          expect(p.y).toBeGreaterThanOrEqual(SAFE_NARROW.y + SAFE_NARROW.height * slack - 0.5);
+          expect(p.y).toBeLessThanOrEqual(SAFE_NARROW.y + SAFE_NARROW.height * (1 - slack) + 0.5);
+        }
       }
     }
   });
