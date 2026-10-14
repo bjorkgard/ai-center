@@ -3,6 +3,7 @@ import { Bloom, EffectComposer, ToneMapping } from "@react-three/postprocessing"
 import type { EffectComposer as EffectComposerImpl } from "postprocessing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Vector3, type WebGLRenderer } from "three";
+import { signAtlasReady } from "./hall/signAtlas.ts";
 import type { AppParams } from "../app/params.ts";
 import { useStore, type QualityTier } from "../app/store/index.ts";
 import {
@@ -318,6 +319,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
     const monitor = createFrameMonitor();
     let frames = 0;
     let ready = false;
+    let atlasSettled = false;
     control.setMark(() => counter.markScene());
 
     const driver = createRenderDriver({
@@ -335,7 +337,9 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
         advance(sceneSeconds);
         counter.end();
         frames++;
-        if (!ready) {
+        // Ready is a frame drawn once the sign atlas has settled (its font loaded or given up on),
+        // so shots and baselines always capture one font (CEO W-RW29).
+        if (!ready && atlasSettled) {
           ready = true;
           onReady(true);
         }
@@ -346,6 +350,12 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
       onDiscontinuity: () => monitor.discontinuity(),
     });
     driverRef.current = driver;
+    let live = true;
+    void signAtlasReady().then(() => {
+      if (!live) return;
+      atlasSettled = true;
+      driver.invalidateFrozen();
+    });
 
     const probe = {
       read: () => ({
@@ -398,6 +408,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
 
     return () => {
       for (const type of inputs) window.removeEventListener(type, onInput);
+      live = false;
       stopDriver();
       control.setStop(null);
       monitor.stop();
