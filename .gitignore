@@ -26,3 +26,6 @@ dist-ssr
 test-results
 playwright-report
 bin
+
+# graphify knowledge graph (rebuilt locally by git hooks)
+graphify-out/
