@@ -32,15 +32,19 @@ const project = (page: Page, p: [number, number, number]) =>
     p,
   ) as Promise<{ x: number; y: number }>;
 // The camera has stopped, damping included: two reads a few frames apart are the same.
+// The damping tail takes ~3-4 s under load, so the poll gets more than the 5 s default.
 const camerasStill = (page: Page) =>
   expect
-    .poll(async () => {
-      const before = JSON.stringify(await camera(page));
-      await page.evaluate(
-        "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))",
-      );
-      return JSON.stringify(await camera(page)) === before;
-    })
+    .poll(
+      async () => {
+        const before = JSON.stringify(await camera(page));
+        await page.evaluate(
+          "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))",
+        );
+        return JSON.stringify(await camera(page)) === before;
+      },
+      { timeout: 15_000 },
+    )
     .toBe(true);
 const settled = (page: Page) => expect.poll(async () => (await camera(page)).animating).toBe(false);
 
@@ -294,25 +298,37 @@ test("left-drag pans, right-drag rotates and the context menu is suppressed", as
   expect(ctx.every(Boolean)).toBe(true);
 });
 
-test("the camera cannot leave the bounds by dragging or zooming, in ortho and perspective", async ({
-  page,
-}) => {
-  await open(page);
-  await focusCanvas(page);
-  for (const projection of ["orthographic", "perspective"]) {
+for (const projection of ["orthographic", "perspective"]) {
+  test(`the camera cannot leave the bounds by dragging or zooming, in ${projection}`, async ({
+    page,
+  }) => {
+    // CI SwiftShader makes every input round trip slow.
+    test.slow();
+    await open(page);
+    await focusCanvas(page);
     if (projection === "perspective") {
       await page.keyboard.press("p");
       await expect.poll(async () => (await camera(page)).projection).toBe("perspective");
     }
     for (const [dx, dy] of [
       [-600, -300],
+      [-600, -300],
       [600, 300],
+      [600, 300],
+      [-600, 300],
       [-600, 300],
     ]) {
       await page.mouse.move(640, 360);
       await page.mouse.down();
-      await page.mouse.move(640 + dx, 360 + dy, { steps: 8 });
+      await page.mouse.move(640 + dx, 360 + dy, { steps: 4 });
       await page.mouse.up();
+      // Checked per drag: opposite drags cancel and ortho pans slowly, so only the repeated drags show a missing clamp.
+      await page.evaluate(
+        "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))",
+      );
+      const dragged = (await camera(page)).target;
+      expect(Math.abs(dragged[0])).toBeLessThanOrEqual(HALF + 1e-6);
+      expect(Math.abs(dragged[2])).toBeLessThanOrEqual(HALF + 1e-6);
     }
     await page.mouse.move(640, 300);
     for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -500);
@@ -323,8 +339,8 @@ test("the camera cannot leave the bounds by dragging or zooming, in ortho and pe
     expect(view.zoom).toBeLessThanOrEqual(240 + 1e-6);
     for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 500);
     expect((await camera(page)).zoom).toBeGreaterThanOrEqual(10 - 1e-6);
-  }
-});
+  });
+}
 
 test("the dev menu glide reaches its target in about 600 ms and a drag cancels it", async ({
   page,
