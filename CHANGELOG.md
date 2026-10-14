@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/bjorkgard/ai-center/compare/v0.8.0...v0.9.0) (2026-10-14)
+
+
+### Features
+
+* add campus layout, site furniture and placed-campus home ([#24](https://github.com/bjorkgard/ai-center/issues/24)) ([1df489b](https://github.com/bjorkgard/ai-center/commit/1df489b7ecef82487d02d2dcda00e7bff4860fa2))
+
 # [0.8.0](https://github.com/bjorkgard/ai-center/compare/v0.7.0...v0.8.0) (2026-10-14)
 
 
