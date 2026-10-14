@@ -22,6 +22,8 @@ export function installSceneDev(
       return { webgl, quality, reducedMotion, sceneError };
     },
     rigLights: () => getSceneProbe()?.lights() ?? {},
+    camera: () => getSceneProbe()?.camera() ?? null,
+    project: (point) => getSceneProbe()?.project(point) ?? null,
     materialDisposeEvents: () => guard.events(),
     // Positive control for the guard: disposes one real library instance on purpose.
     disposeSharedMaterial: () => allMaterials()[0].dispose(),

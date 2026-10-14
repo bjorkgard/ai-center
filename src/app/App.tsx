@@ -10,6 +10,24 @@ import { loadParams } from "./params.ts";
 import { watchReducedMotion } from "./reducedMotion.ts";
 import { useStore } from "./store/index.ts";
 
+// Four small cyan corners framing the safe area while the canvas has keyboard focus. They show
+// on :focus-visible only (the rule is in index.css), instead of the D21 ring round the viewport.
+function FocusBrackets() {
+  const corner = "absolute size-4 border-cyan";
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="focus-brackets"
+      className="focus-brackets absolute inset-0"
+    >
+      <span className={`${corner} top-1 left-1 border-t-2 border-l-2`} />
+      <span className={`${corner} top-1 right-1 border-t-2 border-r-2`} />
+      <span className={`${corner} bottom-1 left-1 border-b-2 border-l-2`} />
+      <span className={`${corner} right-1 bottom-1 border-r-2 border-b-2`} />
+    </div>
+  );
+}
+
 export function App() {
   const [params] = useState(() => loadParams(window.location.search));
   const [ready, setReady] = useState(false);
@@ -26,11 +44,8 @@ export function App() {
 
   useEffect(() => watchReducedMotion((value) => useStore.getState().setReducedMotion(value)), []);
 
-  return (
-    <main
-      className="relative h-full overflow-hidden bg-bg"
-      data-scene-ready={ready ? "" : undefined}
-    >
+  const stage = (
+    <>
       <SceneCanvas params={params} onReady={onReady} />
       {backdrop && (
         <div
@@ -39,7 +54,15 @@ export function App() {
         />
       )}
       {!lookdev && <Loader ready={ready} />}
-      {!lookdev && <Shell />}
+    </>
+  );
+
+  return (
+    <main
+      className="relative h-full overflow-hidden bg-bg"
+      data-scene-ready={ready ? "" : undefined}
+    >
+      {lookdev ? stage : <Shell stage={stage} />}
       <div
         data-testid="safe-area"
         className="pointer-events-none absolute"
@@ -51,6 +74,7 @@ export function App() {
         }}
       >
         <CardLayer />
+        {!lookdev && <FocusBrackets />}
         {params.dev && !lookdev && <PerfHud frozen={params.freeze} />}
       </div>
       {!lookdev && <ToastHost />}

@@ -32,6 +32,19 @@ body {
   outline-offset: 2px;
 }
 
+/* The canvas shows focus as corner brackets round the safe area, not as the D21 ring. */
+canvas:focus-visible {
+  outline: none;
+}
+
+.focus-brackets {
+  opacity: 0;
+}
+
+main:has(canvas:focus-visible) .focus-brackets {
+  opacity: 1;
+}
+
 ::selection {
   background: color-mix(in srgb, var(--color-cyan) 30%, transparent);
 }
