@@ -285,6 +285,101 @@ test("a lost context shows the restore toast in the live region, then the restor
   await expect(region.getByText("3D view restored")).toHaveCount(0, { timeout: 12_000 });
 });
 
+// Flags any moment the restoring toast is in the DOM together with a card.
+const WATCH_RESTORING_OVER_CARD = `(() => {
+  const log = { overCard: false, exited: false };
+  const check = () => {
+    const toast = [...document.querySelectorAll('[data-testid="toast"]')].find((t) =>
+      t.textContent.includes("Restoring 3D view"),
+    );
+    if (!toast) return;
+    if (toast.style.animation.includes("-out")) log.exited = true;
+    if (document.querySelector('[data-testid$="-card"]')) log.overCard = true;
+  };
+  new MutationObserver(check).observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    characterData: true,
+  });
+  window.__restoringLog = log;
+})()`;
+
+test("the restoring toast leaves without lingering when a scene error card replaces it", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
+  await open(page, "dev=1");
+  await page.evaluate(WATCH_RESTORING_OVER_CARD);
+  await page.evaluate(lose);
+  await expect(page.getByTestId("toast").filter({ hasText: "Restoring 3D view" })).toBeVisible();
+  await page.evaluate("window.__sceneDev.throwInScene('boom')");
+  await expect(page.getByTestId("scene-error-card")).toBeVisible();
+  await expect(page.getByText("Restoring 3D view")).toHaveCount(0);
+  expect(await page.evaluate("window.__restoringLog")).toMatchObject({ overCard: false });
+});
+
+test("the restoring toast leaves without lingering when the lost card replaces it", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
+  test.setTimeout(60_000);
+  await open(page, "dev=1");
+  await page.evaluate(WATCH_RESTORING_OVER_CARD);
+  await page.evaluate(lose);
+  await expect(page.getByTestId("toast").filter({ hasText: "Restoring 3D view" })).toBeVisible();
+  await expect(page.getByTestId("webgl-lost-card")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Restoring 3D view")).toHaveCount(0);
+  expect(await page.evaluate("window.__restoringLog")).toMatchObject({ overCard: false });
+});
+
+test("a card that appears while the restoring toast exits removes it at once", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
+  await open(page, "dev=1");
+  await page.evaluate(WATCH_RESTORING_OVER_CARD);
+  // Throw the scene error in the same task that sees the restoring toast start its exit.
+  await page.evaluate(`(() => {
+    new MutationObserver(() => {
+      const out = [...document.querySelectorAll('[data-testid="toast"]')].some(
+        (t) => t.textContent.includes("Restoring 3D view") && t.style.animation.includes("-out"),
+      );
+      if (out && !window.__thrown) {
+        window.__thrown = true;
+        window.__sceneDev.throwInScene("boom");
+      }
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  })()`);
+  await page.evaluate(lose);
+  await expect(page.getByTestId("toast").filter({ hasText: "Restoring 3D view" })).toBeVisible();
+  await page.evaluate("window.__ext.restoreContext()");
+  await expect(page.getByTestId("scene-error-card")).toBeVisible();
+  await expect(page.getByText("Restoring 3D view")).toHaveCount(0);
+  expect(await page.evaluate("window.__restoringLog")).toMatchObject({
+    exited: true,
+    overCard: false,
+  });
+});
+
+test("under reduced motion the restoring icon does not spin", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  skipFrameSpecInCiFirefox(browserName, testInfo);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await open(page, "dev=1");
+  await page.evaluate(lose);
+  const toast = page.getByTestId("toast").filter({ hasText: "Restoring 3D view" });
+  await expect(toast).toBeVisible();
+  expect(await toast.locator("path").evaluate((el) => getComputedStyle(el).animationName)).toBe(
+    "none",
+  );
+});
+
 test("resizing and toggling panels raise no ResizeObserver error", async ({
   page,
   browserName,
