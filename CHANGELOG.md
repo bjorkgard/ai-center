@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/bjorkgard/ai-center/compare/v0.9.0...v0.10.0) (2026-10-14)
+
+
+### Features
+
+* add cooling plant with seeded vapour, fans and duty control ([#25](https://github.com/bjorkgard/ai-center/issues/25)) ([a2e6b25](https://github.com/bjorkgard/ai-center/commit/a2e6b2570f435d2797c55aba9197c9b00c589374))
+
 # [0.9.0](https://github.com/bjorkgard/ai-center/compare/v0.8.0...v0.9.0) (2026-10-14)
 
 
