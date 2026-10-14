@@ -515,7 +515,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Dev controls (design-review Phase 3 D20, WD14):** a "Hall" section with the roof cut toggle and `__sceneDev.setRoofCut(on)`.
 - **View (CEO W-RW7):** `view=hall` frames one hall with the roof cut away; `src/app/params.ts` and `scripts/shots.config.ts` gain it. The look-dev vignette renders the `buildHall` output in place of its own slab and wall (C17).
 
-#### [ ] 07. Instanced racks and LEDs
+#### [x] 07. Instanced racks and LEDs
 - **Goal:** Racks and LEDs as instances with per-instance colour and intensity buffers.
 - **Depends on:** 06.
 - **Tasks:** One InstancedMesh for rack bodies, one for LEDs (a status strip plus 12 blades per rack; design-review Phase 3 D11, WD6), per-instance colour attribute. Slot allocator inside a hall (stable slot per key). Dev slider for rack count 0-16 and a fake load pulse per rack.
@@ -5483,7 +5483,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-F8; W-RW7
   - Files: `src/app/params.ts`, `src/app/params.test.ts`, `scripts/shots.config.ts`, `src/scene/SceneCanvas.tsx`
   - Verify: params unit tests; `vp run shots` writes `06-hall.png`, `07-racks.png`, `08-campus.png`, `09-cooling.png`, `10-power-network.png` under 200 KB
-- [ ] **T5 (P1, human: ~1d / CC: ~30min)** — chunk 07 — Rack instances, slot allocator, `SceneSignals`, `fake.ts` and the shared RNG
+- [x] **T5 (P1, human: ~1d / CC: ~30min)** — chunk 07 — Rack instances, slot allocator, `SceneSignals`, `fake.ts` and the shared RNG
   - Surfaced by: W-RW8, W-RW9, W-RW20, W-RW28, W-RW34, W-RW37
   - Files: `src/scene/hall/slots.ts`, `src/scene/hall/slots.test.ts`, `src/scene/hall/RackInstances.tsx`, `src/scene/signals.ts`, `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/sim/rng.ts`, `src/sim/rng.test.ts`
   - Verify: `vp test`; e2e geometries constant across 0, 16, 0 racks; two frozen `view=racks` captures match
@@ -5737,7 +5737,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 1 — WD1
   - Files: `src/scene/campus/layout.ts`, `src/scene/campus/layout.test.ts`
   - Verify: unit test checks zone order at the startup azimuth (cooling top-left, power left, halls centre, gate bottom-centre, parking bottom-right, dock right) and a 16-rack hall of about 8 x 6 units
-- [ ] **T4 (P1, human: ~3h / CC: ~15min)** — chunk 07 LEDs — Status strip plus 12 blades, pulse range, seeded hero mix, steady under reduced motion
+- [x] **T4 (P1, human: ~3h / CC: ~15min)** — chunk 07 LEDs — Status strip plus 12 blades, pulse range, seeded hero mix, steady under reduced motion
   - Surfaced by: Pass 5 — WD6, WD7 (UI-4)
   - Files: `src/scene/hall/RackInstances.tsx`, `src/scene/fake.ts`, `src/scene/fake.test.ts`
   - Verify: unit tests: 208 LED instances per hall; pulse stays in 0.6-1.0; hero mix 60/25/10/5 for seed 1; reduced motion holds 0.8

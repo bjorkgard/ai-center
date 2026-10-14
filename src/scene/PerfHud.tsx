@@ -1,6 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore } from "../app/store/index.ts";
+import {
+  isFakeLoad,
+  setFakeLoad,
+  setRackCount,
+  shownCount,
+  subscribeRacks,
+} from "./hall/racksDev.ts";
 import { isRoofCut, setRoofCut, subscribeRoof } from "./hall/roof.ts";
+import { SIGN_SLOTS } from "./hall/hallLayout.ts";
+import { RACK_SLOTS } from "./hall/rackLayout.ts";
 import { hudRows } from "./hud.ts";
 import { getSceneProbe, type SceneStats } from "./stats.ts";
 
@@ -12,14 +21,18 @@ const BUTTON =
 // with tabular numerals, solid fill, no blur. It reads the probe on a timer, not per frame.
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
 // projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
-// chunk 06) each hold one chunk's dev controls (design-review Phase 3 WD14).
+// chunk 06, Racks from chunk 07) each hold one chunk's dev controls (design-review Phase 3 WD14).
 export function PerfHud({ frozen }: { frozen: boolean }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
   const rightPanelOpen = useStore((s) => s.rightPanelOpen);
   const [cameraOpen, setCameraOpen] = useState(true);
   const [hallOpen, setHallOpen] = useState(false);
+  const [racksOpen, setRacksOpen] = useState(false);
+  const [rackHall, setRackHall] = useState(0);
   const roofCut = useSyncExternalStore(subscribeRoof, isRoofCut);
+  const racks = useSyncExternalStore(subscribeRacks, () => shownCount(rackHall));
+  const fakeLoad = useSyncExternalStore(subscribeRacks, isFakeLoad);
   const [view, setView] = useState<{ stats: SceneStats | null; fps: number }>({
     stats: null,
     fps: 0,
@@ -109,6 +122,56 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
               onClick={() => setRoofCut(!roofCut)}
             >
               Roof cut {roofCut ? "on" : "off"}
+            </button>
+          </div>
+        )}
+      </section>
+      <section data-testid="dev-racks" className="mt-2 border-t border-white/12 pt-2">
+        <button
+          type="button"
+          aria-expanded={racksOpen}
+          aria-controls="dev-racks-body"
+          className="flex w-full items-center justify-between text-caption text-text-2 hover:text-text"
+          onClick={() => setRacksOpen(!racksOpen)}
+        >
+          Racks
+          <span aria-hidden="true">{racksOpen ? "-" : "+"}</span>
+        </button>
+        {racksOpen && (
+          <div id="dev-racks-body">
+            <label className="mt-2 flex items-center justify-between text-text-2">
+              Hall
+              <select
+                value={rackHall}
+                className="rounded-control border border-white/12 bg-bg px-1 text-text"
+                onChange={(event) => setRackHall(Number(event.target.value))}
+              >
+                {Array.from({ length: SIGN_SLOTS }, (_, hall) => (
+                  <option key={hall} value={hall}>
+                    {String.fromCharCode(65 + hall)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="mt-2 flex items-center justify-between gap-2 text-text-2">
+              Racks {racks}
+              <input
+                type="range"
+                min={0}
+                max={RACK_SLOTS}
+                step={1}
+                value={racks}
+                aria-label="Rack count"
+                onChange={(event) => setRackCount(rackHall, Number(event.target.value))}
+              />
+            </label>
+            <button
+              type="button"
+              aria-pressed={fakeLoad}
+              className={BUTTON}
+              onClick={() => setFakeLoad(!fakeLoad)}
+            >
+              Fake load {fakeLoad ? "on" : "off"}
             </button>
           </div>
         )}

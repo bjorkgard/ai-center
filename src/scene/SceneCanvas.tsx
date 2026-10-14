@@ -1,9 +1,9 @@
 import { Canvas, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, ToneMapping } from "@react-three/postprocessing";
 import type { EffectComposer as EffectComposerImpl } from "postprocessing";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Vector3, type WebGLRenderer } from "three";
-import type { AppParams } from "../app/params.ts";
+import type { AppParams, ViewName } from "../app/params.ts";
 import { useStore, type QualityTier } from "../app/store/index.ts";
 import {
   composerFailed,
@@ -31,10 +31,13 @@ import { LightRig } from "./LightRig.tsx";
 import { LookDevScene } from "./LookDev.tsx";
 import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { HALL_FRAMING } from "./hall/hallLayout.ts";
+import { subscribeRacks } from "./hall/racksDev.ts";
 import { subscribeRoof } from "./hall/roof.ts";
 import { LOOKDEV_FRAMING } from "./lookdevFraming.ts";
 import { MarkPass } from "./MarkPass.ts";
 import { MATERIALS, setBloomGlow } from "./materials.ts";
+import { createSceneSignals } from "./sceneSignals.ts";
+import { SignalsContext } from "./signals.ts";
 import { applyRendererSettings, pixelRatio, qualitySettings, RENDER } from "./render.ts";
 import { logScene } from "./sceneLog.ts";
 import { reportSceneFailure } from "./failure.ts";
@@ -54,7 +57,27 @@ const CAMERA_HELP =
 // The dev-menu glide test (DR11) flies out to this spot and back home.
 const GLIDE_TEST = { far: new Vector3(8, 0, -6), zoom: 140 };
 
-// The hall view: one hall with the roof cut away, under the shared rig (chunk 06).
+// Hands the scene its data through SceneSignals, evaluated at scene time (the R3F clock, which
+// the driver sets to the frozen-aware scene seconds). Chunks 18 and 22 swap the implementation.
+function SignalsScope({
+  view,
+  seed,
+  children,
+}: {
+  view: ViewName;
+  seed: number;
+  children: ReactNode;
+}) {
+  const clock = useThree((s) => s.clock);
+  const signals = useMemo(
+    () => createSceneSignals(view, seed, () => clock.elapsedTime),
+    [view, seed, clock],
+  );
+  return <SignalsContext.Provider value={signals}>{children}</SignalsContext.Provider>;
+}
+
+// The hall view: one hall with the roof cut away, under the shared rig (chunk 06). The racks view
+// is the same hall with 16 racks.
 function HallScene({
   shadows,
   rig,
@@ -215,6 +238,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   }, [bloom]);
 
   useEffect(() => subscribeRoof(() => driverRef.current?.invalidateFrozen()), []);
+  useEffect(() => subscribeRacks(() => driverRef.current?.invalidateFrozen()), []);
 
   useEffect(() => {
     rig.setViewport({ width: size.width, height: size.height });
@@ -428,7 +452,7 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
         target: new Vector3(...LOOKDEV_FRAMING.target),
         zoom: LOOKDEV_FRAMING.zoom,
       });
-    } else if (params.view === "hall") {
+    } else if (params.view === "hall" || params.view === "racks") {
       created.setFraming({
         target: new Vector3(...HALL_FRAMING.target),
         zoom: HALL_FRAMING.zoom,
@@ -496,16 +520,16 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
         />
         <SceneContentBoundary stopDriver={() => control.stopDriver()}>
           {contentMounted && (
-            <>
+            <SignalsScope view={params.view} seed={params.seed}>
               {lookdev ? (
                 <LookDevScene shadows={settings.shadows} rig={rig} />
-              ) : params.view === "hall" ? (
+              ) : params.view === "hall" || params.view === "racks" ? (
                 <HallScene shadows={settings.shadows} rig={rig} frozen={params.freeze} />
               ) : (
                 <TestScene shadows={settings.shadows} />
               )}
               <MountSignal onMount={onContentMount} onUnmount={onContentUnmount} />
-            </>
+            </SignalsScope>
           )}
           {thrown !== null && <Thrower message={thrown} />}
         </SceneContentBoundary>

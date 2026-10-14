@@ -1,6 +1,7 @@
 import { useStore } from "../app/store/index.ts";
 import { allMaterials } from "./materials.ts";
 import { simulateFrameInterval } from "./loop/monitor.ts";
+import { ledColor, setFakeLoad, setRackCount } from "./hall/racksDev.ts";
 import { setRoofCut } from "./hall/roof.ts";
 import { signOpacity } from "./hall/signVisibility.ts";
 import { guardDisposeEvents } from "./render.ts";
@@ -27,6 +28,9 @@ export function installSceneDev(
     camera: () => getSceneProbe()?.camera() ?? null,
     project: (point) => getSceneProbe()?.project(point) ?? null,
     setRoofCut,
+    setRackCount,
+    setFakeLoad,
+    ledColor,
     // Forces a quality tier: medium and low turn bloom off, which scales the glow (WD4).
     setQuality: (tier) => {
       if (tier !== "high" && tier !== "medium" && tier !== "low") {

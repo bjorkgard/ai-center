@@ -36,6 +36,10 @@ test("every key parses its allowed values", () => {
   });
 });
 
+test("view=racks is accepted", () => {
+  expect(parseParams("?view=racks")).toMatchObject({ params: { view: "racks" }, warnings: [] });
+});
+
 test("view=home is accepted", () => {
   expect(parseParams("?view=home")).toMatchObject({ params: { view: "home" }, warnings: [] });
 });

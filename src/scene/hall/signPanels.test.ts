@@ -128,3 +128,28 @@ test("SignPanels.dispose frees the panel geometry and mesh, and no shared materi
   expect(guard.events()).toBe(0);
   guard.release();
 });
+
+test("a hall that loses the sign slot to another hall does not write that slot's atlas text", () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  const panels = new SignPanels(atlas);
+  const written: string[] = [];
+  const text = {
+    setSign: (slot: number, letter: string, project: string) =>
+      written.push(`${slot}:${letter}:${project}`),
+  };
+  const first = new SignBinding(panels, new Vector3(0, 1.5, 3));
+  const second = new SignBinding(panels, new Vector3(0, 1.5, 3));
+  first.sync(0, [0, 0, 0]);
+  second.sync(0, [12, 0, 0]);
+  expect(first.owns(0)).toBe(true);
+  expect(second.owns(0)).toBe(false);
+  expect(first.writeSign(text, 0, "A", "Northwind")).toBe(true);
+  expect(second.writeSign(text, 0, "B", "Harbor")).toBe(false);
+  expect(written).toEqual(["0:A:Northwind"]);
+  // Once the first hall leaves, the slot is free for the second to take and write.
+  first.release();
+  second.sync(0, [12, 0, 1]);
+  expect(second.writeSign(text, 0, "B", "Harbor")).toBe(true);
+  expect(written).toEqual(["0:A:Northwind", "0:B:Harbor"]);
+  panels.dispose();
+});

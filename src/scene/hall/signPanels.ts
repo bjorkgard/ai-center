@@ -146,6 +146,19 @@ export class SignBinding {
     }
   }
 
+  // Whether this hall holds the panel instance of `slot` (a second hall in the same slot does not).
+  owns(slot: number): boolean {
+    return this.slot >= 0 && this.slot === slot;
+  }
+
+  // Draws the hall's text into the atlas only when it owns the slot, so a hall that lost the
+  // slot never overwrites its owner's text. Returns whether it wrote.
+  writeSign(atlas: Pick<SignAtlas, "setSign">, slot: number, letter: string, project: string) {
+    if (!this.owns(slot)) return false;
+    atlas.setSign(slot, letter, project);
+    return true;
+  }
+
   release(): void {
     if (this.slot >= 0) this.panels.unregister(this.slot, this);
     this.slot = -1;

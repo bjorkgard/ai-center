@@ -229,8 +229,9 @@ test("a key press counts as input for calm mode", async ({ page }) => {
 });
 
 test("scroll over a corner moves that corner less than a centre zoom would", async ({ page }) => {
-  // A ground point that sits near the lower-right corner of the 3D area at the first view.
-  const corner: [number, number, number] = [8.93, 0, -0.97];
+  // A ground point low in the 3D area at the first view, clear of the panels and of the dev HUD,
+  // whose sections (Camera, Hall, Racks) reach down the right edge to about y=650.
+  const corner: [number, number, number] = [4.2, 0, 3.15];
   const shift = async (cursor: (c: { x: number; y: number }) => { x: number; y: number }) => {
     await open(page);
     const before = await project(page, corner);

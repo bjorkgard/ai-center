@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
-import { LED, ledPlacements } from "../src/scene/lookdevLayout.ts";
+import { ledPlacements } from "../src/scene/lookdevLayout.ts";
 import { LOOKDEV_FRAMING } from "../src/scene/lookdevFraming.ts";
 
 const READY = "window.__sceneReady === true";
@@ -54,7 +54,7 @@ test("the six status LEDs read as six distinct colours", async ({ page }) => {
   for (const { status, at } of ledPlacements()) {
     if (colour.has(status)) continue;
     // The middle of the LED's front face, which faces the camera's +z side.
-    const [x, y] = project([at[0], at[1], at[2] + LED.size[2] / 2]);
+    const [x, y] = project(at);
     const i = (y * info.width + x) * info.channels;
     colour.set(status, [data[i], data[i + 1], data[i + 2]]);
   }

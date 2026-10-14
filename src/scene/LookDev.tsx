@@ -1,10 +1,12 @@
+import { useMemo } from "react";
 import type { Material } from "three";
 import { Ground } from "./Ground.tsx";
 import { LightRig } from "./LightRig.tsx";
 import type { CameraRig } from "./camera.ts";
 import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
-import { LED, RACK, RACKS, SLAB, ledPlacements, rackX, type Vec3 } from "./lookdevLayout.ts";
-import { MATERIALS, statusLed } from "./materials.ts";
+import { SLAB, createLookDevSignals, type Vec3 } from "./lookdevLayout.ts";
+import { MATERIALS } from "./materials.ts";
+import { SignalsContext, useSignals } from "./signals.ts";
 
 // A box on a library material, placed by its centre.
 function Block(props: { at: Vec3; size: Vec3; material: Material; shadow?: boolean }) {
@@ -13,25 +15,6 @@ function Block(props: { at: Vec3; size: Vec3; material: Material; shadow?: boole
     <mesh position={at} material={material} castShadow={shadow} receiveShadow>
       <boxGeometry args={size} />
     </mesh>
-  );
-}
-
-// 8-rack row, four status LEDs on each (the layout and statuses live in lookdevLayout.ts).
-function RackRow() {
-  return (
-    <>
-      {Array.from({ length: RACKS }, (_, i) => (
-        <Block
-          key={i}
-          at={[rackX(i), SLAB.height + RACK.height / 2, RACK.z]}
-          size={[RACK.width, RACK.height, RACK.depth]}
-          material={MATERIALS.rack}
-        />
-      ))}
-      {ledPlacements().map(({ status, at }, n) => (
-        <Block key={n} at={at} size={LED.size} material={statusLed(status)} shadow={false} />
-      ))}
-    </>
   );
 }
 
@@ -71,14 +54,16 @@ function Trim() {
 // The look-dev vignette (CEO C17): every material of the library once, under the shared rig.
 // Later chunks add their materials here.
 export function LookDevScene({ shadows, rig }: { shadows: boolean; rig: CameraRig }) {
+  // The 8-rack row is the hall's own instances, fed a fixed row of statuses.
+  const base = useSignals();
+  const signals = useMemo(() => createLookDevSignals(base), [base]);
   return (
-    <>
+    <SignalsContext.Provider value={signals}>
       <LightRig shadows={shadows} />
       <Ground />
       <Hall />
       <SignPanelMesh rig={rig} frozen />
-      <RackRow />
       <Trim />
-    </>
+    </SignalsContext.Provider>
   );
 }
