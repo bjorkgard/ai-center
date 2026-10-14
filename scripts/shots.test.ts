@@ -91,6 +91,16 @@ describe("shots config", () => {
     expect(views.filter((v) => v.setup !== undefined)).toHaveLength(1);
   });
 
+  test("the cooling entry is a plain frozen view=cooling shot", () => {
+    const entry = views.find((v) => v.file === "docs/img/09-cooling.png");
+    expect(entry).toMatchObject({ name: "cooling" });
+    expect(entry?.query).toBeUndefined();
+    expect(entry?.setup).toBeUndefined();
+    expect(viewUrl("http://x", "cooling")).toBe(
+      "http://x/?source=mock&scenario=steady&seed=1&freeze=1&view=cooling",
+    );
+  });
+
   test("the spike entry is gone", () => {
     expect(views.some((v) => v.name.startsWith("spike"))).toBe(false);
   });

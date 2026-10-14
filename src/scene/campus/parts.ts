@@ -24,7 +24,7 @@ export function triangleCount(geometry: BufferGeometry): number {
 }
 
 // three's mergeGeometries returns null on mismatched attributes; this throws, as buildHall does.
-function merge(parts: BufferGeometry[]): BufferGeometry {
+export function merge(parts: BufferGeometry[]): BufferGeometry {
   const merged = mergeGeometries(parts);
   if (merged === null) throw new CampusBuildError("campus parts have mismatched attributes");
   for (const part of parts) part.dispose();
@@ -32,7 +32,7 @@ function merge(parts: BufferGeometry[]): BufferGeometry {
 }
 
 // Colours every vertex of `geometry` and drops its UVs, which no campus material reads.
-function painted(geometry: BufferGeometry, hex: string): BufferGeometry {
+export function painted(geometry: BufferGeometry, hex: string): BufferGeometry {
   geometry.deleteAttribute("uv");
   const c = new Color(hex);
   const count = geometry.getAttribute("position").count;
@@ -42,7 +42,7 @@ function painted(geometry: BufferGeometry, hex: string): BufferGeometry {
   return geometry;
 }
 
-const box = (size: [number, number, number], at: [number, number, number], hex: string) =>
+export const box = (size: [number, number, number], at: [number, number, number], hex: string) =>
   painted(new BoxGeometry(...size).translate(...at), hex);
 
 const plain = (geometry: BufferGeometry) => {

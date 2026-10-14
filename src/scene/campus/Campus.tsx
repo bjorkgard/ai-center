@@ -11,6 +11,7 @@ import { MATERIALS } from "../materials.ts";
 import { buildCampus } from "./buildCampus.ts";
 import { placedHalls, showWaypoints, subscribeCampus } from "./campusDev.ts";
 import { groundArea, shadowRadius, slotPosition } from "./layout.ts";
+import { Plant } from "../plant/Plant.tsx";
 import { buildWaypoints } from "./waypoints.ts";
 
 // The waypoint graph as line segments just above the roads (dev toggle, CEO W-RW12).
@@ -30,7 +31,8 @@ function WaypointLines() {
   return <lineSegments geometry={geometry} material={MATERIALS.waypoints} />;
 }
 
-// The campus view (chunk 08): the ground, the light, the site furniture and the placed halls. A, B
+// The campus view (chunk 08): the ground, the light, the site furniture, the cooling plant
+// (chunk 09) and the placed halls. A, B
 // and any further placed hall stand in their slots; every other slot shows its pad. The marks
 // (pad numbers, monument wordmark) re-check the camera on every frame and fade 200 ms; frozen
 // frames and reduced motion cut the fade.
@@ -63,6 +65,7 @@ export function CampusScene({
       <LightRig shadows={shadows} radius={shadowRadius()} />
       <Ground area={groundArea()} />
       <primitive object={built.group} dispose={null} />
+      <Plant seed={seed} />
       {Array.from({ length: placed }, (_, slot) => {
         const { x, z } = slotPosition(slot);
         return <Hall key={slot} slot={slot} at={[x, 0, z]} />;

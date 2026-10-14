@@ -34,6 +34,12 @@ interface SceneDevHooks {
   setPlacedHalls(n: number): void;
   // Shows or hides the waypoint graph over the roads.
   setWaypoints(on: boolean): void;
+  // Sets the cooling duty 0-1 for vapour and fans (chunk 09); out of range input clamps and warns.
+  setDuty(value: number): void;
+  // Turns a second of a plant fan as drawn, measured from its matrices (read-only); null before it turns.
+  fanTurnRate(): number | null;
+  // The duty the plant drew last (read-only); null before the first frame.
+  liveDuty(): number | null;
   // Forces a quality tier; medium and low run without bloom.
   setQuality(tier: import("./store/ui.ts").QualityTier): void;
   // Opacity of a hall's sign panel by slot 0-11.

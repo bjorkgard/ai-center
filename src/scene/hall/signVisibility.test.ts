@@ -183,3 +183,41 @@ test("the fader reports its own fade start and end: 200 ms apart for a full fade
   expect(end).toBeCloseTo(5200, 6);
   expect(fader.opacity(0)).toBe(0);
 });
+
+test("a panel that starts a fade while another is mid-fade measures its own 200 ms", () => {
+  const fader = new SignFader(2);
+  fader.setTarget(0, true, 1000, false);
+  fader.step(1100);
+  expect(fader.opacity(0)).toBeCloseTo(0.5, 6);
+  // Slot 1 starts 80 ms after the last step; its first step is 20 ms into its own fade.
+  fader.setTarget(1, true, 1180, false);
+  fader.step(1200);
+  expect(fader.opacity(1)).toBeCloseTo(0.1, 6);
+  expect(fader.opacity(0)).toBe(1);
+  fader.step(1380);
+  expect(fader.opacity(1)).toBe(1);
+  expect(fader.timing(1).end).toBeCloseTo(1380, 6);
+});
+
+test("a snap clears the slot's fade timing, so signFade never reports a previous fade", () => {
+  const fader = new SignFader(1);
+  fader.setTarget(0, true, 1000, false);
+  fader.step(1300);
+  expect(fader.timing(0).start).toBe(1000);
+  expect(fader.timing(0).end).not.toBeNull();
+  fader.setTarget(0, false, 2000, true);
+  expect(fader.opacity(0)).toBe(0);
+  expect(fader.timing(0)).toEqual({ start: null, end: null });
+});
+
+test("a panel that reverses mid-fade carries only the time since the reversal towards its new target", () => {
+  const fader = new SignFader(1);
+  fader.setTarget(0, true, 0, true);
+  fader.setTarget(0, false, 0, false);
+  fader.step(50);
+  expect(fader.opacity(0)).toBeCloseTo(0.75, 6);
+  fader.setTarget(0, true, 150, false);
+  // The 100 ms before the reversal still fade out: 0.75 - 0.5 = 0.25, then 10 ms back up.
+  fader.step(160);
+  expect(fader.opacity(0)).toBeCloseTo(0.3, 6);
+});

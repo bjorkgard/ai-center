@@ -556,7 +556,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Dev controls (CEO W-RW12):** a "Campus" section: waypoint graph toggle and placed-hall count (A and B always, up to 12) with `__sceneDev.setWaypoints(on)` and `__sceneDev.setPlacedHalls(n)`.
 - **Campus baseline (CEO C28, W-RW15):** `e2e/campus.spec.ts` captures the frozen `home` view (1280x720, `freeze=1`, `seed=1`, after the ready signal) with `toHaveScreenshot` (`maxDiffPixelRatio: 0.005`) in the look-dev Playwright project (Chromium on the Mac, skipped when `CI` is set), baseline under `e2e/__screenshots__/`. `playwright.config.ts`: the `lookdev` project's `testMatch` becomes `/lookdev\.spec\.ts|campus\.spec\.ts/`, and the chromium, firefox (both CI branches) and webkit `testIgnore` patterns add `campus\.spec\.ts`, so the baseline is never written to the gitignored `test-results/`. Every PR that changes the campus look (09, 10, 18-23, 34, 35) updates it in the same PR. When two such PRs are open at once (C26 lets 18 run beside 09 and 10), the one that merges second rebases and regenerates the baseline and the `home` shots on top; binary images are never hand-merged (CEO W-RW39).
 
-#### [ ] 09. Cooling plant
+#### [x] 09. Cooling plant
 - **Goal:** Cooling towers, chillers, vapour.
 - **Depends on:** 08.
 - **Tasks:** Low-poly towers and chillers. Vapour as instanced billboards with a soft shader, rate controlled by a `duty` value 0-1 (dev slider). Fan rotation speed follows duty.
@@ -5503,7 +5503,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-F5; C28; W-RW4, W-RW15, W-RW39, W-RW40
   - Files: `e2e/campus.spec.ts`, `playwright.config.ts`, `e2e/__screenshots__/`, `README.md`, `docs/img/08-campus.png`
   - Verify: `playwright test --list` shows `campus.spec.ts` only in the `lookdev` project; `vp run e2e:local` passes; the PR shows the image pair
-- [ ] **T10 (P1, human: ~1.5d / CC: ~45min)** — chunk 09 — Cooling plant, sorted normal-blended vapour, seeded fans, shader-error hook
+- [x] **T10 (P1, human: ~1.5d / CC: ~45min)** — chunk 09 — Cooling plant, sorted normal-blended vapour, seeded fans, shader-error hook
   - Surfaced by: W-F9, W-F11; W-RW8, W-RW10, W-RW16, W-RW18, W-RW30
   - Files: `src/scene/plant/` (new components), `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/SceneCanvas.tsx`
   - Verify: sort and luminance unit tests; two frozen `view=cooling` captures match; reduced-motion e2e; four-azimuth shots and a Safari note in the PR
@@ -5745,7 +5745,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 5 — WD8
   - Files: `src/scene/fibre/route.ts`, `src/scene/fibre/Fibre.tsx`, `src/scene/fibre/Packets.tsx`, `src/scene/fibre/route.test.ts`
   - Verify: unit test caps 12 packets per line and spacing of 1.2 units or more; frozen `view=power` shot in the PR
-- [ ] **T6 (P2, human: ~3h / CC: ~15min)** — chunk 09 plant — Vapour and fan values, idle fans at duty 0
+- [x] **T6 (P2, human: ~3h / CC: ~15min)** — chunk 09 plant — Vapour and fan values, idle fans at duty 0
   - Surfaced by: Pass 5 — WD9, WD7
   - Files: `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/plant/Towers.tsx`
   - Verify: unit tests: no particles at duty 0, 60 per tower at duty 1, fans at 10% at duty 0 and 25% under reduced motion
@@ -6112,7 +6112,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 and th
   - Surfaced by: Architecture — E-A1, E26 (D2)
   - Files: `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/scene/plant/vapour.ts`, `src/scene/fibre/route.ts`
   - Verify: unit tests: 60 visible particles per tower at duty 1 and t = 0, none at duty 0; packets spread at the cap at t = 0; same seed same values
-- [ ] **T2 (P1, human: ~4h / CC: ~20min)** — materials — Shared instance-fade helper; instanced sign panels and pad numbers; vapour life fade
+- [x] **T2 (P1, human: ~4h / CC: ~20min)** — materials — Shared instance-fade helper; instanced sign panels and pad numbers; vapour life fade
   - Surfaced by: Code quality — E-Q1, E27 (D3)
   - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/hall/Hall.tsx`, `src/scene/campus/Campus.tsx`, `src/scene/plant/Plant.tsx`
   - Verify: unit test on a stand-in shader (attribute injected, opacity multiplied, fixed program cache key); e2e: a panel fades from 1 to 0 within about 200 ms after zooming out
@@ -6124,7 +6124,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 and th
   - Surfaced by: Test review — T-1, T-3
   - Files: `src/scene/hall/buildHall.test.ts`, an e2e spec reading `__sceneDev.stats()`
   - Verify: unit count of meshes and casters per hall at most 4; e2e under 40 at frozen `home`
-- [ ] **T5 (P3, human: ~15min / CC: ~5min)** — CI — Record CI job durations before and after chunk 08
+- [x] **T5 (P3, human: ~15min / CC: ~5min)** — CI — Record CI job durations before and after chunk 08
   - Surfaced by: Performance — E-P3
   - Files: chunk 08 PR description
   - Verify: the PR lists both durations for the Chromium and Firefox jobs

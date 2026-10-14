@@ -37,6 +37,8 @@ import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { HALL_FRAMING } from "./hall/hallLayout.ts";
 import { subscribeRacks } from "./hall/racksDev.ts";
 import { subscribeRoof } from "./hall/roof.ts";
+import { subscribePlant } from "./plant/plantDev.ts";
+import { COOLING_FRAMING } from "./plant/plantLayout.ts";
 import { LOOKDEV_FRAMING } from "./lookdevFraming.ts";
 import { MarkPass } from "./MarkPass.ts";
 import { setBloomGlow } from "./materials.ts";
@@ -212,6 +214,8 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   const firstApply = useRef(true);
   const interactive = params.view !== "lookdev";
   const campusView = params.view === "home";
+  // Every view that renders the campus scene keeps its Home on the halls placed now.
+  const campusScene = campusView || params.view === "cooling";
   // The startup pose frames the campus in the safe area (CEO C25) and follows the safe area and
   // the window size until the camera is moved: the key is the framing as the startup left it.
   const startupKey = useRef<string | null>(null);
@@ -235,17 +239,18 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
 
   useEffect(() => subscribeRoof(() => driverRef.current?.invalidateFrozen()), []);
   useEffect(() => subscribeRacks(() => driverRef.current?.invalidateFrozen()), []);
+  useEffect(() => subscribePlant(() => driverRef.current?.invalidateFrozen()), []);
 
   // The next home() frames the halls placed now; a placed hall never moves the camera (CEO C25).
   useEffect(() => {
-    if (!campusView) return;
+    if (!campusScene) return;
     const frame = () => ({ bounds: campusBounds(), home: campusHome(placedHalls()) });
     rig.setCampus(frame());
     return subscribeCampus(() => {
       rig.setCampus(frame());
       driverRef.current?.invalidateFrozen();
     });
-  }, [rig, campusView]);
+  }, [rig, campusScene]);
 
   useEffect(() => {
     rig.setViewport({ width: size.width, height: size.height });
@@ -498,6 +503,13 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
       created.setFraming({
         target: new Vector3(...HALL_FRAMING.target),
         zoom: HALL_FRAMING.zoom,
+      });
+    } else if (params.view === "cooling") {
+      // The campus scene, framed on the plant zone; the camera keeps the campus bounds.
+      created.setCampus({ bounds: campusBounds(), home: campusHome(placedHalls()) });
+      created.setFraming({
+        target: new Vector3(...COOLING_FRAMING.target),
+        zoom: COOLING_FRAMING.zoom,
       });
     }
     return created;

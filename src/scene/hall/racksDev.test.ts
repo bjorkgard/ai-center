@@ -84,6 +84,9 @@ const base: SceneSignals = {
   rackCount: () => 4,
   ledLoad: () => ({ status: "tool", blades: ["tool"], load: 0.5, phase: 0.1 }),
   hallSign: () => ({ letter: "A", project: "Northwind" }),
+  duty: () => 0.5,
+  vapourPhase: () => 1,
+  fanAngle: () => 0,
 };
 
 test("dev overrides win over the base signals; fake load off shows idle racks", () => {
@@ -100,6 +103,7 @@ test("dev overrides win over the base signals; fake load off shows idle racks", 
   expect(idle.blades).toHaveLength(0);
   expect(idle.load).toBe(0);
   expect(signals.hallSign(0).project).toBe("Northwind");
+  expect([signals.duty(), signals.vapourPhase(0), signals.fanAngle(0)]).toEqual([0.5, 1, 0]);
 });
 
 test("ledColor reads the strip colour a mounted hall registered, and null for anything else", () => {
@@ -110,4 +114,10 @@ test("ledColor reads the strip colour a mounted hall registered, and null for an
   expect(ledColor(5, 2)).toBeNull();
   stop();
   expect(ledColor(1, 2)).toBeNull();
+});
+
+test("the dev overrides pass reduced motion on to the base fan angle", () => {
+  const signals = withDevOverrides({ ...base, fanAngle: (_, reduced) => (reduced ? 1 : 2) });
+  expect(signals.fanAngle(0, true)).toBe(1);
+  expect(signals.fanAngle(0, false)).toBe(2);
 });

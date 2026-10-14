@@ -124,7 +124,7 @@ test("placing a third hall widens the next home, and does not move the camera be
   }
 });
 
-test("the Campus dev section starts collapsed last, and its controls drive the campus", async ({
+test("the Campus dev section starts collapsed after Racks, and its controls drive the campus", async ({
   page,
 }) => {
   const warnings: string[] = [];
@@ -138,7 +138,8 @@ test("the Campus dev section starts collapsed last, and its controls drive the c
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => (s as HTMLElement).dataset.testid));
-  expect(sections.at(-1)).toBe("dev-campus");
+  // Cooling (chunk 09) follows Campus.
+  expect(sections.slice(-2)).toEqual(["dev-campus", "dev-cooling"]);
   const header = hud.getByRole("button", { name: /^Campus/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

@@ -33,6 +33,9 @@ export function createLookDevSignals(base: SceneSignals): SceneSignals {
     rackCount: () => RACKS,
     ledLoad: (_hall, rack) => racks[rack] ?? racks[0],
     hallSign: (hall) => base.hallSign(hall),
+    duty: () => base.duty(),
+    vapourPhase: (i) => base.vapourPhase(i),
+    fanAngle: (i, reducedMotion) => base.fanAngle(i, reducedMotion),
   };
 }
 

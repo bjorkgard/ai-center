@@ -108,5 +108,8 @@ export function withDevOverrides(base: SceneSignals): SceneSignals {
     rackCount: (hall) => overrides[hall] ?? base.rackCount(hall),
     ledLoad: (hall, rack) => (fakeLoad ? base.ledLoad(hall, rack) : NO_LOAD),
     hallSign: (hall) => base.hallSign(hall),
+    duty: () => base.duty(),
+    vapourPhase: (i) => base.vapourPhase(i),
+    fanAngle: (i, reducedMotion) => base.fanAngle(i, reducedMotion),
   };
 }

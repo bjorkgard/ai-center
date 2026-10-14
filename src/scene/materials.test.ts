@@ -326,3 +326,27 @@ test("the site palette is the one in the plan: roads a step above the ground, tr
     expect(hs(car).l).toBeLessThan(0.2);
   }
 });
+
+test("the soft fade variant adds a radial edge falloff and its own program key", () => {
+  const material = new MeshStandardMaterial({ name: "puff" });
+  addInstanceFade(material, { soft: true });
+  const shader = standIn();
+  material.onBeforeCompile(shader as never, {} as never);
+  expect(shader.vertexShader).toContain("varying vec2 vSoftUv;");
+  expect(shader.vertexShader).toMatch(/vSoftUv\s*=\s*uv;/);
+  expect(shader.fragmentShader).toMatch(/gl_FragColor\.a\s*\*=\s*1\.0\s*-\s*smoothstep/);
+  expect(shader.fragmentShader).toMatch(/gl_FragColor\.a\s*\*=\s*vInstanceOpacity;/);
+  const plain = new MeshStandardMaterial();
+  addInstanceFade(plain);
+  expect(material.customProgramCacheKey()).not.toBe(plain.customProgramCacheKey());
+  expect(material.customProgramCacheKey()).toBe("instance-fade-soft");
+});
+
+test("the vapour material is a library instance on the fade helper, and no glow", () => {
+  expect(allMaterials()).toContain(MATERIALS.vapour);
+  expect(MATERIALS.vapour.name).toBe("vapour");
+  expect(MATERIALS.vapour.customProgramCacheKey()).toBe("instance-fade-soft");
+  expect(MATERIALS.vapour.clippingPlanes).toBeNull();
+  // setBloomGlow leaves it alone: it has no emissive to scale.
+  expect("emissiveIntensity" in MATERIALS.vapour).toBe(false);
+});
