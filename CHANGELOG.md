@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/bjorkgard/ai-center/compare/v0.4.0...v0.5.0) (2026-10-14)
+
+
+### Features
+
+* add lighting rig, material library and look-dev view ([#15](https://github.com/bjorkgard/ai-center/issues/15)) ([a3c6d7b](https://github.com/bjorkgard/ai-center/commit/a3c6d7b37fd9a7070ce78c288fe08811e706b0d2))
+
 # [0.4.0](https://github.com/bjorkgard/ai-center/compare/v0.3.0...v0.4.0) (2026-10-14)
 
 
