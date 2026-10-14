@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../app/store/index.ts";
 import { uiDurationMs } from "./duration.ts";
 import { selectCard } from "../scene/cards/select.ts";
 import { GlassPanel } from "./GlassPanel.tsx";
-import { restoreToastFor, restoringToastVisible } from "./toasts.ts";
+import { departedToasts, restoreToastFor, restoringToastVisible } from "./toasts.ts";
 
 const RESTORING_ID = -1;
 
@@ -14,7 +14,7 @@ interface Item {
   leaving: boolean;
 }
 
-function Icon({ restoring }: { restoring: boolean }) {
+function Icon({ restoring, reduced }: { restoring: boolean; reduced: boolean }) {
   return restoring ? (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
       <circle
@@ -31,7 +31,11 @@ function Icon({ restoring }: { restoring: boolean }) {
         fill="none"
         stroke="var(--color-cyan)"
         strokeWidth="2"
-        style={{ transformOrigin: "8px 8px", animation: "toast-spin 0.9s linear infinite" }}
+        style={
+          reduced
+            ? undefined
+            : { transformOrigin: "8px 8px", animation: "toast-spin 0.9s linear infinite" }
+        }
       />
     </svg>
   ) : (
@@ -72,14 +76,19 @@ export function ToastHost() {
   // Items that left the wanted list stay for the exit animation, then drop.
   const [leaving, setLeaving] = useState<Item[]>([]);
   const previous = useRef<Item[]>([]);
-  useEffect(() => {
-    const ids = new Set(wanted.map((w) => w.id));
-    const gone = previous.current
-      .filter((p) => !ids.has(p.id))
-      .map((p) => ({ ...p, leaving: true }));
+  // Layout effect: a toast dropped for a card never paints over it.
+  useLayoutEffect(() => {
+    const gone = departedToasts(previous.current, wanted, card).map((p) => ({
+      ...p,
+      leaving: true,
+    }));
     previous.current = wanted;
-    if (gone.length > 0) setLeaving((current) => [...current, ...gone]);
-  }, [wanted]);
+    // A card showing now also drops a restoring toast that is still exiting (DR5).
+    setLeaving((current) => {
+      const kept = card === null ? current : current.filter((l) => !l.restoring);
+      return gone.length === 0 && kept.length === current.length ? current : [...kept, ...gone];
+    });
+  }, [wanted, card]);
   useEffect(() => {
     if (leaving.length === 0) return;
     const id = setTimeout(() => setLeaving([]), uiDurationMs());
@@ -104,7 +113,7 @@ export function ToastHost() {
             animation: `${reduced ? "toast-fade" : "toast"}-${t.leaving ? "out" : "in"} var(--dur-ui) var(--ease) both`,
           }}
         >
-          <Icon restoring={t.restoring} />
+          <Icon restoring={t.restoring} reduced={reduced} />
           <span>{t.text}</span>
         </GlassPanel>
       ))}

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { resetStore, useStore } from "../app/store/index.ts";
-import { restoreToastFor, restoringToastVisible, TOAST_MS } from "./toasts.ts";
+import { departedToasts, restoreToastFor, restoringToastVisible, TOAST_MS } from "./toasts.ts";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -48,4 +48,12 @@ test("the restored toast follows restoring -> ok and a late restore of the lost 
   expect(restoreToastFor({ status: "unavailable", reason: "start" }, "ok", null)).toBe(false);
   expect(restoreToastFor({ status: "ok", reason: null }, "ok", null)).toBe(false);
   expect(restoreToastFor({ status: "restoring", reason: "lost" }, "ok", "scene-error")).toBe(false);
+});
+
+test("departedToasts drops only the restoring toast when a card shows", () => {
+  const restoring = { id: -1, restoring: true };
+  const normal = { id: 3, restoring: false };
+  expect(departedToasts([restoring, normal], [], "webgl-lost")).toEqual([normal]);
+  expect(departedToasts([restoring], [], null)).toEqual([restoring]);
+  expect(departedToasts([restoring, normal], [restoring], null)).toEqual([normal]);
 });
