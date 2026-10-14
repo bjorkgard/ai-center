@@ -158,3 +158,34 @@ test("the sign panel material uses the fade helper with the atlas variant", () =
   expect(MATERIALS.sign.customProgramCacheKey()).toMatch(/instance-fade/);
   expect(MATERIALS.sign.transparent).toBe(true);
 });
+
+test("the instanced LED material emits its per-instance colour at the LED rung of the ladder", () => {
+  expect(MATERIALS.led.emissiveIntensity).toBe(1);
+  expect(MATERIALS.led.name).toBe("led");
+  expect(allMaterials()).toContain(MATERIALS.led);
+  const shader = {
+    vertexShader: "",
+    fragmentShader: "#include <common>\n#include <emissivemap_fragment>\nvoid main(){}",
+  };
+  MATERIALS.led.onBeforeCompile(shader as never, {} as never);
+  expect(shader.fragmentShader).toMatch(
+    /#ifdef USE_COLOR\s+totalEmissiveRadiance\s*\*=\s*vColor\.rgb/,
+  );
+  expect(MATERIALS.led.customProgramCacheKey()).toBe(MATERIALS.led.customProgramCacheKey());
+  expect(() =>
+    MATERIALS.led.onBeforeCompile(
+      { vertexShader: "", fragmentShader: "void main(){}" } as never,
+      {} as never,
+    ),
+  ).toThrow(/led/);
+});
+
+test("the LED material scales x1.5 with bloom off like every other glow", () => {
+  try {
+    setBloomGlow(false);
+    expect(MATERIALS.led.emissiveIntensity).toBeCloseTo(1.5, 9);
+  } finally {
+    setBloomGlow(true);
+  }
+  expect(MATERIALS.led.emissiveIntensity).toBe(1);
+});

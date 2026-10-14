@@ -2,13 +2,12 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
 import { useStore } from "../../app/store/index.ts";
 import type { CameraRig } from "../camera.ts";
+import { useSignals } from "../signals.ts";
 import { buildHall } from "./buildHall.ts";
+import { RackInstances } from "./rackInstances.ts";
+import { registerLeds, reportShown } from "./racksDev.ts";
 import { getSignAtlas } from "./signAtlas.ts";
 import { SignBinding, getSignPanels } from "./signPanels.ts";
-
-// Until chunk 08 places halls and chunk 18 feeds real names, hall A carries a fictional name
-// (never read from the machine, D16).
-const PLACEHOLDER = { letter: "A", project: "Northwind" };
 
 // A stable default, so a parent re-render does not re-register the panel.
 const ORIGIN: [number, number, number] = [0, 0, 0];
@@ -19,28 +18,44 @@ interface HallProps {
   at?: [number, number, number];
 }
 
-// One data hall at `at`: the merged body and the windows. The roof state is the shared clipping
-// plane (roof.ts); its sign panel is an instance of the one shared panel mesh (SignPanelMesh).
+// One data hall at `at`: the merged body, the windows and its racks. The roof state is the shared
+// clipping plane (roof.ts); its sign panel is an instance of the one shared panel mesh
+// (SignPanelMesh). The hall owns one rack and one LED InstancedMesh, allocated once; every frame
+// it reads its rack count and LED load from SceneSignals at scene time.
 export function Hall({ slot = 0, at = ORIGIN }: HallProps) {
+  const signals = useSignals();
+  const sign = signals.hallSign(slot);
   const built = useMemo(() => buildHall({ slots: 16, rows: 2 }), []);
+  const racks = useMemo(() => new RackInstances(), []);
   const atlas = useMemo(() => getSignAtlas(), []);
   const panels = useMemo(() => getSignPanels(), []);
   const binding = useMemo(() => new SignBinding(panels, built.signCentre), [panels, built]);
-
-  useEffect(() => {
-    atlas.setSign(slot, PLACEHOLDER.letter, PLACEHOLDER.project);
-  }, [atlas, slot]);
 
   // Runs after every render but acts only when the slot or the position's numbers change.
   useEffect(() => binding.sync(slot, at));
   useEffect(() => () => binding.release(), [binding]);
 
+  // After the sync above: a hall that did not get the slot's panel leaves the slot's text alone.
+  useEffect(() => {
+    binding.writeSign(atlas, slot, sign.letter, sign.project);
+  }, [atlas, binding, slot, sign.letter, sign.project]);
+
   useEffect(() => () => built.dispose(), [built]);
+  useEffect(() => () => racks.dispose(), [racks]);
+  useEffect(() => registerLeds(slot, racks), [slot, racks]);
+
+  useFrame((state) => {
+    racks.setRackCount(signals.rackCount(slot));
+    reportShown(slot, racks.rackCount);
+    racks.update(signals, slot, state.clock.elapsedTime, useStore.getState().reducedMotion);
+  });
 
   return (
     <group position={at}>
       <primitive object={built.body} dispose={null} />
       <primitive object={built.windows} dispose={null} />
+      <primitive object={racks.racks} dispose={null} />
+      <primitive object={racks.leds} dispose={null} />
     </group>
   );
 }

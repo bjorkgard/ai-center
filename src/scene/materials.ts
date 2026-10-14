@@ -145,6 +145,26 @@ const ROOF_PLANE = new Plane(new Vector3(0, -1, 0), ROOF_CUT_CONSTANT);
 // idle and done to near the same grey, so the six statuses read as fewer colours.
 const LED_INTENSITY = 1.0; // [estimated]
 
+// One material for every instanced LED (chunk 07): the emissive is the per-instance colour
+// (status colour times the pulse level) times the intensity, so one draw shows every status.
+// The base colour stays dark; instance colour is the only thing that lights it.
+function ledMaterial(): MeshStandardMaterial {
+  const material = glow("#ffffff", LED_INTENSITY);
+  material.name = "led";
+  material.onBeforeCompile = (shader) => {
+    const marker = "#include <emissivemap_fragment>";
+    if (!shader.fragmentShader.includes(marker)) {
+      throw new Error(`led: ${marker} not found in the shader of material "${material.name}"`);
+    }
+    shader.fragmentShader = shader.fragmentShader.replace(
+      marker,
+      `${marker}\n#ifdef USE_COLOR\ntotalEmissiveRadiance *= vColor.rgb;\n#endif`,
+    );
+  };
+  material.customProgramCacheKey = () => "led-instance-colour";
+  return material;
+}
+
 const LEDS = Object.fromEntries(
   STATUS_ORDER.map((status) => [status, glow(STATUS_COLORS[status], LED_INTENSITY)]),
 ) as Record<Status, MeshStandardMaterial>;
@@ -166,6 +186,7 @@ export const MATERIALS = {
     name: "hall",
   }),
   sign: signMaterial(),
+  led: ledMaterial(),
   window: glow(WINDOW_COLOR, 2),
   fibre: glow(FIBRE_COLOR, 2.6),
   claude: new MeshStandardMaterial({

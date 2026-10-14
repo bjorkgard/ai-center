@@ -22,6 +22,12 @@ interface SceneDevHooks {
   rigLights(): Record<string, number>;
   // Cuts or restores the roof of every hall (chunk 06); anything but true or false warns.
   setRoofCut(on: boolean): void;
+  // Sets the rack count of a hall (slot 0-11) to 0-16 racks; out of range input clamps and warns.
+  setRackCount(hall: number, n: number): void;
+  // Turns the seeded fake LED load on or off; off shows every rack idle and steady.
+  setFakeLoad(on: boolean): void;
+  // Linear rgb of a rack's status strip as the frame loop last wrote it, or null.
+  ledColor(hall: number, rack: number): [number, number, number] | null;
   // Forces a quality tier; medium and low run without bloom.
   setQuality(tier: import("./store/ui.ts").QualityTier): void;
   // Opacity of a hall's sign panel by slot 0-11.
