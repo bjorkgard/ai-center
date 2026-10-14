@@ -53,10 +53,20 @@ export class SignFader {
   private readonly value: number[];
   private readonly target: number[];
   private last = 0;
+  // The fader's own clock (the `now` it was given) at the start of each panel's latest fade and at
+  // its end; the end is null while the fade runs. A dev hook reads them (see `signFadeTiming`).
+  private readonly started: (number | null)[];
+  private readonly ended: (number | null)[];
 
   constructor(count: number) {
     this.value = Array.from({ length: count }, () => 0);
     this.target = Array.from({ length: count }, () => 0);
+    this.started = Array.from({ length: count }, () => null);
+    this.ended = Array.from({ length: count }, () => null);
+  }
+
+  timing(slot: number): { start: number | null; end: number | null } {
+    return { start: this.started[slot] ?? null, end: this.ended[slot] ?? null };
   }
 
   opacity(slot: number): number {
@@ -75,7 +85,12 @@ export class SignFader {
     if (this.target[slot] === next && !snap) return;
     if (!this.animating) this.last = now;
     this.target[slot] = next;
-    if (snap) this.value[slot] = next;
+    if (snap) {
+      this.value[slot] = next;
+    } else {
+      this.started[slot] = now;
+      this.ended[slot] = null;
+    }
   }
 
   // Moves every panel towards its target; true while any is still moving.
@@ -84,8 +99,15 @@ export class SignFader {
     this.last = now;
     for (let i = 0; i < this.value.length; i++) {
       const diff = this.target[i] - this.value[i];
-      this.value[i] =
-        Math.abs(diff) <= delta ? this.target[i] : this.value[i] + Math.sign(diff) * delta;
+      if (Math.abs(diff) <= delta) {
+        this.value[i] = this.target[i];
+        // Reached inside this step: the end is the step time less the unused part of the step.
+        if (diff !== 0 && this.ended[i] === null) {
+          this.ended[i] = now - (delta - Math.abs(diff)) * SIGN.fadeMs;
+        }
+      } else {
+        this.value[i] = this.value[i] + Math.sign(diff) * delta;
+      }
     }
     return this.animating;
   }
@@ -96,6 +118,15 @@ let active: SignFader | null = null;
 
 export function setActiveFader(fader: SignFader | null): void {
   active = fader;
+}
+
+// Opacity and fade timing of a slot's panel on the fader's own clock, for the dev hook.
+export function signFadeTiming(slot: number): {
+  opacity: number;
+  start: number | null;
+  end: number | null;
+} | null {
+  return active ? { opacity: active.opacity(slot), ...active.timing(slot) } : null;
 }
 
 export function signOpacity(slot: number): number | null {

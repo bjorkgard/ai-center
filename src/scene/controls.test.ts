@@ -1,12 +1,12 @@
 import { PerspectiveCamera, Plane, Raycaster, Vector2, Vector3 } from "three";
 import { expect, test, vi } from "vite-plus/test";
 import {
-  CAMPUS_BOUNDS,
   ELEVATION_RANGE,
   ORTHO_ZOOM,
   createCameraRig,
   perspectiveDistanceRange,
 } from "./camera.ts";
+import { FIXTURE_CAMPUS } from "./cameraFixture.ts";
 import {
   DAMPING_SETTLE_MS,
   createCameraControls,
@@ -50,6 +50,7 @@ function setup(options: { reduced?: boolean; perspective?: boolean } = {}) {
     { width: W, height: H },
     { now: () => clock.t, reducedMotion: () => options.reduced ?? false },
   );
+  rig.setCampus(FIXTURE_CAMPUS);
   const canvas = new FakeCanvas();
   const onChange = vi.fn();
   const controls = createCameraControls(rig, canvas as unknown as HTMLElement, {
@@ -118,15 +119,15 @@ for (const perspective of [false, true]) {
     mouse.up();
     for (let i = 0; i < 120; i++) controls.update(FRAME_MS);
     const t = rig.framing.target;
-    expect(Math.abs(t.x)).toBeLessThanOrEqual(CAMPUS_BOUNDS.halfX + 1e-9);
-    expect(Math.abs(t.z)).toBeLessThanOrEqual(CAMPUS_BOUNDS.halfZ + 1e-9);
+    expect(Math.abs(t.x)).toBeLessThanOrEqual(FIXTURE_CAMPUS.bounds.halfX + 1e-9);
+    expect(Math.abs(t.z)).toBeLessThanOrEqual(FIXTURE_CAMPUS.bounds.halfZ + 1e-9);
     expect(t.y).toBeGreaterThanOrEqual(0);
     for (let i = 0; i < 60; i++) mouse.wheel(900, 200, -100);
     expect(rig.framing.zoom).toBeLessThanOrEqual(ORTHO_ZOOM.max + 1e-9);
     for (let i = 0; i < 160; i++) mouse.wheel(900, 200, 100);
     expect(rig.framing.zoom).toBeGreaterThanOrEqual(ORTHO_ZOOM.min - 1e-9);
-    expect(Math.abs(t.x)).toBeLessThanOrEqual(CAMPUS_BOUNDS.halfX + 1e-9);
-    expect(Math.abs(t.z)).toBeLessThanOrEqual(CAMPUS_BOUNDS.halfZ + 1e-9);
+    expect(Math.abs(t.x)).toBeLessThanOrEqual(FIXTURE_CAMPUS.bounds.halfX + 1e-9);
+    expect(Math.abs(t.z)).toBeLessThanOrEqual(FIXTURE_CAMPUS.bounds.halfZ + 1e-9);
     if (perspective) {
       const range = perspectiveDistanceRange(H);
       const d = (rig.active as PerspectiveCamera).position.distanceTo(t);

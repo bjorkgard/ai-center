@@ -25,6 +25,15 @@ const LOSE_CONTEXT = `(() => {
   window.__ext = ext;
   ext.loseContext();
 })()`;
+// After a restore the first frame relinks every GL program (14 links, 28 compiles on SwiftShader):
+// about 3 s idle and up to about 15 s under load. So wait for that first frame (up to 45 s) before
+// taking the frame baseline, then require 3 more frames within 15 s: a real stall still fails.
+async function resumed(page: Page) {
+  const at = await frames(page);
+  await expect.poll(() => frames(page), { timeout: 45_000 }).toBeGreaterThan(at);
+  const base = await frames(page);
+  await expect.poll(() => frames(page), { timeout: 15_000 }).toBeGreaterThan(base + 3);
+}
 const focusOnBody = (page: Page) => page.evaluate("document.activeElement === document.body");
 
 test("webgl=0 shows the WebGL card; this spec waits on the card, not the ready signal", async ({
@@ -53,14 +62,14 @@ test("webgl=0 shows the WebGL card; this spec waits on the card, not the ready s
 test("a lost context goes restoring, then ok after restore, and the scene renders again", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   await open(page, "dev=1");
   await page.evaluate(LOSE_CONTEXT);
   await expect.poll(() => webglState(page)).toBe("restoring");
   await expect(page.getByTestId("webgl-lost-card")).toHaveCount(0);
   await page.evaluate("window.__ext.restoreContext()");
-  await expect.poll(() => webglState(page)).toBe("ok");
-  const after = await frames(page);
-  await expect.poll(() => frames(page), { timeout: 15_000 }).toBeGreaterThan(after + 3);
+  await expect.poll(() => webglState(page), { timeout: 45_000 }).toBe("ok");
+  await resumed(page);
 });
 
 test("a context lost with no restore shows the lost card after 10 s; a late restore hides it", async ({
@@ -82,7 +91,7 @@ test("a context lost with no restore shows the lost card after 10 s; a late rest
 
   await page.evaluate("window.__ext.restoreContext()");
   await expect(card).toHaveCount(0);
-  await expect.poll(() => webglState(page)).toBe("ok");
+  await expect.poll(() => webglState(page), { timeout: 45_000 }).toBe("ok");
 });
 
 test("a scene component that throws shows the scene-error card, not the WebGL card", async ({
@@ -142,13 +151,15 @@ test("three failing frames keep the loop alive, log once, then show the scene-er
   expect(await page.evaluate("window.__sceneDev.state().sceneError?.message")).toBe("frame boom");
 });
 
-const stat = (page: Page, key: "bloom" | "composerGen") =>
+const stat = (page: Page, key: "bloom" | "composerGen" | "composerReady") =>
   page.evaluate(`window.__sceneDev.stats()?.${key}`);
 
 test("a composer error turns bloom off without a card; a restore rebuilds it; a later error turns it off again", async ({
   page,
 }) => {
-  await open(page, "dev=1");
+  test.setTimeout(120_000);
+  // The composer path does not depend on scene content: the bare look-dev vignette keeps it light.
+  await open(page, "dev=1&view=lookdev");
   // Healthy intervals keep the quality tier (and bloom) from degrading under CI load.
   await page.evaluate("window.__sceneDev.simulateFrameInterval(16)");
   expect(await stat(page, "bloom")).toBe(true);
@@ -158,26 +169,27 @@ test("a composer error turns bloom off without a card; a restore rebuilds it; a 
   await page.evaluate(LOSE_CONTEXT);
   await expect.poll(() => webglState(page)).toBe("restoring");
   await page.evaluate("window.__ext.restoreContext()");
-  await expect.poll(() => webglState(page)).toBe("ok");
-  await expect.poll(() => stat(page, "composerGen"), { timeout: 15_000 }).toBeGreaterThan(gen);
-  await expect.poll(() => stat(page, "bloom"), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => webglState(page), { timeout: 45_000 }).toBe("ok");
+  await expect.poll(() => stat(page, "composerGen"), { timeout: 45_000 }).toBeGreaterThan(gen);
+  await expect.poll(() => stat(page, "bloom"), { timeout: 45_000 }).toBe(true);
+  await resumed(page);
+  await expect.poll(() => stat(page, "composerReady"), { timeout: 15_000 }).toBe(true);
 
   await page.evaluate("window.__sceneDev.throwInComposer()");
   await expect.poll(() => stat(page, "bloom"), { timeout: 15_000 }).toBe(false);
   for (const id of ["scene-error-card", "webgl-card", "webgl-lost-card"]) {
     await expect(page.getByTestId(id)).toHaveCount(0);
   }
-  const afterThrow = await frames(page);
-  await expect.poll(() => frames(page), { timeout: 15_000 }).toBeGreaterThan(afterThrow + 3);
+  await resumed(page);
 
   await page.evaluate(LOSE_CONTEXT);
   await expect.poll(() => webglState(page)).toBe("restoring");
   await page.evaluate("window.__ext.restoreContext()");
-  await expect.poll(() => webglState(page)).toBe("ok");
-  await expect.poll(() => stat(page, "composerGen"), { timeout: 15_000 }).toBeGreaterThan(gen + 1);
-  await expect.poll(() => stat(page, "bloom"), { timeout: 15_000 }).toBe(true);
-  const afterRestore = await frames(page);
-  await expect.poll(() => frames(page), { timeout: 15_000 }).toBeGreaterThan(afterRestore + 3);
+  await expect.poll(() => webglState(page), { timeout: 45_000 }).toBe("ok");
+  await expect.poll(() => stat(page, "composerGen"), { timeout: 45_000 }).toBeGreaterThan(gen + 1);
+  await expect.poll(() => stat(page, "bloom"), { timeout: 45_000 }).toBe(true);
+  await resumed(page);
+  await expect.poll(() => stat(page, "composerReady"), { timeout: 15_000 }).toBe(true);
 
   await page.evaluate("window.__sceneDev.throwInComposer()");
   await expect.poll(() => stat(page, "bloom"), { timeout: 15_000 }).toBe(false);

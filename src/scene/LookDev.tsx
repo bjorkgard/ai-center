@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { Material } from "three";
 import { Ground } from "./Ground.tsx";
 import { LightRig } from "./LightRig.tsx";
 import type { CameraRig } from "./camera.ts";
+import { fenceBayGeometry, treeGeometry } from "./campus/parts.ts";
 import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { SLAB, createLookDevSignals, type Vec3 } from "./lookdevLayout.ts";
 import { MATERIALS } from "./materials.ts";
@@ -51,6 +52,32 @@ function Trim() {
   );
 }
 
+// One tree and one fence bay from the campus parts (chunk 08), on the shared tree and concrete
+// materials, beside the hall.
+function SitePair() {
+  const tree = useMemo(() => treeGeometry(), []);
+  const bay = useMemo(() => fenceBayGeometry(), []);
+  useEffect(
+    () => () => {
+      tree.dispose();
+      bay.dispose();
+    },
+    [tree, bay],
+  );
+  return (
+    <>
+      <mesh
+        geometry={tree}
+        material={MATERIALS.tree}
+        position={[-5.6, 0, 3.4]}
+        castShadow
+        receiveShadow
+      />
+      <mesh geometry={bay} material={MATERIALS.concrete} position={[-3.4, 0, 5.4]} receiveShadow />
+    </>
+  );
+}
+
 // The look-dev vignette (CEO C17): every material of the library once, under the shared rig.
 // Later chunks add their materials here.
 export function LookDevScene({ shadows, rig }: { shadows: boolean; rig: CameraRig }) {
@@ -64,6 +91,7 @@ export function LookDevScene({ shadows, rig }: { shadows: boolean; rig: CameraRi
       <Hall />
       <SignPanelMesh rig={rig} frozen />
       <Trim />
+      <SitePair />
     </SignalsContext.Provider>
   );
 }

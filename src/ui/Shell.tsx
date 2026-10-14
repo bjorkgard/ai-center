@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useStore } from "../app/store/index.ts";
 import { GlassPanel } from "./GlassPanel.tsx";
-import { createSafeAreaWatcher, type Rect } from "./safeArea.ts";
+import { carveSafeArea, createSafeAreaWatcher, type Rect } from "./safeArea.ts";
 
 const KPI_TITLES = ["Claude sessions", "Codex sessions", "Agents"];
 const TABS = ["Sessions", "Subagents", "Tool calls", "Tokens", "Errors", "Projects"];
@@ -44,8 +44,30 @@ export function Shell({ stage }: { stage: ReactNode }) {
   useEffect(() => {
     const el = root.current;
     if (!el) return;
+    // The home area is the canvas minus the top bar and the tab strip only (decision H1).
+    const syncHome = (origin: DOMRect) => {
+      const bars = ["slot-top-bar", "slot-tab-strip"].flatMap((id) => {
+        const bar = el.querySelector(`[data-testid=${id}]`);
+        return bar ? [rectOf(bar, origin)] : [];
+      });
+      const canvas = {
+        x: 0,
+        y: 0,
+        width: Math.round(origin.width),
+        height: Math.round(origin.height),
+      };
+      const next = carveSafeArea(canvas, bars);
+      const now = useStore.getState().homeArea;
+      const same =
+        now.x === next.x &&
+        now.y === next.y &&
+        now.width === next.width &&
+        now.height === next.height;
+      if (!same && next.width > 0 && next.height > 0) useStore.getState().setHomeArea(next);
+    };
     const measure = () => {
       const origin = el.getBoundingClientRect();
+      syncHome(origin);
       return {
         canvas: { x: 0, y: 0, width: Math.round(origin.width), height: Math.round(origin.height) },
         panels: [...el.querySelectorAll("[data-panel]")].map((p) => rectOf(p, origin)),

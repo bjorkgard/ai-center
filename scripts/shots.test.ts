@@ -73,6 +73,24 @@ describe("shots config", () => {
     );
   });
 
+  test("the campus hero is a plain frozen home shot", () => {
+    const entry = views.find((v) => v.file === "docs/img/08-campus.png");
+    expect(entry).toMatchObject({ name: "home" });
+    expect(entry?.query).toBeUndefined();
+    expect(entry?.setup).toBeUndefined();
+  });
+
+  test("the no-bloom entry forces the medium tier through the dev hook, hides the HUD and waits for a new frame", () => {
+    const entry = views.find((v) => v.file === "docs/img/08-campus-nobloom.png");
+    expect(entry).toMatchObject({ name: "home", query: "dev=1" });
+    expect(entry?.setup).toContain('__sceneDev.setQuality("medium")');
+    expect(entry?.setup).toContain("perf-hud");
+    expect(entry?.settled).toContain("bloom === false");
+    expect(entry?.settled).toContain("frames");
+    // Only this entry has a setup step.
+    expect(views.filter((v) => v.setup !== undefined)).toHaveLength(1);
+  });
+
   test("the spike entry is gone", () => {
     expect(views.some((v) => v.name.startsWith("spike"))).toBe(false);
   });

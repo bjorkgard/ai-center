@@ -18,6 +18,7 @@ const base: HudInput = {
     frameErrors: 0,
     projection: "orthographic",
     bloom: true,
+    composerReady: true,
   },
   quality: "high",
   webgl: "ok",

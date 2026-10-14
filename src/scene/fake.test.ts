@@ -107,20 +107,44 @@ test("hall signs are fixed fictional names, one per hall slot", () => {
   expect(signals.hallSign(11).letter).toBe("L");
 });
 
-test("no scene component imports fake.ts: they read the SceneSignals seam", () => {
+// Whether a source file imports fake.ts, with single or double quotes, as a static import, a
+// re-export or a dynamic import.
+function importsFake(source: string): boolean {
+  return /(?:from\s*|import\s*\(\s*|import\s+)(["'])[^"']*\/fake\.ts\1/.test(source);
+}
+
+test("the import scan sees fake.ts in both quote styles and ignores look-alikes", () => {
+  expect(importsFake('import { x } from "./fake.ts";')).toBe(true);
+  expect(importsFake("import { x } from '../scene/fake.ts';")).toBe(true);
+  expect(importsFake("export * from '../fake.ts'")).toBe(true);
+  expect(importsFake("const m = await import('./fake.ts')")).toBe(true);
+  expect(importsFake('import "./fake.ts"')).toBe(true);
+  expect(importsFake('import { x } from "./fakeness.ts";')).toBe(false);
+  expect(importsFake('import { x } from "./fake.test.ts";')).toBe(false);
+  expect(importsFake("// the fake.ts module")).toBe(false);
+});
+
+// The seam (CEO W-RW28): outside tests, only sceneSignals.ts, the one place that picks the
+// implementation, imports fake.ts. Every file under src and e2e is scanned.
+test("nothing under src or e2e imports fake.ts except sceneSignals.ts and tests", () => {
+  const root = join(import.meta.dirname, "..", "..");
   const offenders: string[] = [];
+  const scanned: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (
-        path.endsWith(".tsx") &&
-        /from\s+"[^"]*\/fake\.ts"/.test(readFileSync(path, "utf8"))
-      ) {
-        offenders.push(path);
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules") walk(path);
+      } else if (/\.tsx?$/.test(entry.name)) {
+        scanned.push(path);
+        const allowed = entry.name === "sceneSignals.ts" || /\.(test|spec)\.tsx?$/.test(entry.name);
+        if (!allowed && importsFake(readFileSync(path, "utf8"))) offenders.push(path);
       }
     }
   };
-  walk(join(import.meta.dirname));
+  walk(join(root, "src"));
+  walk(join(root, "e2e"));
+  expect(scanned.some((p) => p.endsWith("Hall.tsx"))).toBe(true);
+  expect(scanned.some((p) => p.includes("/e2e/"))).toBe(true);
   expect(offenders).toEqual([]);
 });

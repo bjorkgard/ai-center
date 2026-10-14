@@ -29,13 +29,16 @@ import { createFrameMonitor } from "./loop/monitor.ts";
 import { Ground } from "./Ground.tsx";
 import { LightRig } from "./LightRig.tsx";
 import { LookDevScene } from "./LookDev.tsx";
+import { CampusScene } from "./campus/Campus.tsx";
+import { placedHalls, subscribeCampus } from "./campus/campusDev.ts";
+import { campusBounds, campusHome } from "./campus/layout.ts";
 import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { HALL_FRAMING } from "./hall/hallLayout.ts";
 import { subscribeRacks } from "./hall/racksDev.ts";
 import { subscribeRoof } from "./hall/roof.ts";
 import { LOOKDEV_FRAMING } from "./lookdevFraming.ts";
 import { MarkPass } from "./MarkPass.ts";
-import { MATERIALS, setBloomGlow } from "./materials.ts";
+import { setBloomGlow } from "./materials.ts";
 import { createSceneSignals } from "./sceneSignals.ts";
 import { SignalsContext } from "./signals.ts";
 import { applyRendererSettings, pixelRatio, qualitySettings, RENDER } from "./render.ts";
@@ -138,19 +141,6 @@ class SceneControl {
   }
 }
 
-// Test scene: a cube on the ground, on library materials under the shared rig.
-function TestScene({ shadows }: { shadows: boolean }) {
-  return (
-    <>
-      <LightRig shadows={shadows} />
-      <mesh position={[0, 0.8, 0]} material={MATERIALS.slate} castShadow receiveShadow>
-        <boxGeometry args={[1, 1.6, 1]} />
-      </mesh>
-      <Ground />
-    </>
-  );
-}
-
 // Reports the content's own mount and unmount effects, so a remount can wait for the real commit.
 function MountSignal({ onMount, onUnmount }: { onMount: () => void; onUnmount: () => void }) {
   useEffect(() => {
@@ -220,6 +210,11 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   const controlsRef = useRef<CameraControls | null>(null);
   const firstApply = useRef(true);
   const interactive = params.view !== "lookdev";
+  const campusView = params.view === "home";
+  // The startup pose frames the campus in the safe area (CEO C25) and follows the safe area and
+  // the window size until the camera is moved: the key is the framing as the startup left it.
+  const startupKey = useRef<string | null>(null);
+  const refit = useRef<() => void>(() => {});
 
   useEffect(() => {
     applyTier(gl, quality, firstApply.current);
@@ -240,8 +235,20 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   useEffect(() => subscribeRoof(() => driverRef.current?.invalidateFrozen()), []);
   useEffect(() => subscribeRacks(() => driverRef.current?.invalidateFrozen()), []);
 
+  // The next home() frames the halls placed now; a placed hall never moves the camera (CEO C25).
+  useEffect(() => {
+    if (!campusView) return;
+    const frame = () => ({ bounds: campusBounds(), home: campusHome(placedHalls()) });
+    rig.setCampus(frame());
+    return subscribeCampus(() => {
+      rig.setCampus(frame());
+      driverRef.current?.invalidateFrozen();
+    });
+  }, [rig, campusView]);
+
   useEffect(() => {
     rig.setViewport({ width: size.width, height: size.height });
+    refit.current();
     controlsRef.current?.syncLimits();
     driverRef.current?.invalidateFrozen();
   }, [rig, size]);
@@ -273,11 +280,34 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
 
   // The glide frames the target inside the safe area and follows it while it changes (S-RW37).
   useEffect(() => {
+    const key = () => {
+      const f = rig.framing;
+      return [
+        f.target.x,
+        f.target.y,
+        f.target.z,
+        f.zoom,
+        f.azimuth,
+        f.elevation,
+        rig.projection,
+      ].join();
+    };
+    refit.current = () => {
+      if (!campusView) return;
+      if (startupKey.current !== null && key() !== startupKey.current) return;
+      rig.home(0);
+      startupKey.current = key();
+    };
     rig.setSafeArea(useStore.getState().safeArea);
+    rig.setHomeArea(useStore.getState().homeArea);
+    refit.current();
     return useStore.subscribe((state, previous) => {
       if (state.safeArea !== previous.safeArea) rig.setSafeArea(state.safeArea);
+      if (state.homeArea === previous.homeArea) return;
+      rig.setHomeArea(state.homeArea);
+      refit.current();
     });
-  }, [rig]);
+  }, [rig, campusView]);
 
   // Map controls, the keyboard and the double-click home. The look-dev view stays a fixed shot.
   useEffect(() => {
@@ -385,6 +415,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
         frameErrors: driver.errorCount + shaderErrorCount(),
         projection: rig.projection,
         bloom: control.bloom,
+        composerReady: control.composerReady,
         composerGen: control.composerGen,
       }),
       toggleProjection: () => rig.toggle(),
@@ -526,7 +557,12 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
               ) : params.view === "hall" || params.view === "racks" ? (
                 <HallScene shadows={settings.shadows} rig={rig} frozen={params.freeze} />
               ) : (
-                <TestScene shadows={settings.shadows} />
+                <CampusScene
+                  shadows={settings.shadows}
+                  rig={rig}
+                  frozen={params.freeze}
+                  seed={params.seed}
+                />
               )}
               <MountSignal onMount={onContentMount} onUnmount={onContentUnmount} />
             </SignalsScope>

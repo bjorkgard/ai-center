@@ -16,6 +16,8 @@ export interface SceneStats {
   frameErrors: number;
   projection: Projection;
   bloom: boolean;
+  // The composer is bound with all its passes (bloom only says one is expected).
+  composerReady: boolean;
   composerGen: number;
 }
 

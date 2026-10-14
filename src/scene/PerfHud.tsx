@@ -7,6 +7,14 @@ import {
   shownCount,
   subscribeRacks,
 } from "./hall/racksDev.ts";
+import {
+  placedHalls,
+  setPlacedHalls,
+  setWaypoints,
+  showWaypoints,
+  subscribeCampus,
+} from "./campus/campusDev.ts";
+import { MIN_PLACED, SLOT_COUNT } from "./campus/layout.ts";
 import { isRoofCut, setRoofCut, subscribeRoof } from "./hall/roof.ts";
 import { SIGN_SLOTS } from "./hall/hallLayout.ts";
 import { RACK_SLOTS } from "./hall/rackLayout.ts";
@@ -21,7 +29,7 @@ const BUTTON =
 // with tabular numerals, solid fill, no blur. It reads the probe on a timer, not per frame.
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
 // projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
-// chunk 06, Racks from chunk 07) each hold one chunk's dev controls (design-review Phase 3 WD14).
+// chunk 06, Racks from chunk 07, Campus from chunk 08) each hold one chunk's dev controls (design-review Phase 3 WD14).
 export function PerfHud({ frozen }: { frozen: boolean }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
@@ -29,7 +37,10 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
   const [cameraOpen, setCameraOpen] = useState(true);
   const [hallOpen, setHallOpen] = useState(false);
   const [racksOpen, setRacksOpen] = useState(false);
+  const [campusOpen, setCampusOpen] = useState(false);
   const [rackHall, setRackHall] = useState(0);
+  const placed = useSyncExternalStore(subscribeCampus, placedHalls);
+  const waypoints = useSyncExternalStore(subscribeCampus, showWaypoints);
   const roofCut = useSyncExternalStore(subscribeRoof, isRoofCut);
   const racks = useSyncExternalStore(subscribeRacks, () => shownCount(rackHall));
   const fakeLoad = useSyncExternalStore(subscribeRacks, isFakeLoad);
@@ -172,6 +183,42 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
               onClick={() => setFakeLoad(!fakeLoad)}
             >
               Fake load {fakeLoad ? "on" : "off"}
+            </button>
+          </div>
+        )}
+      </section>
+      <section data-testid="dev-campus" className="mt-2 border-t border-white/12 pt-2">
+        <button
+          type="button"
+          aria-expanded={campusOpen}
+          aria-controls="dev-campus-body"
+          className="flex w-full items-center justify-between text-caption text-text-2 hover:text-text"
+          onClick={() => setCampusOpen(!campusOpen)}
+        >
+          Campus
+          <span aria-hidden="true">{campusOpen ? "-" : "+"}</span>
+        </button>
+        {campusOpen && (
+          <div id="dev-campus-body">
+            <label className="mt-2 flex items-center justify-between gap-2 text-text-2">
+              Halls {placed}
+              <input
+                type="range"
+                min={MIN_PLACED}
+                max={SLOT_COUNT}
+                step={1}
+                value={placed}
+                aria-label="Placed halls"
+                onChange={(event) => setPlacedHalls(Number(event.target.value))}
+              />
+            </label>
+            <button
+              type="button"
+              aria-pressed={waypoints}
+              className={BUTTON}
+              onClick={() => setWaypoints(!waypoints)}
+            >
+              Waypoints {waypoints ? "on" : "off"}
             </button>
           </div>
         )}

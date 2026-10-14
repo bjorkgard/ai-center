@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import { expect, test, vi } from "vite-plus/test";
 import { createCameraRig, ORTHO_ZOOM } from "./camera.ts";
+import { FIXTURE_CAMPUS } from "./cameraFixture.ts";
 import {
   PAN_FRACTION,
   ROTATE_STEP,
@@ -78,7 +79,9 @@ function setup(reduced = false) {
     { width: 1280, height: 720 },
     { now: () => clock.t, reducedMotion: () => reduced },
   );
+  rig.setCampus(FIXTURE_CAMPUS);
   rig.setSafeArea(SAFE);
+  rig.setHomeArea(SAFE);
   const deps: KeyDeps = { rig, safeArea: () => SAFE, stepMs: () => 250 };
   const press = (k: string) => handleCameraKey(keyAction(k)!, deps);
   const run = (to: number) => {
@@ -138,10 +141,15 @@ test("0 and Home glide home, P toggles the projection", () => {
   press("0");
   expect(rig.animating).toBe(true);
   run(600);
-  // The campus centre sits at the centre of the safeArea.
-  const centre = rig.project(new Vector3(0, 0, 0));
-  expect(centre.x).toBeCloseTo(SAFE.x + SAFE.width / 2, 0);
-  expect(centre.y).toBeCloseTo(SAFE.y + SAFE.height / 2, 0);
+  // The home box (the fixture campus) is centred in the safeArea: the middle of its projected
+  // corners is the middle of the safeArea.
+  const corners = [-14, 14].flatMap((x) =>
+    [-14, 14].flatMap((z) => [0, 3].map((y) => rig.project(new Vector3(x, y, z)))),
+  );
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(SAFE.x + SAFE.width / 2, 0);
+  expect((Math.min(...ys) + Math.max(...ys)) / 2).toBeCloseTo(SAFE.y + SAFE.height / 2, 0);
   expect(rig.framing.zoom).toBeLessThan(200);
   press("p");
   expect(rig.projection).toBe("perspective");

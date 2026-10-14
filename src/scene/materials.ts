@@ -29,7 +29,32 @@ export const FIBRE_COLOR = "#22D3EE";
 
 const WINDOW_COLOR = "#FFB45A";
 
+// Site furniture is neutral slate and concrete (design-review Phase 3 D15, WD10) [estimated]:
+// colour in the scene only means status, vendor trim, the cyan network and warm windows and lamps,
+// so none of these sits near those. A test keeps their hue and saturation apart.
+export const SITE_COLORS = {
+  road: "#1a2130",
+  marking: "#3a4559",
+  padFace: "#1c2433",
+  padLine: "#3a4559",
+  wall: "#2e3748",
+  roofSlab: "#232b3a",
+  door: "#161c28",
+  fence: "#2e3748",
+  boom: "#323a4a",
+  boomStripe: "#E8DCC8",
+  monument: "#232b3a",
+  tree: "#1d2b2a",
+  trunk: "#2a2420",
+  carGlass: "#0f1218",
+  cars: ["#23262c", "#2b2e34", "#1b1d22"],
+} as const;
+
 const matte = (color: string) => new MeshStandardMaterial({ color, roughness: 0.92, metalness: 0 });
+
+// A matte material that takes its colour from the geometry's colour attribute.
+const painted = (name: string) =>
+  new MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, name });
 
 // Emits `color` and stays dark otherwise. Intensities put the glow above the bloom threshold
 // (RENDER.bloom.luminanceThreshold); a test checks it.
@@ -165,6 +190,13 @@ function ledMaterial(): MeshStandardMaterial {
   return material;
 }
 
+// The road lamp heads: the warm of the windows, one rung below them on the ladder (1.6).
+function lampMaterial(): MeshStandardMaterial {
+  const material = glow(WINDOW_COLOR, 1.6);
+  material.name = "lamp";
+  return material;
+}
+
 const LEDS = Object.fromEntries(
   STATUS_ORDER.map((status) => [status, glow(STATUS_COLORS[status], LED_INTENSITY)]),
 ) as Record<Status, MeshStandardMaterial>;
@@ -187,6 +219,17 @@ export const MATERIALS = {
   }),
   sign: signMaterial(),
   led: ledMaterial(),
+  // The campus parts (chunk 08): flat roads, pads, gate, dock and monument, the instanced trees and
+  // cars, and the road lamp heads. None carries a clipping plane (CEO W-RW19).
+  site: painted("site"),
+  tree: painted("tree"),
+  car: new MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.45,
+    metalness: 0.3,
+    name: "car",
+  }),
+  lamp: lampMaterial(),
   window: glow(WINDOW_COLOR, 2),
   fibre: glow(FIBRE_COLOR, 2.6),
   claude: new MeshStandardMaterial({
@@ -202,6 +245,8 @@ export const MATERIALS = {
     roughness: 0.7,
   }),
   grid: new LineBasicMaterial({ color: "#222d42" }),
+  // The dev waypoint graph (Campus section): a bright line over the roads.
+  waypoints: new LineBasicMaterial({ color: "#e6ebf5" }),
 } as const;
 
 export function statusLed(status: Status): MeshStandardMaterial {

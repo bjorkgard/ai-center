@@ -26,12 +26,20 @@ interface SceneDevHooks {
   setRackCount(hall: number, n: number): void;
   // Turns the seeded fake LED load on or off; off shows every rack idle and steady.
   setFakeLoad(on: boolean): void;
+  // Racks the hall in slot `hall` draws now, as it last reported them (read-only).
+  shownRacks(hall: number): number;
   // Linear rgb of a rack's status strip as the frame loop last wrote it, or null.
   ledColor(hall: number, rack: number): [number, number, number] | null;
+  // Places halls A.. in the first n slots (2-12); the next home() frames them. Out of range clamps and warns.
+  setPlacedHalls(n: number): void;
+  // Shows or hides the waypoint graph over the roads.
+  setWaypoints(on: boolean): void;
   // Forces a quality tier; medium and low run without bloom.
   setQuality(tier: import("./store/ui.ts").QualityTier): void;
   // Opacity of a hall's sign panel by slot 0-11.
   signOpacity(slot: number): number | null;
+  // Opacity of a sign panel plus its latest fade's start and end on the fader's clock (ms).
+  signFade(slot: number): { opacity: number; start: number | null; end: number | null } | null;
   // Dispose events the shared material library received since the hooks installed.
   materialDisposeEvents(): number;
   // Disposes one shared library material on purpose, so a test can see the guard count it.

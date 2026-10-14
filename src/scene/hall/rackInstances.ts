@@ -1,4 +1,12 @@
-import { BoxGeometry, Color, InstancedMesh, Matrix4, Quaternion, Vector3 } from "three";
+import {
+  BoxGeometry,
+  Color,
+  InstancedMesh,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type InstancedBufferAttribute,
+} from "three";
 import { MATERIALS, STATUS_ORDER, statusLed, type Status } from "../materials.ts";
 import type { SceneSignals } from "../signals.ts";
 import { HALL } from "./hallLayout.ts";
@@ -36,6 +44,28 @@ const RGB = Object.fromEntries(
 
 // An unlit blade: nearly black, so only a lit one reads.
 const UNLIT = [0.012, 0.014, 0.02];
+
+// Writes `rgb` times `level` to instance `i`; true when the stored value changed. A function on
+// the module, not a closure inside update(), which runs every frame.
+function writeColour(
+  colour: InstancedBufferAttribute,
+  i: number,
+  rgb: readonly number[],
+  level: number,
+): boolean {
+  const r = rgb[0] * level;
+  const g = rgb[1] * level;
+  const b = rgb[2] * level;
+  if (
+    colour.getX(i) === Math.fround(r) &&
+    colour.getY(i) === Math.fround(g) &&
+    colour.getZ(i) === Math.fround(b)
+  ) {
+    return false;
+  }
+  colour.setXYZ(i, r, g, b);
+  return true;
+}
 
 const RACK_KEYS = Array.from({ length: RACK_SLOTS }, (_, i) => `rack-${i}`);
 
@@ -143,29 +173,19 @@ export class RackInstances {
   update(signals: Pick<SceneSignals, "ledLoad">, hall: number, t: number, reducedMotion: boolean) {
     const colour = this.leds.instanceColor!;
     let changed = false;
-    const write = (i: number, rgb: readonly number[], level: number) => {
-      const r = rgb[0] * level;
-      const g = rgb[1] * level;
-      const b = rgb[2] * level;
-      if (
-        colour.getX(i) !== Math.fround(r) ||
-        colour.getY(i) !== Math.fround(g) ||
-        colour.getZ(i) !== Math.fround(b)
-      ) {
-        colour.setXYZ(i, r, g, b);
-        changed = true;
-      }
-    };
     for (let slot = 0; slot < this.racks.count; slot++) {
       if (!this.allocator.isUsed(slot)) continue;
       const load = signals.ledLoad(hall, slot);
       const level = ledLevel(load.load, load.phase, t, reducedMotion);
       const base = slot * LEDS_PER_RACK;
-      write(base, RGB[load.status], level);
+      if (writeColour(colour, base, RGB[load.status], level)) changed = true;
       for (let b = 0; b < BLADES; b++) {
         const status = load.blades[b];
-        if (status === undefined) write(base + 1 + b, UNLIT, 1);
-        else write(base + 1 + b, RGB[status], level);
+        const wrote =
+          status === undefined
+            ? writeColour(colour, base + 1 + b, UNLIT, 1)
+            : writeColour(colour, base + 1 + b, RGB[status], level);
+        if (wrote) changed = true;
       }
     }
     if (changed) colour.needsUpdate = true;
