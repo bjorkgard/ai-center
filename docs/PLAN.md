@@ -556,7 +556,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Dev controls (CEO W-RW12):** a "Campus" section: waypoint graph toggle and placed-hall count (A and B always, up to 12) with `__sceneDev.setWaypoints(on)` and `__sceneDev.setPlacedHalls(n)`.
 - **Campus baseline (CEO C28, W-RW15):** `e2e/campus.spec.ts` captures the frozen `home` view (1280x720, `freeze=1`, `seed=1`, after the ready signal) with `toHaveScreenshot` (`maxDiffPixelRatio: 0.005`) in the look-dev Playwright project (Chromium on the Mac, skipped when `CI` is set), baseline under `e2e/__screenshots__/`. `playwright.config.ts`: the `lookdev` project's `testMatch` becomes `/lookdev\.spec\.ts|campus\.spec\.ts/`, and the chromium, firefox (both CI branches) and webkit `testIgnore` patterns add `campus\.spec\.ts`, so the baseline is never written to the gitignored `test-results/`. Every PR that changes the campus look (09, 10, 18-23, 34, 35) updates it in the same PR. When two such PRs are open at once (C26 lets 18 run beside 09 and 10), the one that merges second rebases and regenerates the baseline and the `home` shots on top; binary images are never hand-merged (CEO W-RW39).
 
-#### [ ] 09. Cooling plant
+#### [x] 09. Cooling plant
 - **Goal:** Cooling towers, chillers, vapour.
 - **Depends on:** 08.
 - **Tasks:** Low-poly towers and chillers. Vapour as instanced billboards with a soft shader, rate controlled by a `duty` value 0-1 (dev slider). Fan rotation speed follows duty.
@@ -5503,7 +5503,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-F5; C28; W-RW4, W-RW15, W-RW39, W-RW40
   - Files: `e2e/campus.spec.ts`, `playwright.config.ts`, `e2e/__screenshots__/`, `README.md`, `docs/img/08-campus.png`
   - Verify: `playwright test --list` shows `campus.spec.ts` only in the `lookdev` project; `vp run e2e:local` passes; the PR shows the image pair
-- [ ] **T10 (P1, human: ~1.5d / CC: ~45min)** — chunk 09 — Cooling plant, sorted normal-blended vapour, seeded fans, shader-error hook
+- [x] **T10 (P1, human: ~1.5d / CC: ~45min)** — chunk 09 — Cooling plant, sorted normal-blended vapour, seeded fans, shader-error hook
   - Surfaced by: W-F9, W-F11; W-RW8, W-RW10, W-RW16, W-RW18, W-RW30
   - Files: `src/scene/plant/` (new components), `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/SceneCanvas.tsx`
   - Verify: sort and luminance unit tests; two frozen `view=cooling` captures match; reduced-motion e2e; four-azimuth shots and a Safari note in the PR
