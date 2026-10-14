@@ -4,6 +4,7 @@ import { setPlacedHalls, setWaypoints } from "./campus/campusDev.ts";
 import { simulateFrameInterval } from "./loop/monitor.ts";
 import { ledColor, setFakeLoad, setRackCount, shownCount } from "./hall/racksDev.ts";
 import { setRoofCut } from "./hall/roof.ts";
+import { fanTurnRate, liveDuty, setDuty } from "./plant/plantDev.ts";
 import { signFadeTiming, signOpacity } from "./hall/signVisibility.ts";
 import { guardDisposeEvents } from "./render.ts";
 import { getSceneProbe } from "./stats.ts";
@@ -36,6 +37,11 @@ export function installSceneDev(
     shownRacks: (hall) => shownCount(Number.isInteger(hall) ? hall : 0),
     setPlacedHalls,
     setWaypoints,
+    setDuty,
+    // Turns a second of a plant fan as it is drawn (read-only), or null before it has turned.
+    fanTurnRate,
+    // The duty the plant drew last (read-only), or null before the first frame.
+    liveDuty,
     // Forces a quality tier: medium and low turn bloom off, which scales the glow (WD4).
     setQuality: (tier) => {
       if (tier !== "high" && tier !== "medium" && tier !== "low") {

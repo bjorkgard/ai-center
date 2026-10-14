@@ -5745,7 +5745,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 5 — WD8
   - Files: `src/scene/fibre/route.ts`, `src/scene/fibre/Fibre.tsx`, `src/scene/fibre/Packets.tsx`, `src/scene/fibre/route.test.ts`
   - Verify: unit test caps 12 packets per line and spacing of 1.2 units or more; frozen `view=power` shot in the PR
-- [ ] **T6 (P2, human: ~3h / CC: ~15min)** — chunk 09 plant — Vapour and fan values, idle fans at duty 0
+- [x] **T6 (P2, human: ~3h / CC: ~15min)** — chunk 09 plant — Vapour and fan values, idle fans at duty 0
   - Surfaced by: Pass 5 — WD9, WD7
   - Files: `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/plant/Towers.tsx`
   - Verify: unit tests: no particles at duty 0, 60 per tower at duty 1, fans at 10% at duty 0 and 25% under reduced motion
@@ -6112,7 +6112,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 and th
   - Surfaced by: Architecture — E-A1, E26 (D2)
   - Files: `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/scene/plant/vapour.ts`, `src/scene/fibre/route.ts`
   - Verify: unit tests: 60 visible particles per tower at duty 1 and t = 0, none at duty 0; packets spread at the cap at t = 0; same seed same values
-- [ ] **T2 (P1, human: ~4h / CC: ~20min)** — materials — Shared instance-fade helper; instanced sign panels and pad numbers; vapour life fade
+- [x] **T2 (P1, human: ~4h / CC: ~20min)** — materials — Shared instance-fade helper; instanced sign panels and pad numbers; vapour life fade
   - Surfaced by: Code quality — E-Q1, E27 (D3)
   - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/hall/Hall.tsx`, `src/scene/campus/Campus.tsx`, `src/scene/plant/Plant.tsx`
   - Verify: unit test on a stand-in shader (attribute injected, opacity multiplied, fixed program cache key); e2e: a panel fades from 1 to 0 within about 200 ms after zooming out
@@ -6124,7 +6124,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 and th
   - Surfaced by: Test review — T-1, T-3
   - Files: `src/scene/hall/buildHall.test.ts`, an e2e spec reading `__sceneDev.stats()`
   - Verify: unit count of meshes and casters per hall at most 4; e2e under 40 at frozen `home`
-- [ ] **T5 (P3, human: ~15min / CC: ~5min)** — CI — Record CI job durations before and after chunk 08
+- [x] **T5 (P3, human: ~15min / CC: ~5min)** — CI — Record CI job durations before and after chunk 08
   - Surfaced by: Performance — E-P3
   - Files: chunk 08 PR description
   - Verify: the PR lists both durations for the Chromium and Firefox jobs

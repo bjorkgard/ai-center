@@ -1,6 +1,7 @@
 import {
   Color,
   LineBasicMaterial,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Plane,
   Vector3,
@@ -8,6 +9,7 @@ import {
   type Material,
 } from "three";
 import { ROOF_CUT_CONSTANT } from "./hall/hallLayout.ts";
+import { VAPOUR } from "./plant/vapour.ts";
 
 // Status palette (design D17); the same table drives LEDs, dots and table cells.
 export const STATUS_COLORS = {
@@ -92,9 +94,14 @@ export const INSTANCE_UV_RECT = "instanceUvRect";
 // Per-instance fades on a shared material (eng-review Phase 3 E27): an `instanceOpacity`
 // attribute multiplies the alpha and, for atlas text, an `instanceUvRect` (u, v, w, h)
 // attribute remaps the map UVs, so one InstancedMesh fades and relabels each instance alone.
-// The cache key is fixed per variant, so every use shares one program.
-export function addInstanceFade(material: Material, options: { atlas?: boolean } = {}): void {
+// The cache key is fixed per variant, so every use shares one program. The `soft` variant also
+// fades the alpha towards the edge of the quad, so a billboard reads as a puff, not a square.
+export function addInstanceFade(
+  material: Material,
+  options: { atlas?: boolean; soft?: boolean } = {},
+): void {
   const atlas = options.atlas === true;
+  const soft = options.soft === true;
   const hook = (shader: { vertexShader: string; fragmentShader: string }) => {
     const patch = (source: string, marker: string, add: string, where: "after" | "before") => {
       if (!source.includes(marker)) {
@@ -106,7 +113,7 @@ export function addInstanceFade(material: Material, options: { atlas?: boolean }
     };
     const attributes = `attribute float ${INSTANCE_OPACITY};\nvarying float vInstanceOpacity;${
       atlas ? `\nattribute vec4 ${INSTANCE_UV_RECT};` : ""
-    }`;
+    }${soft ? "\nvarying vec2 vSoftUv;" : ""}`;
     let vertex = patch(shader.vertexShader, "#include <common>", attributes, "after");
     if (atlas) {
       vertex = patch(
@@ -124,7 +131,7 @@ vEmissiveMapUv = vEmissiveMapUv * ${INSTANCE_UV_RECT}.zw + ${INSTANCE_UV_RECT}.x
     vertex = patch(
       vertex,
       "#include <begin_vertex>",
-      `vInstanceOpacity = ${INSTANCE_OPACITY};`,
+      `vInstanceOpacity = ${INSTANCE_OPACITY};${soft ? "\nvSoftUv = uv;" : ""}`,
       "after",
     );
     shader.vertexShader = vertex;
@@ -132,16 +139,19 @@ vEmissiveMapUv = vEmissiveMapUv * ${INSTANCE_UV_RECT}.zw + ${INSTANCE_UV_RECT}.x
       patch(
         shader.fragmentShader,
         "#include <common>",
-        `varying float vInstanceOpacity;\n// material: ${material.name}`,
+        `varying float vInstanceOpacity;${soft ? "\nvarying vec2 vSoftUv;" : ""}\n// material: ${material.name}`,
         "after",
       ),
       "#include <opaque_fragment>",
-      "gl_FragColor.a *= vInstanceOpacity;",
+      `gl_FragColor.a *= vInstanceOpacity;${
+        soft ? "\ngl_FragColor.a *= 1.0 - smoothstep(0.15, 1.0, length(vSoftUv - 0.5) * 2.0);" : ""
+      }`,
       "after",
     );
   };
   material.onBeforeCompile = (shader) => hook(shader);
-  material.customProgramCacheKey = () => (atlas ? "instance-fade-atlas" : "instance-fade");
+  material.customProgramCacheKey = () =>
+    atlas ? "instance-fade-atlas" : soft ? "instance-fade-soft" : "instance-fade";
 }
 
 // The hall sign panels (chunk 06): atlas text under emissive 0.5, below the 0.6 bloom threshold.
@@ -159,6 +169,21 @@ function signMaterial(): MeshStandardMaterial {
     }),
   );
   addInstanceFade(material, { atlas: true });
+  return material;
+}
+
+// The cooling vapour (chunk 09): normal alpha blending at opacity 0.35, no depth write, one soft
+// billboard per instance with its own fade. Its colour is the plain `color` uniform, not an
+// emissive, so overlaps converge to a luminance under the bloom threshold (CEO W-RW10, W-RW18).
+function vapourMaterial(): MeshBasicMaterial {
+  const material = new MeshBasicMaterial({
+    color: VAPOUR.color,
+    opacity: VAPOUR.opacity,
+    transparent: true,
+    depthWrite: false,
+    name: "vapour",
+  });
+  addInstanceFade(material, { soft: true });
   return material;
 }
 
@@ -230,6 +255,7 @@ export const MATERIALS = {
     name: "car",
   }),
   lamp: lampMaterial(),
+  vapour: vapourMaterial(),
   window: glow(WINDOW_COLOR, 2),
   fibre: glow(FIBRE_COLOR, 2.6),
   claude: new MeshStandardMaterial({
@@ -263,6 +289,6 @@ export function bindSignTexture(texture: CanvasTexture): void {
   sign.needsUpdate = true;
 }
 
-export function allMaterials(): (MeshStandardMaterial | LineBasicMaterial)[] {
+export function allMaterials(): (MeshStandardMaterial | MeshBasicMaterial | LineBasicMaterial)[] {
   return [...Object.values(MATERIALS), ...Object.values(LEDS)];
 }

@@ -67,9 +67,15 @@ Each hall owns one rack InstancedMesh (16 bodies) and one LED InstancedMesh (208
 
 ## Campus (chunk 08)
 
-The static campus around the halls, from a pure layout (`src/scene/campus/layout.ts`): 12 hall slots on a 4 x 3 grid (A and B in the front row nearest the gate, filling toward the back), the road grid, and zones for the cooling plant, power yard, gate, parking and loading dock. Halls A and B stand with the seeded fake racks; every other slot shows an empty pad with its number `01`-`12`, which appears once it measures 12 px. The site has roads, a parking lot with instanced parked cars (three dark greys, lights off), a security gate with a barrier boom, a loading dock with bay doors, instanced road lamps on the warm glow, trees, a perimeter fence open at the gate and a gate monument reading SYNAPSE HORIZON. The camera bounds, the ground, its grid and the shadow camera all come from the campus extent, and the first view and `0` frame the placed halls plus the plant, power and gate zones. The whole home view costs 27 scene draw calls with shadows on. `?dev=1` adds a collapsed Campus section (placed halls 2-12, waypoint graph toggle) with `__sceneDev.setPlacedHalls(n)` and `__sceneDev.setWaypoints(on)`.
+The static campus around the halls, from a pure layout (`src/scene/campus/layout.ts`): 12 hall slots on a 4 x 3 grid (A and B in the front row nearest the gate, filling toward the back), the road grid, and zones for the cooling plant, power yard, gate, parking and loading dock. Halls A and B stand with the seeded fake racks; every other slot shows an empty pad with its number `01`-`12`, which appears once it measures 12 px. The site has roads, a parking lot with instanced parked cars (three dark greys, lights off), a security gate with a barrier boom, a loading dock with bay doors, instanced road lamps on the warm glow, trees, a perimeter fence open at the gate and a gate monument reading SYNAPSE HORIZON. The camera bounds, the ground, its grid and the shadow camera all come from the campus extent, and the first view and `0` frame the placed halls plus the plant, power and gate zones. The whole home view costs 33 scene draw calls with shadows on (27 for the campus, 6 for the cooling plant of chunk 09). `?dev=1` adds a collapsed Campus section (placed halls 2-12, waypoint graph toggle) with `__sceneDev.setPlacedHalls(n)` and `__sceneDev.setWaypoints(on)`.
 
 ![The campus at night: halls A and B, pads, roads, gate, parking and trees](docs/img/08-campus.png)
+
+## Cooling (chunk 09)
+
+The cooling plant stands in the plant zone at the top left of the home view: three low-poly cooling towers with an open fan stack each, two chillers, and a fan turning in every stack. Towers and chillers cast shadows. The vapour is up to 60 soft billboards per tower in one InstancedMesh (one draw call for the tower group), `#8090A8` at opacity 0.35 under normal alpha blending with no depth write, ordered back to front against the camera each frame. Each billboard grows from 1.2 to 2.4 units over a 6 s life and rises 0.6 units a second; it fades in over 0.5 s and out over the last 1.5 s through the per-instance fade, so a rebirth never pops. Vapour is a closed form of scene time and seed (particle `i` has age `(t + offset) mod 6 s` and shows while `i < 60 x duty`), so every frozen shot has full plumes and a duty change reaches them as particles are reborn. Fans turn 0.5 times a second at duty 1 and a tenth of that at duty 0; with reduced motion the vapour is 30% and the fans a quarter of their speed. The duty, each particle's age and each fan's angle come from `SceneSignals` (`duty()`, `vapourPhase(i)`, `fanAngle(i)`), seeded in `src/scene/fake.ts`. `?view=cooling` frames the plant zone; `?dev=1` adds a collapsed Cooling section with a duty slider (it follows the live duty until you drag it) and `__sceneDev.setDuty(value)`.
+
+![The cooling plant at night: three towers with vapour and two chillers](docs/img/09-cooling.png)
 
 ## Controls
 
@@ -97,4 +103,4 @@ Branches are `chunk/NN-slug`, with one pull request per chunk and a Conventional
 
 ## Status
 
-Chunk 08 (campus layout and site furniture) built. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.
+Chunk 09 (cooling plant) built. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.

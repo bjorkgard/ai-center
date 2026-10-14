@@ -16,6 +16,13 @@ import {
 } from "./campus/campusDev.ts";
 import { MIN_PLACED, SLOT_COUNT } from "./campus/layout.ts";
 import { isRoofCut, setRoofCut, subscribeRoof } from "./hall/roof.ts";
+import {
+  displayedDuty,
+  dutyOverride,
+  liveDuty,
+  setDuty,
+  subscribePlant,
+} from "./plant/plantDev.ts";
 import { SIGN_SLOTS } from "./hall/hallLayout.ts";
 import { RACK_SLOTS } from "./hall/rackLayout.ts";
 import { hudRows } from "./hud.ts";
@@ -29,7 +36,7 @@ const BUTTON =
 // with tabular numerals, solid fill, no blur. It reads the probe on a timer, not per frame.
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
 // projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
-// chunk 06, Racks from chunk 07, Campus from chunk 08) each hold one chunk's dev controls (design-review Phase 3 WD14).
+// chunk 06, Racks from chunk 07, Campus from chunk 08, Cooling from chunk 09) each hold one chunk's dev controls (design-review Phase 3 WD14).
 export function PerfHud({ frozen }: { frozen: boolean }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
@@ -38,9 +45,13 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
   const [hallOpen, setHallOpen] = useState(false);
   const [racksOpen, setRacksOpen] = useState(false);
   const [campusOpen, setCampusOpen] = useState(false);
+  const [coolingOpen, setCoolingOpen] = useState(false);
   const [rackHall, setRackHall] = useState(0);
   const placed = useSyncExternalStore(subscribeCampus, placedHalls);
   const waypoints = useSyncExternalStore(subscribeCampus, showWaypoints);
+  const forced = useSyncExternalStore(subscribePlant, dutyOverride);
+  const [live, setLive] = useState<number | null>(null);
+  const duty = displayedDuty(forced, live);
   const roofCut = useSyncExternalStore(subscribeRoof, isRoofCut);
   const racks = useSyncExternalStore(subscribeRacks, () => shownCount(rackHall));
   const fakeLoad = useSyncExternalStore(subscribeRacks, isFakeLoad);
@@ -58,6 +69,7 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
       const fps = frames >= last.frames ? ((frames - last.frames) * 1000) / (now - last.at) : 0;
       last = { frames, at: now };
       setView({ stats, fps });
+      setLive(liveDuty());
     }, SAMPLE_MS);
     return () => clearInterval(id);
   }, []);
@@ -220,6 +232,34 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
             >
               Waypoints {waypoints ? "on" : "off"}
             </button>
+          </div>
+        )}
+      </section>
+      <section data-testid="dev-cooling" className="mt-2 border-t border-white/12 pt-2">
+        <button
+          type="button"
+          aria-expanded={coolingOpen}
+          aria-controls="dev-cooling-body"
+          className="flex w-full items-center justify-between text-caption text-text-2 hover:text-text"
+          onClick={() => setCoolingOpen(!coolingOpen)}
+        >
+          Cooling
+          <span aria-hidden="true">{coolingOpen ? "-" : "+"}</span>
+        </button>
+        {coolingOpen && (
+          <div id="dev-cooling-body">
+            <label className="mt-2 flex items-center justify-between gap-2 text-text-2">
+              Duty {duty.toFixed(2)} ({forced === null ? "live" : "set"})
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={duty}
+                aria-label="Cooling duty"
+                onChange={(event) => setDuty(Number(event.target.value))}
+              />
+            </label>
           </div>
         )}
       </section>

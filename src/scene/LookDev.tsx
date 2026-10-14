@@ -7,6 +7,7 @@ import { fenceBayGeometry, treeGeometry } from "./campus/parts.ts";
 import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { SLAB, createLookDevSignals, type Vec3 } from "./lookdevLayout.ts";
 import { MATERIALS } from "./materials.ts";
+import { Plant } from "./plant/Plant.tsx";
 import { SignalsContext, useSignals } from "./signals.ts";
 
 // A box on a library material, placed by its centre.
@@ -78,6 +79,10 @@ function SitePair() {
   );
 }
 
+// One cooling tower with its vapour and fan (chunk 09), beside the hall; the tower is tower 0 of
+// the plant, so it reads that tower's particles.
+const TOWER_SPOT = { towers: [{ x: 6.2, z: -2.6 }], chillers: [] };
+
 // The look-dev vignette (CEO C17): every material of the library once, under the shared rig.
 // Later chunks add their materials here.
 export function LookDevScene({ shadows, rig }: { shadows: boolean; rig: CameraRig }) {
@@ -92,6 +97,7 @@ export function LookDevScene({ shadows, rig }: { shadows: boolean; rig: CameraRi
       <SignPanelMesh rig={rig} frozen />
       <Trim />
       <SitePair />
+      <Plant seed={1} layout={TOWER_SPOT} />
     </SignalsContext.Provider>
   );
 }

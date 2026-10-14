@@ -148,3 +148,74 @@ test("nothing under src or e2e imports fake.ts except sceneSignals.ts and tests"
   expect(scanned.some((p) => p.includes("/e2e/"))).toBe(true);
   expect(offenders).toEqual([]);
 });
+
+test("the fake duty starts at 0.75 at scene time 0 and swells within 0-1", () => {
+  let t = 0;
+  const signals = createFakeSignals({ seed: 1, now: () => t });
+  expect(signals.duty()).toBeCloseTo(0.75, 9);
+  for (t = 0; t <= 180; t += 3) {
+    expect(signals.duty()).toBeGreaterThanOrEqual(0.5);
+    expect(signals.duty()).toBeLessThanOrEqual(1);
+  }
+});
+
+test("a duty override replaces the fake duty and clamps", () => {
+  let forced: number | null = 0.2;
+  const signals = createFakeSignals({ seed: 1, now: () => 5, dutyOverride: () => forced });
+  expect(signals.duty()).toBe(0.2);
+  forced = 7;
+  expect(signals.duty()).toBe(1);
+  forced = null;
+  expect(signals.duty()).not.toBe(1);
+});
+
+test("vapour phase is the seeded age (t + offset) mod 6 s: in range, seeded, and 6 s periodic", () => {
+  let t = 0;
+  const a = createFakeSignals({ seed: 1, now: () => t });
+  const b = createFakeSignals({ seed: 1, now: () => t });
+  const other = createFakeSignals({ seed: 2, now: () => t });
+  let differs = 0;
+  for (let i = 0; i < 180; i++) {
+    const age = a.vapourPhase(i);
+    expect(age).toBeGreaterThanOrEqual(0);
+    expect(age).toBeLessThan(6);
+    expect(b.vapourPhase(i)).toBe(age);
+    if (other.vapourPhase(i) !== age) differs++;
+  }
+  expect(differs).toBeGreaterThan(150);
+  const at0 = a.vapourPhase(7);
+  t = 6;
+  expect(a.vapourPhase(7)).toBeCloseTo(at0, 9);
+  t = 2;
+  expect(a.vapourPhase(7)).toBeCloseTo((at0 + 2) % 6, 9);
+});
+
+test("a fan turns at the duty's speed, a quarter of it under reduced motion, and keeps going when the duty changes", () => {
+  let t = 0;
+  let duty: number | null = 1;
+  const signals = createFakeSignals({ seed: 1, now: () => t, dutyOverride: () => duty });
+  const start = signals.fanAngle(0);
+  // Frozen: the same time gives the same angle however often it is read.
+  expect(signals.fanAngle(0)).toBe(start);
+  for (let k = 1; k <= 20; k++) {
+    t = k * 0.1;
+    signals.fanAngle(0);
+  }
+  // 2 s at 0.5 turns a second is one turn.
+  expect(signals.fanAngle(0) - start).toBeCloseTo(2 * Math.PI, 6);
+  const before = signals.fanAngle(0);
+  duty = 0;
+  expect(signals.fanAngle(0)).toBe(before);
+  t += 1;
+  // One second at duty 0: 0.05 turns, still turning.
+  expect(signals.fanAngle(0) - before).toBeCloseTo(2 * Math.PI * 0.05, 6);
+  const reducedFrom = signals.fanAngle(0, true);
+  duty = 1;
+  t += 1;
+  expect(signals.fanAngle(0, true) - reducedFrom).toBeCloseTo(2 * Math.PI * 0.5 * 0.25, 6);
+});
+
+test("fans start at different seeded angles", () => {
+  const signals = createFakeSignals({ seed: 1, now: () => 0 });
+  expect(new Set([0, 1, 2].map((i) => signals.fanAngle(i))).size).toBe(3);
+});

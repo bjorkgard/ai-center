@@ -36,6 +36,7 @@ export const views: ShotView[] = [
     settled:
       "window.__sceneDev.stats().bloom === false && window.__sceneDev.stats().frames > window.__shotFrames",
   },
+  { name: "cooling", file: "docs/img/09-cooling.png", ready: readyExpression },
 ];
 
 export const viewport = { width: 1280, height: 720 };
