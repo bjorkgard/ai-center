@@ -526,11 +526,11 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Fake load and view (CEO W-RW7, W-RW20, W-RW37):** `src/scene/fake.ts`, seeded by a small RNG in `src/sim/rng.ts` that chunk 11's mock generator reuses, gives each hall's rack count and each rack's LED load from scene time and `seed`. The pulse moves an LED's emissive between 0.6 and 1.0 of its level with a period of 1.2-3.0 s set by load [estimated], never lower, so every D17 colour stays legible. The seeded hero mix is 60% tool, 25% thinking, 10% idle and 5% waiting for the status strips, no errors, and 0-6 lit blades per rack (design-review Phase 3 D11, WD6). `view=racks` shows the chunk 06 hall with a fixed 16 racks (an override, not the time-varying fake count) and the seeded LED load.
 - **Dev controls (CEO W-RW12, W-RW20):** a "Racks" section (hall picker, count slider 0-16, fake load on or off) with `__sceneDev.setRackCount(hall, n)` and `__sceneDev.setFakeLoad(on)`.
 
-#### [ ] 08. Campus layout and site furniture
+#### [x] 08. Campus layout and site furniture
 - **Goal:** Ground plan with hall slots and the static campus.
 - **Depends on:** 07.
 - **Tasks:** Campus grid with the hall-slot position table (deterministic positions for up to 12 halls, A/B fixed first), roads, parking with instanced parked cars, security gate with barrier, loading dock with bay doors, road lamps (CEO W-RW3) and the site perimeter (CEO C27). Waypoint graph for vehicles (used later): gate, dock, each hall door.
-- **Acceptance:** Two halls (A, B) plus site furniture render. Dev toggle shows the waypoint graph. Total scene draw calls under 40 (CEO W-RW2), read by an e2e from `__sceneDev.stats()` at frozen `home` with shadows on in Chromium (eng-review Phase 3 Section 3). The PR shows `08-campus.png` beside `docs/designs/variant-B-2.png` (section 4b D14, CEO W-RW4). The campus baseline passes in `vp run e2e:local` (CEO C28). Startup and `home()` frame the placed halls, plant, power and gate inside the `safeArea` at 1280x720 and 1920x1080, and placing a third hall through the dev menu widens the next `home()` (unit test on the rig with the layout; CEO C25). The chunk 05 camera e2e that encodes the old home is updated to the C25 contract, not deleted: `e2e/camera.spec.ts:121` frames the placed-campus extent corners, `:185-187` centres the home extent instead of the origin, and `:240` reads the startup zoom from the rig instead of 80 (CEO W-RW38). Layout and waypoint unit tests pass (CEO W-RW1, W-RW9).
+- **Acceptance:** Two halls (A, B) plus site furniture render. Dev toggle shows the waypoint graph. Total scene draw calls under 40 (CEO W-RW2), read by an e2e from `__sceneDev.stats()` at frozen `home` with shadows on in Chromium (eng-review Phase 3 Section 3). The PR shows `08-campus.png` beside `docs/designs/variant-B-2.png` (section 4b D14, CEO W-RW4). The campus baseline passes in `vp run e2e:local` (CEO C28). Startup and `home()` frame the placed halls, plant, power and gate inside the canvas minus the top bar and tab strip (build decision H1) at 1280x720 and 1920x1080, and placing a third hall through the dev menu widens the next `home()` (unit test on the rig with the layout; CEO C25). The chunk 05 camera e2e that encodes the old home is updated to the C25 contract, not deleted: `e2e/camera.spec.ts:121` frames the placed-campus extent corners, `:185-187` centres the home extent instead of the origin, and `:240` reads the startup zoom from the rig instead of 80 (CEO W-RW38). Layout and waypoint unit tests pass (CEO W-RW1, W-RW9).
 - **README:** Image `08-campus.png` (`view=home`) as new hero image. The "Controls" line says `0` or Home frames the placed campus (CEO C25, W-RW40).
 - **Campus layout (CEO W-RW1):** a pure module `src/scene/campus/layout.ts` maps slot indices 0-11 (A and B first) to positions, the road grid, the furniture, plant, power and gate zones, and the campus extent. `CAMPUS_BOUNDS` (`src/scene/camera.ts`), the ground and grid size (`src/scene/Ground.tsx`) and the shadow camera extent (`src/scene/LightRig.tsx`) are derived from the extent instead of constants; the rig gains `setCampus({ bounds, home })`, read by `clampTarget` and the home fit at call time, so `camera.ts` never imports campus code and a newly placed hall widens the next `home()` (CEO W-RW27); a zero-size or NaN extent keeps the previous bounds and logs one warning, as S-RW38 does for the `safeArea` (CEO W-RW32); and `ORTHO_ZOOM.min` is lowered if needed so a home fit is never clamped. Assigning projects to slot indices stays in chunk 19's reconciler (D8), which needs no positions and so no dependency on this chunk. Composition follows variant-B-2 (design-review D6, WD1): at the startup view the cooling plant sits top-left, the power yard and fuel tanks left and lower-left, the hall grid in the centre growing toward the top-right, the gate and monument bottom-centre, parking bottom-right, and the loading dock on the hall grid's right flank. Sizes [estimated]: a 16-rack hall is about 8 x 6 units (two rows of 8 at rack pitch 0.8, cold aisle 1.2, hot aisles 0.8, walls 0.4); slot pitch 11 x 9 units (hall plus a 3-unit road); a 4 x 3 slot grid with A and B in the front row nearest the gate, filling toward the back; towers about 2.5x the hall wall height. Plan view (x right, z toward the camera's lower left, not to scale):
 
@@ -547,7 +547,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
      └─────────────────────────────────────────────┘
             +x+z corner (screen bottom-centre)
   ``` Unit tests: every slot and zone lies inside the bounds; slots do not overlap each other or any zone; the whole-campus fit at 1280x720 is at least `ORTHO_ZOOM.min`.
-- **First glance and home (CEO C25):** the startup pose and `cameraRig.home()` frame the extent of the placed halls plus the plant, power and gate zones, read from the layout: startup once at load, `home()` on each press. This amends chunk 05's home ("the whole campus framed") to the placed campus; bounds still cover all 12 slots. A placed hall never moves (D8); only the next `home()` widens.
+- **First glance and home (CEO C25):** the startup pose and `cameraRig.home()` frame the extent of the placed halls plus the plant, power and gate zones, read from the layout: startup once at load, `home()` on each press. They fit that extent into the canvas minus only the top bar and tab strip, so the KPI tiles, job tracker and right panel float over the campus as in variant-B-2; glides to a selected object still use the `safeArea` (build decision H1, 2026-10-14, user answer after the chunk 08 hero came out small in the 1280x352 safe strip). This amends chunk 05's home ("the whole campus framed") to the placed campus; bounds still cover all 12 slots. A placed hall never moves (D8); only the next `home()` widens.
 - **Road lamps (CEO W-RW3):** one instanced post mesh and one instanced lamp-head mesh on a shared warm glow material along the road grid; chunk 34 raises their emissive at night.
 - **Site perimeter (CEO C27):** one instanced low-poly tree (trunk and canopy in one geometry with a colour attribute, on its own shared `tree` library material with no clipping plane, CEO W-RW19) on seeded perimeter and road-edge spots; a perimeter fence (instanced posts, merged panels) open at the gate; the gate monument with the "SYNAPSE HORIZON" wordmark, matching the top-bar wordmark (design-review Phase 3 D18, WD12; not the mockup's "SYNAPSE AI DATA CENTRE"), from the shared sign atlas under the chunk 06 12 px pose rule (W-RW5). The look-dev view adds one tree and one fence bay.
 - **Empty slots (design-review Phase 3 D16, D17, WD11; approved mockup `empty-slot-20261014/variant-B.png`, UI-6) [estimated]:** each empty slot is a flat pad `#1c2433` (a step above the ground, darker than any hall surface) with a 0.06-unit `#3a4559` outline and its slot number, `01` to `12` in slot order, painted at the front edge facing the gate in Geist Mono at a 0.6-unit cap height in `#3a4559`; the number shows only while it measures at least 12 CSS px at the current pose, the chunk 06 rule. Slot numbers, not hall letters, because chunk 19 assigns letters by project order and overflow halls (A2) take the lowest free slot (D8). Pads carry `userData.ground` (W-RW35). The numbers are one InstancedMesh on the atlas with the E27 fade helper (eng-review Phase 3 D3).
@@ -5491,15 +5491,15 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-RW12, W-RW20, W-RW31
   - Files: `src/scene/PerfHud.tsx`, `src/scene/devHooks.ts`, `src/app/globals.d.ts`
   - Verify: unit tests for NaN, negative, non-integer and too-large input; e2e drives each setter in the production build
-- [ ] **T7 (P1, human: ~1d / CC: ~40min)** — chunk 08 — Campus layout, `rig.setCampus`, derived bounds, ground and shadow, C25 home
+- [x] **T7 (P1, human: ~1d / CC: ~40min)** — chunk 08 — Campus layout, `rig.setCampus`, derived bounds, ground and shadow, C25 home
   - Surfaced by: W-F1, W-F3; C25; W-RW1, W-RW27, W-RW32, W-RW38
   - Files: `src/scene/campus/layout.ts`, `src/scene/campus/layout.test.ts`, `src/scene/camera.ts`, `src/scene/camera.test.ts`, `src/scene/controls.test.ts`, `src/scene/Ground.tsx`, `src/scene/LightRig.tsx`, `e2e/camera.spec.ts`
   - Verify: layout and rig unit tests; updated `e2e/camera.spec.ts:121`, `:185-187`, `:240` pass at 1280x720 and 1920x1080
-- [ ] **T8 (P1, human: ~1.5d / CC: ~45min)** — chunk 08 — Roads, parking, gate, dock, lamps, perimeter, ground flags and waypoints
+- [x] **T8 (P1, human: ~1.5d / CC: ~45min)** — chunk 08 — Roads, parking, gate, dock, lamps, perimeter, ground flags and waypoints
   - Surfaced by: W-F4; C27; W-RW3, W-RW9, W-RW35
   - Files: `src/scene/campus/` (new components), `src/scene/campus/waypoints.ts`, `src/scene/campus/waypoints.test.ts`, `src/scene/materials.ts`, `src/scene/LookDev.tsx`
   - Verify: waypoint unit tests; HUD under 40 scene draw calls; double-click on a road glides home (e2e)
-- [ ] **T9 (P1, human: ~3h / CC: ~15min)** — chunk 08 — Campus baseline, Playwright wiring, mockup compare and README controls
+- [x] **T9 (P1, human: ~3h / CC: ~15min)** — chunk 08 — Campus baseline, Playwright wiring, mockup compare and README controls
   - Surfaced by: W-F5; C28; W-RW4, W-RW15, W-RW39, W-RW40
   - Files: `e2e/campus.spec.ts`, `playwright.config.ts`, `e2e/__screenshots__/`, `README.md`, `docs/img/08-campus.png`
   - Verify: `playwright test --list` shows `campus.spec.ts` only in the `lookdev` project; `vp run e2e:local` passes; the PR shows the image pair
@@ -5511,7 +5511,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-F12; W-RW11, D20
   - Files: `src/scene/power/` (new components), `src/scene/fibre/route.ts`, `src/scene/fibre/route.test.ts`, `src/scene/fibre/Packets.tsx`
   - Verify: route unit test; e2e removing a hall returns geometry and texture counts; reduced-motion e2e at 25% speed
-- [ ] **T12 (P2, human: ~1h / CC: ~5min)** — chunks 06-10 — `[scene]` transition lines for roof and placed halls
+- [x] **T12 (P2, human: ~1h / CC: ~5min)** — chunks 06-10 — `[scene]` transition lines for roof and placed halls
   - Surfaced by: Section 8 O-1; W-RW36
   - Files: `src/scene/sceneLog.ts`, `src/scene/sceneLog.test.ts`
   - Verify: unit test asserts one line per transition
@@ -5729,11 +5729,11 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 2 — WD3 (UI-7); Pass 5 — WD5 (UI-5)
   - Files: `src/scene/hall/signAtlas.ts`, `src/scene/hall/SignPanel.tsx`, `src/scene/hall/signAtlas.test.ts`, `src/scene/camera.ts`
   - Verify: unit sweep shows the panel only when it faces the camera and the name measures 12 CSS px or more; atlas test draws "A · alpha" and "A · No sessions" in the token colours
-- [ ] **T2 (P1, human: ~2h / CC: ~10min)** — materials — Emissive ladder, bloom-off factor and `setQuality` hook
+- [x] **T2 (P1, human: ~2h / CC: ~10min)** — materials — Emissive ladder, bloom-off factor and `setQuality` hook
   - Surfaced by: Pass 1 — WD2; Pass 2 — WD4
   - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/render.ts`, `src/scene/devHooks.ts`
   - Verify: unit test asserts sign < LEDs < lamps < windows < fibre < packets (< beacon in chunk 18) and the 1.5 factor keeps the order; chunk 08 PR shows a frozen `home` with bloom forced off
-- [ ] **T3 (P1, human: ~3h / CC: ~15min)** — chunk 08 layout — Variant-B-2 composition and sizes in `layout.ts`
+- [x] **T3 (P1, human: ~3h / CC: ~15min)** — chunk 08 layout — Variant-B-2 composition and sizes in `layout.ts`
   - Surfaced by: Pass 1 — WD1
   - Files: `src/scene/campus/layout.ts`, `src/scene/campus/layout.test.ts`
   - Verify: unit test checks zone order at the startup azimuth (cooling top-left, power left, halls centre, gate bottom-centre, parking bottom-right, dock right) and a 16-rack hall of about 8 x 6 units
@@ -5749,15 +5749,15 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 5 — WD9, WD7
   - Files: `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/plant/Towers.tsx`
   - Verify: unit tests: no particles at duty 0, 60 per tower at duty 1, fans at 10% at duty 0 and 25% under reduced motion
-- [ ] **T7 (P2, human: ~2h / CC: ~10min)** — chunk 08 palette — Neutral site colours and the hue test
+- [x] **T7 (P2, human: ~2h / CC: ~10min)** — chunk 08 palette — Neutral site colours and the hue test
   - Surfaced by: Pass 5 — WD10
   - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`
   - Verify: unit test keeps every furniture colour's hue and saturation away from the D17 status and vendor colours
-- [ ] **T8 (P2, human: ~2h / CC: ~10min)** — chunk 08 slots — Empty-slot pads with slot numbers under the 12 px rule
+- [x] **T8 (P2, human: ~2h / CC: ~10min)** — chunk 08 slots — Empty-slot pads with slot numbers under the 12 px rule
   - Surfaced by: Pass 5 — WD11, WD11b (UI-6)
   - Files: `src/scene/campus/SlotPads.tsx`, `src/scene/hall/signAtlas.ts`
   - Verify: e2e at `view=home`: pads show `03`-`12` only when zoomed in; no pad shows a hall letter
-- [ ] **T9 (P3, human: ~30min / CC: ~5min)** — chunk 08 monument — "SYNAPSE HORIZON" wordmark from the atlas
+- [x] **T9 (P3, human: ~30min / CC: ~5min)** — chunk 08 monument — "SYNAPSE HORIZON" wordmark from the atlas
   - Surfaced by: Pass 5 — WD12
   - Files: `src/scene/campus/Monument.tsx`
   - Verify: campus baseline (C28) shows the wordmark; no "AI DATA CENTRE" string in `src/`
@@ -6120,7 +6120,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 and th
   - Surfaced by: Performance — E-P1, E28 (D4)
   - Files: builder test files per chunk, one e2e spec at 12 placed halls
   - Verify: `vp test` fails if a builder exceeds its cap; e2e reads 150k triangles or less at 12 placed halls, frozen
-- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — tests — Draw-call proofs for C24 and chunk 08
+- [x] **T4 (P2, human: ~2h / CC: ~10min)** — tests — Draw-call proofs for C24 and chunk 08
   - Surfaced by: Test review — T-1, T-3
   - Files: `src/scene/hall/buildHall.test.ts`, an e2e spec reading `__sceneDev.stats()`
   - Verify: unit count of meshes and casters per hall at most 4; e2e under 40 at frozen `home`

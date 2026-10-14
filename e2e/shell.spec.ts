@@ -272,7 +272,8 @@ test("a lost context shows the restore toast in the live region, then the restor
 }, testInfo) => {
   skipFrameSpecInCiFirefox(browserName, testInfo);
   test.setTimeout(60_000);
-  await open(page, "dev=1");
+  // The toasts do not depend on the scene, so the empty hall view keeps the frames light.
+  await open(page, "dev=1&view=hall");
   const region = page.locator('[aria-live="polite"]');
   await expect(region).toHaveCount(1);
   await page.evaluate(lose);

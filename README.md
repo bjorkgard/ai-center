@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/bjorkgard/ai-center)](https://github.com/bjorkgard/ai-center/releases)
 
-![Synapse Horizon](docs/img/01-scaffold.png)
+![Synapse Horizon: the campus at night with halls A and B](docs/img/08-campus.png)
 
 A live 3D AI data-centre dashboard that tracks Claude and Codex agents and subagents, styled like a strategy game.
 
@@ -35,7 +35,7 @@ with `ShotFailed` (exit 1) if a page logs a console error or an image is over 20
 
 ## Scene core (chunk 04a)
 
-One persistent 3D canvas fills the viewport behind the DOM overlay layer. It shows a test cube on a ground plane, drawn through an orthographic isometric camera that the perf HUD can switch to perspective. Add `?dev=1` to show the perf HUD (fps, scene and post-processing draw calls, triangles, `renderer.info` counts, frame cap and mode, quality tier, WebGL state) and the `window.__sceneDev` hooks. `?webgl=0` forces the WebGL card, `?calm=0` keeps the 60 fps cap and `?freeze=1` renders one fixed frame.
+One persistent 3D canvas fills the viewport behind the DOM overlay layer. It shows the campus (chunk 08), drawn through an orthographic isometric camera that the perf HUD can switch to perspective. Add `?dev=1` to show the perf HUD (fps, scene and post-processing draw calls, triangles, `renderer.info` counts, frame cap and mode, quality tier, WebGL state) and the `window.__sceneDev` hooks. `?webgl=0` forces the WebGL card, `?calm=0` keeps the 60 fps cap and `?freeze=1` renders one fixed frame.
 
 ![Test cube with the perf HUD](docs/img/04a-core.png)
 
@@ -65,9 +65,15 @@ Each hall owns one rack InstancedMesh (16 bodies) and one LED InstancedMesh (208
 
 ![One data hall with 16 racks and pulsing status LEDs](docs/img/07-racks.png)
 
+## Campus (chunk 08)
+
+The static campus around the halls, from a pure layout (`src/scene/campus/layout.ts`): 12 hall slots on a 4 x 3 grid (A and B in the front row nearest the gate, filling toward the back), the road grid, and zones for the cooling plant, power yard, gate, parking and loading dock. Halls A and B stand with the seeded fake racks; every other slot shows an empty pad with its number `01`-`12`, which appears once it measures 12 px. The site has roads, a parking lot with instanced parked cars (three dark greys, lights off), a security gate with a barrier boom, a loading dock with bay doors, instanced road lamps on the warm glow, trees, a perimeter fence open at the gate and a gate monument reading SYNAPSE HORIZON. The camera bounds, the ground, its grid and the shadow camera all come from the campus extent, and the first view and `0` frame the placed halls plus the plant, power and gate zones. The whole home view costs 27 scene draw calls with shadows on. `?dev=1` adds a collapsed Campus section (placed halls 2-12, waypoint graph toggle) with `__sceneDev.setPlacedHalls(n)` and `__sceneDev.setWaypoints(on)`.
+
+![The campus at night: halls A and B, pads, roads, gate, parking and trees](docs/img/08-campus.png)
+
 ## Controls
 
-Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` returns home, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.
+Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground (a road, a pad or open ground, not a hall) flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` frames the placed campus, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.
 
 ## Known limits
 
@@ -91,4 +97,4 @@ Branches are `chunk/NN-slug`, with one pull request per chunk and a Conventional
 
 ## Status
 
-Chunk 07 (instanced racks and LEDs) built. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.
+Chunk 08 (campus layout and site furniture) built. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.

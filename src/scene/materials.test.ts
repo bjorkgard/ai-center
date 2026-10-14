@@ -7,6 +7,7 @@ import {
   INSTANCE_UV_RECT,
   MATERIALS,
   STATUS_COLORS,
+  SITE_COLORS,
   STATUS_ORDER,
   VENDOR_COLORS,
   addInstanceFade,
@@ -188,4 +189,140 @@ test("the LED material scales x1.5 with bloom off like every other glow", () => 
     setBloomGlow(true);
   }
   expect(MATERIALS.led.emissiveIntensity).toBe(1);
+});
+
+test("emissive ladder with the lamps: LEDs 1.0 < lamps 1.6 < windows 2.0, the lamp warm like the windows", () => {
+  expect(MATERIALS.lamp.emissiveIntensity).toBe(1.6);
+  expect(MATERIALS.lamp.name).toBe("lamp");
+  expect(MATERIALS.lamp.emissiveIntensity).toBeGreaterThan(MATERIALS.led.emissiveIntensity);
+  expect(MATERIALS.lamp.emissiveIntensity).toBeLessThan(MATERIALS.window.emissiveIntensity);
+  expect(emitted(MATERIALS.lamp)).toBeGreaterThan(RENDER.bloom.luminanceThreshold);
+  expect(MATERIALS.lamp.emissive.getHex()).toBe(MATERIALS.window.emissive.getHex());
+});
+
+test("with bloom off the lamp is x1.5 and stays between the LED and the window", () => {
+  try {
+    setBloomGlow(false);
+    expect(MATERIALS.lamp.emissiveIntensity).toBeCloseTo(1.6 * 1.5, 9);
+    expect(MATERIALS.lamp.emissiveIntensity).toBeGreaterThan(MATERIALS.led.emissiveIntensity);
+    expect(MATERIALS.lamp.emissiveIntensity).toBeLessThan(MATERIALS.window.emissiveIntensity);
+  } finally {
+    setBloomGlow(true);
+  }
+  expect(MATERIALS.lamp.emissiveIntensity).toBe(1.6);
+});
+
+test("the campus materials are shared library instances and none carries a clipping plane", () => {
+  for (const key of ["site", "tree", "car", "lamp"] as const) {
+    expect(allMaterials()).toContain(MATERIALS[key]);
+    expect(MATERIALS[key].clippingPlanes ?? []).toHaveLength(0);
+    expect(MATERIALS[key].name).toBe(key);
+  }
+  expect(MATERIALS.tree).not.toBe(MATERIALS.site);
+  expect(MATERIALS.tree.vertexColors).toBe(true);
+  expect(MATERIALS.site.vertexColors).toBe(true);
+});
+
+// Hue in degrees and saturation 0-1 of a hex colour.
+function hs(hex: string): { h: number; s: number; l: number } {
+  const out = { h: 0, s: 0, l: 0 };
+  new Color(hex).getHSL(out, "srgb");
+  return { h: out.h * 360, s: out.s, l: out.l };
+}
+
+// Colour in the scene only means something (design-review Phase 3 WD10): status, vendor trim,
+// cyan network and warm windows and lamps. Furniture stays neutral, so none sits near them.
+const SIGNALS = {
+  ...STATUS_COLORS,
+  claude: VENDOR_COLORS.claude,
+  codex: VENDOR_COLORS.codex,
+  fibre: FIBRE_COLOR,
+  warm: `#${MATERIALS.window.emissive.getHexString()}`,
+};
+// Idle and done are slate greys by design (D17); lightness, not hue, tells them apart, so only
+// they are left out of the pairwise hue test.
+const CHROMATIC = Object.entries(SIGNALS).filter(([, hex]) => hs(hex).s >= 0.2);
+// A furniture colour with more saturation than this is only allowed in the slate blue band (the
+// roads, pads, walls) or as a pale warm white (the boom stripes).
+const NEUTRAL_SATURATION = 0.2;
+const SLATE_HUES = [205, 235];
+const PALE = 0.75;
+
+// The reasons a furniture colour breaks the rule; empty when it keeps its distance. Above the
+// chromatic cap (s > 0.35, l > 0.2) a colour has no escape: its hue stays 40 degrees from every
+// chromatic signal and the slate exemption does not apply. Pale colours (the warm-white boom
+// stripes) are exempt from the cap and only need the saturation gap.
+const CHROMATIC_CAP = 0.35;
+function violations(colour: string): string[] {
+  const f = hs(colour);
+  const out: string[] = [];
+  const hueGap = (hex: string) => {
+    const d = Math.abs(f.h - hs(hex).h);
+    return Math.min(d, 360 - d);
+  };
+  const chromatic = f.s > CHROMATIC_CAP && f.l > 0.2 && f.l <= PALE;
+  const slate = f.h >= SLATE_HUES[0] && f.h <= SLATE_HUES[1];
+  if (!chromatic && f.s > NEUTRAL_SATURATION && f.l <= PALE && !slate) {
+    out.push(`${colour} is coloured, not slate`);
+  }
+  // A pale colour only gets the exemption while it keeps clear of the cool and red signals: a pale
+  // periwinkle (thinking) or pale pink (error) is still those colours. The warm signals are left
+  // to the saturation gap below, since the warm-white boom stripe sits near them by design. 30
+  // degrees, because the boom stripe is 37.5 from error's red.
+  if (f.l > PALE) {
+    for (const name of ["thinking", "tool", "error", "codex", "fibre"] as const) {
+      if (hueGap(SIGNALS[name]) < 30) out.push(`${colour} is a pale ${name}`);
+    }
+  }
+  for (const [name, hex] of CHROMATIC) {
+    const c = hs(hex);
+    const apart = Math.min(Math.abs(f.h - c.h), 360 - Math.abs(f.h - c.h));
+    const ok = chromatic ? apart >= 40 : apart >= 40 || Math.abs(f.s - c.s) >= 0.3;
+    if (!ok) out.push(`${colour} is near ${name} ${hex}`);
+  }
+  return out;
+}
+
+test("every furniture colour keeps its hue and saturation away from the status, vendor, cyan and warm colours", () => {
+  const furniture = Object.values(SITE_COLORS).flat();
+  expect(furniture.length).toBeGreaterThan(14);
+  const neutral = Object.entries(SIGNALS).filter(([, hex]) => hs(hex).s < 0.2);
+  expect(neutral.map(([name]) => name).sort()).toEqual(["done", "idle"]);
+  for (const colour of furniture) expect(violations(colour), colour).toEqual([]);
+});
+
+test("the palette rule fails red, green and brown furniture, so a saturated colour cannot slip through", () => {
+  for (const bad of [
+    "#cc4444",
+    "#4a7a4a",
+    "#a52a2a",
+    "#3d6b45",
+    "#993333",
+    "#228b22",
+    "#4455aa",
+    "#3344cc",
+    "#6677cc",
+    "#b4bce8",
+    "#f0c8c8",
+  ]) {
+    expect(violations(bad), bad).not.toEqual([]);
+  }
+});
+
+test("the site palette is the one in the plan: roads a step above the ground, trees, boom and cars", () => {
+  expect(SITE_COLORS.road).toBe("#1a2130");
+  expect(SITE_COLORS.padFace).toBe("#1c2433");
+  expect(SITE_COLORS.marking).toBe("#3a4559");
+  expect(SITE_COLORS.fence).toBe("#2e3748");
+  expect(SITE_COLORS.boomStripe).toBe("#E8DCC8");
+  expect(SITE_COLORS.tree).toBe("#1d2b2a");
+  expect(SITE_COLORS.trunk).toBe("#2a2420");
+  expect(SITE_COLORS.cars).toHaveLength(3);
+  const ground = new Color("#121926");
+  const road = new Color(SITE_COLORS.road);
+  expect(road.r + road.g + road.b).toBeGreaterThan(ground.r + ground.g + ground.b);
+  for (const car of SITE_COLORS.cars) {
+    expect(hs(car).s).toBeLessThan(0.2);
+    expect(hs(car).l).toBeLessThan(0.2);
+  }
 });

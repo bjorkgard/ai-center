@@ -1,9 +1,10 @@
 import { useStore } from "../app/store/index.ts";
 import { allMaterials } from "./materials.ts";
+import { setPlacedHalls, setWaypoints } from "./campus/campusDev.ts";
 import { simulateFrameInterval } from "./loop/monitor.ts";
-import { ledColor, setFakeLoad, setRackCount } from "./hall/racksDev.ts";
+import { ledColor, setFakeLoad, setRackCount, shownCount } from "./hall/racksDev.ts";
 import { setRoofCut } from "./hall/roof.ts";
-import { signOpacity } from "./hall/signVisibility.ts";
+import { signFadeTiming, signOpacity } from "./hall/signVisibility.ts";
 import { guardDisposeEvents } from "./render.ts";
 import { getSceneProbe } from "./stats.ts";
 
@@ -31,6 +32,10 @@ export function installSceneDev(
     setRackCount,
     setFakeLoad,
     ledColor,
+    // Racks a hall draws now (read-only), as the hall last reported them.
+    shownRacks: (hall) => shownCount(Number.isInteger(hall) ? hall : 0),
+    setPlacedHalls,
+    setWaypoints,
     // Forces a quality tier: medium and low turn bloom off, which scales the glow (WD4).
     setQuality: (tier) => {
       if (tier !== "high" && tier !== "medium" && tier !== "low") {
@@ -48,6 +53,14 @@ export function installSceneDev(
         return null;
       }
       return signOpacity(slot);
+    },
+    // Opacity and the fader's own fade start and end times (ms) of a hall's sign panel.
+    signFade: (slot) => {
+      if (!Number.isInteger(slot) || slot < 0 || slot > 11) {
+        console.warn(`[dev] signFade: "slot" must be a whole number 0-11, got ${String(slot)}`);
+        return null;
+      }
+      return signFadeTiming(slot);
     },
     materialDisposeEvents: () => guard.events(),
     // Positive control for the guard: disposes one real library instance on purpose.

@@ -32,26 +32,35 @@ const sum = ([r, g, b]: Rgb) => r + g + b;
 // can leave the pixel thresholds green, so count the lights themselves.
 const RIG = { HemisphereLight: 1, DirectionalLight: 1, AmbientLight: 1 };
 
-test("the test cube and ground render with the library under the whole rig", async ({ page }) => {
-  await open(page, "dev=1&freeze=1");
+test("a hall and the ground render with the library under the whole rig", async ({ page }) => {
+  await open(page, "dev=1&freeze=1&view=hall");
   expect(await page.evaluate("window.__sceneDev.rigLights()")).toEqual(RIG);
   // The glass panels would blur the frame and the dev menu grew over the lower right (05), so
   // look at the bare 3D area.
   await page.addStyleTag({
     content: "[data-testid^=slot-], [data-testid=perf-hud] { visibility: hidden !important }",
   });
+  // Where the hall's front wall top, the ground beside it and far from it, and the front wall's
+  // face (the side the moon barely reaches) land in this framing.
+  const at = async (point: [number, number, number]): Promise<[number, number]> => {
+    const p = (await page.evaluate(`window.__sceneDev.project(${JSON.stringify(point)})`)) as {
+      x: number;
+      y: number;
+    };
+    return [p.x, p.y];
+  };
   const [top, ground, farGround, leftFace] = await pixels(page, [
-    [640, 262],
-    [800, 420],
-    [1000, 560],
-    [610, 340],
+    await at([2, 2.1, 2.9]),
+    await at([6, 0, 0]),
+    await at([-8, 0, -4]),
+    await at([1.5, 1.0, 3.01]),
   ]);
   const background = 7 + 10 + 18; // RENDER.background #070a12
   expect(sum(top)).toBeGreaterThan(sum(ground) * 1.5);
   expect(sum(ground)).toBeGreaterThan(background);
   expect(sum(farGround)).toBeGreaterThan(background);
-  // The face the moon barely reaches: without the hemisphere and fill it drops from 76 to 60.
-  expect(sum(leftFace)).toBeGreaterThan(68); // [estimated]
+  // The face the moon barely reaches reads 115 here; without the hemisphere and fill it drops to 98.
+  expect(sum(leftFace)).toBeGreaterThan(105); // [estimated]
 });
 
 test("the look-dev view hides the shell, the HUD, the loader and the toasts", async ({ page }) => {

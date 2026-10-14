@@ -163,3 +163,23 @@ test("the fader's per-frame calls create no closures (no Array.prototype.some)",
   expect(some).not.toHaveBeenCalled();
   some.mockRestore();
 });
+
+test("the sign fade lasts 200 ms (design D7), pinned apart from the dev hook", () => {
+  expect(SIGN.fadeMs).toBe(200);
+});
+
+test("the fader reports its own fade start and end: 200 ms apart for a full fade, on its own clock", () => {
+  const fader = new SignFader(2);
+  fader.setTarget(0, true, 1000, true);
+  expect(fader.timing(0)).toEqual({ start: null, end: null });
+  fader.setTarget(0, false, 5000, false);
+  expect(fader.timing(0)).toEqual({ start: 5000, end: null });
+  // Frames far apart: the end is still the fade's own, not the late frame's time.
+  fader.step(5100);
+  expect(fader.timing(0).end).toBeNull();
+  fader.step(5600);
+  const { start, end } = fader.timing(0);
+  expect(start).toBe(5000);
+  expect(end).toBeCloseTo(5200, 6);
+  expect(fader.opacity(0)).toBe(0);
+});

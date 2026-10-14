@@ -172,11 +172,18 @@ test("a frozen hall is not ready until the late sign font is drawn", async ({ pa
 test("a panel's opacity goes from 1 to 0 within about 200 ms after zooming out", async ({
   page,
 }) => {
+  test.slow();
   await open(page, "dev=1&view=hall");
   expect(await opacity(page)).toBe(1);
   // Sampled on every animation frame while the wheel zooms out. The fade starts the moment the
   // letter drops below 12 px and takes 200 ms, whatever the zoom speed. On a busy machine frames
-  // can be further apart than the fade, so an attempt with no sample between 1 and 0 is repeated.
+  // can be further apart than the fade, so an attempt with fewer than two samples between 1 and 0
+  // is repeated (one is enough in the end; two are what let the end bracket catch a slower fade).
+  // The last attempt stays zoomed out, so the fader-clock checks below read the fade it ran.
+  // CI's software-rendered Chromium can draw frames more than 200 ms apart on every attempt, so
+  // no sample may land inside the fade at all. Then only the sample checks are skipped (and the
+  // run is annotated): the fader-clock checks at the end still prove the 200 ms duration, and a
+  // cut would leave their start/end null, so it is still caught.
   type Sample = [number, number];
   let samples: Sample[] = [];
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -196,20 +203,44 @@ test("a panel's opacity goes from 1 to 0 within about 200 ms after zooming out",
     );
     await zoomOut(page);
     samples = await run;
-    if (samples.some(([, o]) => o > 0 && o < 1)) break;
+    if (samples.filter(([, o]) => o > 0 && o < 1).length >= 2 || attempt === 3) break;
     await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2);
     for (let i = 0; i < 14; i++) await page.mouse.wheel(0, -400);
     await expect.poll(() => opacity(page), { timeout: 10_000 }).toBe(1);
   }
   const partial = samples.filter(([, o]) => o > 0 && o < 1);
-  expect(partial.length, "a sample between 1 and 0 means a fade, not a cut").toBeGreaterThan(0);
-  // A 200 ms linear fade that reads o at time t began (1 - o) x 200 ms earlier; every sample
-  // must agree on when, and it must end about 200 ms after that start.
-  const starts = partial.map(([t, o]) => t - (1 - o) * 200);
-  expect(Math.max(...starts) - Math.min(...starts)).toBeLessThan(120);
-  const end = samples[samples.length - 1][0];
-  expect(end - Math.min(...starts)).toBeGreaterThanOrEqual(190);
-  expect(end - Math.min(...starts)).toBeLessThanOrEqual(450);
+  if (partial.length > 0) {
+    expect(partial.length, "a sample between 1 and 0 means a fade, not a cut").toBeGreaterThan(0);
+    // A 200 ms linear fade that reads o at time t began (1 - o) x 200 ms earlier; every sample
+    // must agree on when. The fade ends at start + 200 ms, which must fall between the last sample
+    // still fading and the first sample at 0 (bracketed, so frames far apart on a busy
+    // machine cannot fail it, while a 400 ms fade still does: its last partial sample is later
+    // than the end).
+    const starts = partial.map(([t, o]) => t - (1 - o) * 200);
+    expect(Math.max(...starts) - Math.min(...starts)).toBeLessThan(120);
+    const start = Math.min(...starts);
+    const lastPartial = partial[partial.length - 1][0];
+    const end = samples[samples.length - 1][0];
+    expect(end).toBeGreaterThanOrEqual(start + 190);
+    expect(lastPartial).toBeLessThanOrEqual(start + 200 + 40);
+  } else {
+    test.info().annotations.push({
+      type: "sparse-frames",
+      description:
+        "no frame landed inside the 200 ms fade; duration checked on the fader clock only",
+    });
+  }
+  // The fader's own clock gives the duration whatever the frame spacing: 200 ms (design D7).
+  const fade = (await page.evaluate("window.__sceneDev.signFade(0)")) as {
+    opacity: number;
+    start: number | null;
+    end: number | null;
+  };
+  expect(fade.opacity).toBe(0);
+  expect(fade.start).not.toBeNull();
+  expect(fade.end).not.toBeNull();
+  expect(fade.end! - fade.start!).toBeGreaterThanOrEqual(190);
+  expect(fade.end! - fade.start!).toBeLessThanOrEqual(210);
 });
 
 test("a static hall draws in 4 scene calls: 3 main pass plus 1 shadow, on top of the ground", async ({
@@ -235,7 +266,7 @@ test("the Hall dev section starts collapsed, after Camera, and toggles the roof"
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => s.dataset.testid));
-  expect(sections).toEqual(["dev-camera", "dev-hall", "dev-racks"]);
+  expect(sections).toEqual(["dev-camera", "dev-hall", "dev-racks", "dev-campus"]);
   const header = hud.getByRole("button", { name: /^Hall/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

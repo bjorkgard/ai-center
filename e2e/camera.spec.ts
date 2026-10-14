@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
+import { campusBounds, campusHome } from "../src/scene/campus/layout.ts";
 import { skipFrameSpecInCiFirefox } from "./ci-skip.ts";
 
 const READY = "window.__sceneReady === true";
@@ -54,8 +55,37 @@ async function focusCanvas(page: Page) {
   await expect(page.getByRole("application", { name: "3D campus view" })).toBeFocused();
 }
 
-const HALF = 14; // CAMPUS_BOUNDS half extent
-const MAX_Y = 3; // CAMPUS_BOUNDS height
+const BOUNDS = campusBounds();
+// What home frames (CEO C25): the placed halls (A and B) plus the plant, power and gate zones.
+const HOME = campusHome(2);
+const homeCorners = () =>
+  [HOME.minX, HOME.maxX].flatMap((x) =>
+    [HOME.minZ, HOME.maxZ].flatMap((z) => [0, HOME.maxY].map((y) => [x, y, z] as const)),
+  );
+
+// The area home and the startup view frame the campus in (decision H1): the canvas minus the top
+// bar and the tab strip.
+async function homeRect(page: Page) {
+  const top = (await page.getByTestId("slot-top-bar").boundingBox())!;
+  const tabs = (await page.getByTestId("slot-tab-strip").boundingBox())!;
+  const canvas = page.viewportSize()!;
+  return {
+    x: 0,
+    y: top.y + top.height,
+    width: canvas.width,
+    height: tabs.y - (top.y + top.height),
+  };
+}
+
+// The middle of the placed campus's projected extent is the middle of the safe area (CEO C25).
+async function expectHomeCentred(page: Page) {
+  const safe = await homeRect(page);
+  const points = await Promise.all(homeCorners().map((corner) => project(page, [...corner])));
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(safe.x + safe.width / 2, 0);
+  expect((Math.min(...ys) + Math.max(...ys)) / 2).toBeCloseTo(safe.y + safe.height / 2, 0);
+}
 
 test("the canvas is the first Tab stop after the top bar, named and described for assistive tech", async ({
   page,
@@ -116,9 +146,9 @@ test("a mouse click on the canvas does not show the keyboard brackets", async ({
   await expect(page.getByTestId("focus-brackets")).toHaveCSS("opacity", "0");
 });
 
-// The smallest supported window (docs/PLAN.md:497): home frames the whole campus in the safe area.
+// The smallest supported window (docs/PLAN.md:497): home frames the placed campus in the safe area.
 for (const projection of ["orthographic", "perspective"]) {
-  test(`home frames all eight campus corners inside the safe area at 1280x720 (${projection})`, async ({
+  test(`home frames the eight corners of the placed campus inside the home area at 1280x720 (${projection})`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -132,22 +162,20 @@ for (const projection of ["orthographic", "perspective"]) {
     await settled(page);
     await page.keyboard.press("0");
     await settled(page);
-    const safe = (await page.getByTestId("safe-area").boundingBox())!;
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        for (const y of [0, MAX_Y]) {
-          const p = await project(page, [sx * HALF, y, sz * HALF]);
-          expect(p.x).toBeGreaterThan(safe.x);
-          expect(p.x).toBeLessThan(safe.x + safe.width);
-          expect(p.y).toBeGreaterThan(safe.y);
-          expect(p.y).toBeLessThan(safe.y + safe.height);
-        }
-      }
+    const safe = await homeRect(page);
+    for (const corner of homeCorners()) {
+      const p = await project(page, [...corner]);
+      expect(p.x).toBeGreaterThan(safe.x);
+      expect(p.x).toBeLessThan(safe.x + safe.width);
+      expect(p.y).toBeGreaterThan(safe.y);
+      expect(p.y).toBeLessThan(safe.y + safe.height);
     }
   });
 }
 
 test("each camera key moves the camera and it stays in bounds", async ({ page }) => {
+  // About a hundred key presses against a frame that now draws the whole campus.
+  test.slow();
   await open(page);
   await focusCanvas(page);
   const start = await camera(page);
@@ -181,10 +209,7 @@ test("each camera key moves the camera and it stays in bounds", async ({ page })
   const home = await camera(page);
   expect(home.zoom).toBeLessThan(zoomed.zoom);
   expect(home.azimuth).toBeCloseTo(Math.PI / 4, 3);
-  const safe = (await page.getByTestId("safe-area").boundingBox())!;
-  const origin = await project(page, [0, 0, 0]);
-  expect(origin.x).toBeCloseTo(safe.x + safe.width / 2, 0);
-  expect(origin.y).toBeCloseTo(safe.y + safe.height / 2, 0);
+  await expectHomeCentred(page);
 
   await page.keyboard.press("ArrowLeft");
   await settled(page);
@@ -202,8 +227,8 @@ test("each camera key moves the camera and it stays in bounds", async ({ page })
   for (let i = 0; i < 12; i++) await page.keyboard.press("+");
   await settled(page);
   const end = await camera(page);
-  expect(Math.abs(end.target[0])).toBeLessThanOrEqual(HALF + 1e-6);
-  expect(Math.abs(end.target[2])).toBeLessThanOrEqual(HALF + 1e-6);
+  expect(Math.abs(end.target[0])).toBeLessThanOrEqual(BOUNDS.halfX + 1e-6);
+  expect(Math.abs(end.target[2])).toBeLessThanOrEqual(BOUNDS.halfZ + 1e-6);
   expect(end.zoom).toBeLessThanOrEqual(240 + 1e-6);
 });
 
@@ -229,16 +254,17 @@ test("a key press counts as input for calm mode", async ({ page }) => {
 });
 
 test("scroll over a corner moves that corner less than a centre zoom would", async ({ page }) => {
-  // A ground point low in the 3D area at the first view, clear of the panels and of the dev HUD,
-  // whose sections (Camera, Hall, Racks) reach down the right edge to about y=650.
-  const corner: [number, number, number] = [4.2, 0, 3.15];
+  // The gate's stop line: a ground point low in the 3D area at the first view, clear of the panels
+  // and of the dev HUD, whose sections (Camera, Hall, Racks, Campus) reach down the right edge.
+  const corner: [number, number, number] = [0, 0, 22.4];
   const shift = async (cursor: (c: { x: number; y: number }) => { x: number; y: number }) => {
     await open(page);
+    const start = (await camera(page)).zoom;
     const before = await project(page, corner);
     const at = cursor(before);
     await page.mouse.move(at.x, at.y);
-    await page.mouse.wheel(0, -300);
-    await expect.poll(async () => (await camera(page)).zoom).toBeGreaterThan(80);
+    await page.mouse.wheel(0, -600);
+    await expect.poll(async () => (await camera(page)).zoom).toBeGreaterThan(start * 1.2);
     const after = await project(page, corner);
     return Math.hypot(after.x - before.x, after.y - before.y);
   };
@@ -249,28 +275,31 @@ test("scroll over a corner moves that corner less than a centre zoom would", asy
   expect(overCorner).toBeLessThan(3);
 });
 
-test("a double-click on empty ground glides home, on the cube it does not", async ({ page }) => {
+test("a double-click on a road glides home, on a hall it does not", async ({ page }) => {
   await open(page);
-  // Move away from home first: zoom in at the cursor, then pan a little.
-  await page.mouse.move(640, 360);
+  const start = await camera(page);
+  // Zoom in at a point on hall B, which stays under the cursor: a point of the hall's body, and a
+  // point on the road in front of it, both still on screen afterwards.
+  const hall = await project(page, [-5.5, 1, 9]);
+  await page.mouse.move(hall.x, hall.y);
   await page.mouse.wheel(0, -400);
-  await expect.poll(async () => (await camera(page)).zoom).toBeGreaterThan(90);
+  await expect.poll(async () => (await camera(page)).zoom).toBeGreaterThan(start.zoom * 1.1);
+  await camerasStill(page);
   const away = await camera(page);
 
-  const cube = await project(page, [0, 0.8, 0]);
-  await page.mouse.dblclick(cube.x, cube.y);
+  const onHall = await project(page, [-5.5, 1, 9]);
+  await page.mouse.dblclick(onHall.x, onHall.y);
   await page.evaluate("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
   expect((await camera(page)).animating).toBe(false);
   expect((await camera(page)).zoom).toBeCloseTo(away.zoom, 6);
 
-  await page.mouse.dblclick(800, 560);
+  const road = await project(page, [-5.5, 0.03, 13.5]);
+  await page.mouse.dblclick(road.x, road.y);
   await settled(page);
   const home = await camera(page);
   expect(home.zoom).toBeLessThan(away.zoom);
-  const safe = (await page.getByTestId("safe-area").boundingBox())!;
-  const origin = await project(page, [0, 0, 0]);
-  expect(origin.x).toBeCloseTo(safe.x + safe.width / 2, 0);
-  expect(origin.y).toBeCloseTo(safe.y + safe.height / 2, 0);
+  expect(home.zoom).toBeCloseTo(start.zoom, 3);
+  await expectHomeCentred(page);
 });
 
 test("left-drag pans, right-drag rotates and the context menu is suppressed", async ({ page }) => {
@@ -328,14 +357,14 @@ for (const projection of ["orthographic", "perspective"]) {
         "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))",
       );
       const dragged = (await camera(page)).target;
-      expect(Math.abs(dragged[0])).toBeLessThanOrEqual(HALF + 1e-6);
-      expect(Math.abs(dragged[2])).toBeLessThanOrEqual(HALF + 1e-6);
+      expect(Math.abs(dragged[0])).toBeLessThanOrEqual(BOUNDS.halfX + 1e-6);
+      expect(Math.abs(dragged[2])).toBeLessThanOrEqual(BOUNDS.halfZ + 1e-6);
     }
     // The last drag's damping tail ends with no later input, so only the per-frame clamp holds it.
     await camerasStill(page);
     const tail = (await camera(page)).target;
-    expect(Math.abs(tail[0])).toBeLessThanOrEqual(HALF + 1e-6);
-    expect(Math.abs(tail[2])).toBeLessThanOrEqual(HALF + 1e-6);
+    expect(Math.abs(tail[0])).toBeLessThanOrEqual(BOUNDS.halfX + 1e-6);
+    expect(Math.abs(tail[2])).toBeLessThanOrEqual(BOUNDS.halfZ + 1e-6);
     // The rig clamps what the camera hook reports, so the zoom is measured on the drawn camera:
     // pixels per world unit at the target along the screen's right axis.
     const drawnZoom = async () => {
@@ -352,14 +381,14 @@ for (const projection of ["orthographic", "perspective"]) {
     for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -500);
     await camerasStill(page);
     const view = await camera(page);
-    expect(Math.abs(view.target[0])).toBeLessThanOrEqual(HALF + 1e-6);
-    expect(Math.abs(view.target[2])).toBeLessThanOrEqual(HALF + 1e-6);
+    expect(Math.abs(view.target[0])).toBeLessThanOrEqual(BOUNDS.halfX + 1e-6);
+    expect(Math.abs(view.target[2])).toBeLessThanOrEqual(BOUNDS.halfZ + 1e-6);
     expect(view.zoom).toBeLessThanOrEqual(240 + 1e-6);
     expect(await drawnZoom()).toBeLessThanOrEqual(240 + 1e-3);
     for (let i = 0; i < 20; i++) await page.mouse.wheel(0, 500);
     await camerasStill(page);
-    expect((await camera(page)).zoom).toBeGreaterThanOrEqual(10 - 1e-6);
-    expect(await drawnZoom()).toBeGreaterThanOrEqual(10 - 1e-3);
+    expect((await camera(page)).zoom).toBeGreaterThanOrEqual(6 - 1e-6);
+    expect(await drawnZoom()).toBeGreaterThanOrEqual(6 - 1e-3);
   });
 }
 
@@ -462,15 +491,16 @@ test.describe("with reduced motion", () => {
 
   test("glides and key steps are instant cuts", async ({ page }) => {
     await open(page);
+    const startup = (await camera(page)).zoom;
     await focusCanvas(page);
     await page.keyboard.press("+");
     let view = await camera(page);
     expect(view.animating).toBe(false);
-    expect(view.zoom).toBeCloseTo(100, 3);
+    expect(view.zoom).toBeCloseTo(startup * 1.25, 3);
     await page.keyboard.press("0");
     view = await camera(page);
     expect(view.animating).toBe(false);
-    expect(view.zoom).toBeLessThan(40);
+    expect(view.zoom).toBeCloseTo(startup, 3);
 
     await page.getByRole("button", { name: "Glide test" }).click();
     view = await camera(page);

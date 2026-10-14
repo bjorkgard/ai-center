@@ -21,14 +21,14 @@ const stats = (page: Page) =>
     bloom: boolean;
   } | null>;
 
-test("the test cube draws in under 10 scene draw calls, post-processing counted apart", async ({
+test("the campus draws in under 40 scene draw calls, post-processing counted apart", async ({
   page,
 }) => {
   await open(page, "dev=1&freeze=1");
   const s = await stats(page);
   expect(s).not.toBeNull();
   expect(s!.sceneCalls).toBeGreaterThan(0);
-  expect(s!.sceneCalls).toBeLessThan(10);
+  expect(s!.sceneCalls).toBeLessThan(40);
   expect(s!.bloom).toBe(true);
   expect(s!.postCalls).toBeGreaterThan(0);
   const hud = page.getByTestId("perf-hud");

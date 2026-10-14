@@ -1,5 +1,13 @@
-// ready: page expression to wait for before capture (CEO S-RW20); query: extra URL parameters.
-export type ShotView = { name: string; file: string; ready: string; query?: string };
+// ready: page expression to wait for before capture (CEO S-RW20); query: extra URL parameters;
+// setup: a page expression run once the scene is ready, and settled: what to wait for after it.
+export type ShotView = {
+  name: string;
+  file: string;
+  ready: string;
+  query?: string;
+  setup?: string;
+  settled?: string;
+};
 
 // Ready also means the loader is gone, so a fading loader never lands in an image.
 export const readyExpression =
@@ -15,6 +23,19 @@ export const views: ShotView[] = [
   { name: "lookdev", file: "docs/img/04c-lookdev.png", ready: readyExpression },
   { name: "hall", file: "docs/img/06-hall.png", ready: readyExpression },
   { name: "racks", file: "docs/img/07-racks.png", ready: readyExpression },
+  { name: "home", file: "docs/img/08-campus.png", ready: readyExpression },
+  // The same frozen home with bloom forced off through the dev hook (design-review Phase 3 WD4):
+  // the HUD is hidden and the shot waits for the frame drawn after the tier change.
+  {
+    name: "home",
+    file: "docs/img/08-campus-nobloom.png",
+    ready: readyExpression,
+    query: "dev=1",
+    setup:
+      'window.__shotFrames = window.__sceneDev.stats().frames; window.__sceneDev.setQuality("medium"); document.querySelector("[data-testid=perf-hud]").style.display = "none";',
+    settled:
+      "window.__sceneDev.stats().bloom === false && window.__sceneDev.stats().frames > window.__shotFrames",
+  },
 ];
 
 export const viewport = { width: 1280, height: 720 };

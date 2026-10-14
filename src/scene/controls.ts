@@ -1,11 +1,5 @@
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
-import {
-  ELEVATION_RANGE,
-  ORTHO_ZOOM,
-  clampTarget,
-  perspectiveDistanceRange,
-  type CameraRig,
-} from "./camera.ts";
+import { ELEVATION_RANGE, ORTHO_ZOOM, perspectiveDistanceRange, type CameraRig } from "./camera.ts";
 
 // Pan and rotate ease to a stop over about 250 ms (CEO C20). The decay is exponential in real
 // time, so 95% of the motion is done after three time constants at any frame rate.
@@ -77,7 +71,7 @@ export function createCameraControls(
   // the change threshold, so a slow damping tail cannot creep past the bounds.
   const enforce = () => {
     const before = controls.target.clone();
-    clampTarget(controls.target);
+    rig.clampTarget(controls.target);
     controls.object.position.add(controls.target.clone().sub(before));
     controls.object.updateMatrixWorld(true);
     rig.adopt({ azimuth: controls.getAzimuthalAngle(), polar: controls.getPolarAngle() });

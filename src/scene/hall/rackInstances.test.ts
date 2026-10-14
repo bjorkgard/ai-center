@@ -1,6 +1,6 @@
 import type { BufferGeometry } from "three";
 import { expect, test } from "vite-plus/test";
-import { MATERIALS } from "../materials.ts";
+import { MATERIALS, statusLed } from "../materials.ts";
 import type { RackLoad } from "../signals.ts";
 import { ledLevel } from "./ledPulse.ts";
 import { LEDS_PER_RACK, RACK_SLOTS } from "./rackLayout.ts";
@@ -96,17 +96,15 @@ test("lit LEDs carry the status colour times the pulse level; unlit blades are d
   racks.update(signals, 0, 0.7, false);
   const colour = racks.leds.instanceColor!;
   const level = ledLevel(LOAD.load, LOAD.phase, 0.7, false);
-  const tool = MATERIALS.led.emissive;
-  void tool;
-  // LED 0 is the strip in the main session's status (tool, green): green leads red and blue.
-  expect(colour.getY(0)).toBeGreaterThan(colour.getX(0));
-  expect(colour.getY(0)).toBeGreaterThan(colour.getZ(0));
+  // LED 0 is the strip in the main session's status (tool): its colour times the level.
+  const tool = statusLed("tool").emissive;
+  expect(colour.getX(0)).toBeCloseTo(tool.r * level, 5);
+  expect(colour.getY(0)).toBeCloseTo(tool.g * level, 5);
+  expect(colour.getZ(0)).toBeCloseTo(tool.b * level, 5);
   // Blade 1 (LED index 1) is lit, blade 4 (index 4) is not.
   const brightness = (i: number) => colour.getX(i) + colour.getY(i) + colour.getZ(i);
   expect(brightness(1)).toBeGreaterThan(0.1);
   expect(brightness(4)).toBeLessThan(0.05);
-  const idle = ledLevel(LOAD.load, LOAD.phase, 0.7, false);
-  expect(idle).toBe(level);
   racks.dispose();
 });
 
@@ -156,4 +154,12 @@ test("ledColor reports the strip of a drawn rack and null for an empty slot", ()
   expect(colour[1]).toBeGreaterThan(colour[0]);
   expect(racks.ledColor(2)).toBeNull();
   racks.dispose();
+});
+
+// update() runs every frame for every hall, so it must not build a function each call (the colour
+// writer used to be a closure made inside it).
+test("update creates no closure per frame", () => {
+  const source = RackInstances.prototype.update.toString();
+  expect(source).not.toMatch(/=>/);
+  expect(source).not.toMatch(/\bfunction\b/);
 });
