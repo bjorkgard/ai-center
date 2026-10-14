@@ -13,6 +13,14 @@ interface SceneDevHooks {
   throwInScene(message: string): void;
   throwInFrame(message: string | null): void;
   throwInComposer(): void;
+  // Unmounts the scene content, then mounts it again (04c dispose check).
+  remountContent(): Promise<void>;
+  // Lights in the scene by three.js type (04c rig completeness check).
+  rigLights(): Record<string, number>;
+  // Dispose events the shared material library received since the hooks installed.
+  materialDisposeEvents(): number;
+  // Disposes one shared library material on purpose, so a test can see the guard count it.
+  disposeSharedMaterial(): void;
 }
 
 interface Window {

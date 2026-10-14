@@ -33,8 +33,13 @@ export const RENDER = {
     levels: 8,
   },
   toneMappingEffect: { mode: ToneMappingMode.ACES_FILMIC },
-  ambient: { color: "#8fa6c8", intensity: 1.1 },
-  light: { color: "#ffffff", intensity: 3, shadowBias: -0.0005 },
+  // Night rig (design D14): cool moonlight with the one shadow, a dim sky/ground hemisphere
+  // and a low flat fill so the shaded faces never go black.
+  rig: {
+    hemisphere: { sky: "#6a82b4", ground: "#141824", intensity: 1.3 },
+    moon: { color: "#b4c2ea", intensity: 3.6, position: [8, 12, 5], shadowBias: -0.0005 },
+    fill: { color: "#34406a", intensity: 0.7 },
+  },
   camera: { near: 0.1, far: 400 },
 } as const;
 

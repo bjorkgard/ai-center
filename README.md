@@ -45,6 +45,14 @@ The empty dashboard frame sits above the scene: top bar, KPI tiles, job tracker,
 
 ![Empty UI shell over the test scene](docs/img/04b-shell.png)
 
+## Look (chunk 04c)
+
+A low-poly isometric campus in dark slate and concrete, lit by cool moonlight with warm window and LED points and glowing cyan fibre under bloom, matching the approved mockup ([docs/designs/variant-B-2.png](docs/designs/variant-B-2.png)). One shared material library and one light rig serve every view; `?view=lookdev` draws the fixed vignette that a committed baseline guards in `vp run e2e:local`.
+
+![Test cube on the ground under the final rig](docs/img/04c-scene.png)
+
+![Look-dev view: hall, rack row with six status LEDs, fibre, vendor trim](docs/img/04c-lookdev.png)
+
 ## Known limits
 
 - **"Your browser could not start 3D (WebGL)."** The browser could not create a WebGL2 context. Turn on hardware acceleration in the browser settings and reload; Safari has no such setting, so update the browser and system. The panels still work.
