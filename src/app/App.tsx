@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { PerfHud } from "../scene/PerfHud.tsx";
 import { SceneCanvas } from "../scene/SceneCanvas.tsx";
-import { signAtlasReady } from "../scene/hall/signAtlas.ts";
 import { CardLayer } from "../scene/cards/CardLayer.tsx";
 import { backdropFor } from "../scene/cards/select.ts";
 import { Loader } from "../ui/Loader.tsx";
@@ -32,23 +31,15 @@ function FocusBrackets() {
 export function App() {
   const [params] = useState(() => loadParams(window.location.search));
   const [frame, setFrame] = useState(false);
-  const [atlas, setAtlas] = useState(false);
   const safeArea = useStore((s) => s.safeArea);
   const backdrop = useStore((s) => backdropFor(s.webgl, s.sceneError));
 
-  // Ready is the first frame and the sign atlas (its font loaded or given up on), so shots and
-  // baselines always capture one font (CEO W-RW29). The WebGL card path never gets a frame.
-  const ready = frame && atlas;
+  // Ready is a frame drawn once the sign atlas settled (CEO W-RW29, see SceneCanvas). The WebGL
+  // card path never gets a frame.
+  const ready = frame;
   useEffect(() => {
     window.__sceneReady = ready;
   }, [ready]);
-  useEffect(() => {
-    let live = true;
-    void signAtlasReady().then(() => live && setAtlas(true));
-    return () => {
-      live = false;
-    };
-  }, []);
   const onReady = useCallback((value: boolean) => setFrame(value), []);
 
   // The look-dev view is the bare vignette: no shell, HUD, loader or toasts (CEO C17).

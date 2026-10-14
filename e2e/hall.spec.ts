@@ -136,6 +136,39 @@ test("the sign shows at the view=hall framing and hides after zooming out", asyn
   expect(brightest(await pixels(page), far.x, far.y, 2)).toBeLessThan(110);
 });
 
+test("a frozen hall is not ready until the late sign font is drawn", async ({ page }, testInfo) => {
+  // The font is held until a frame has been drawn without it; ready must wait for the next frame.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let gaveUp = false;
+  page.on("console", (m) => {
+    if (m.text().includes("sign font Geist did not load")) gaveUp = true;
+  });
+  await page.route("**/*.woff2", async (route) => {
+    await held;
+    await route.continue();
+  });
+  // WebKit's load event waits on the held font, so only the commit is awaited.
+  await page.goto("/?dev=1&freeze=1&view=hall", { waitUntil: "commit" });
+  await expect
+    .poll(() => page.evaluate("window.__sceneDev?.stats()?.frames ?? 0"), { timeout: 30_000 })
+    .toBeGreaterThan(0);
+  // On a slow renderer the first frame can come after the atlas gave up on the held font; ready
+  // is then rightly true, so only that assertion is skipped.
+  if (gaveUp) {
+    testInfo.annotations.push({
+      type: "font-timeout",
+      description: "atlas settled before frame 1",
+    });
+  } else {
+    expect(await page.evaluate("window.__sceneReady === true")).toBe(false);
+  }
+  release();
+  await page.waitForFunction(READY, undefined, { timeout: 30_000 });
+  const at = await project(page, LETTER);
+  expect(brightest(await pixels(page), at.x, at.y, 8)).toBeGreaterThan(110);
+});
+
 test("a panel's opacity goes from 1 to 0 within about 200 ms after zooming out", async ({
   page,
 }) => {
