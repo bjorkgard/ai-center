@@ -85,7 +85,9 @@ export class SignFader {
   setTarget(slot: number, visible: boolean, now: number, snap: boolean): void {
     const next = visible ? 1 : 0;
     if (this.target[slot] === next && !snap) return;
+    // Mid-fade: the time up to now still belongs to the old target.
     if (this.value[slot] === this.target[slot]) this.last[slot] = now;
+    else this.advance(slot, now);
     this.target[slot] = next;
     if (snap) {
       this.value[slot] = next;
@@ -99,21 +101,23 @@ export class SignFader {
 
   // Moves every panel towards its target; true while any is still moving.
   step(now: number): boolean {
-    for (let i = 0; i < this.value.length; i++) {
-      const delta = Math.max(0, now - this.last[i]) / SIGN.fadeMs;
-      this.last[i] = now;
-      const diff = this.target[i] - this.value[i];
-      if (Math.abs(diff) <= delta) {
-        this.value[i] = this.target[i];
-        // Reached inside this step: the end is the step time less the unused part of the step.
-        if (diff !== 0 && this.ended[i] === null) {
-          this.ended[i] = now - (delta - Math.abs(diff)) * SIGN.fadeMs;
-        }
-      } else {
-        this.value[i] = this.value[i] + Math.sign(diff) * delta;
-      }
-    }
+    for (let i = 0; i < this.value.length; i++) this.advance(i, now);
     return this.animating;
+  }
+
+  private advance(i: number, now: number): void {
+    const delta = Math.max(0, now - this.last[i]) / SIGN.fadeMs;
+    this.last[i] = now;
+    const diff = this.target[i] - this.value[i];
+    if (Math.abs(diff) <= delta) {
+      this.value[i] = this.target[i];
+      // Reached inside this step: the end is the step time less the unused part of the step.
+      if (diff !== 0 && this.ended[i] === null) {
+        this.ended[i] = now - (delta - Math.abs(diff)) * SIGN.fadeMs;
+      }
+    } else {
+      this.value[i] = this.value[i] + Math.sign(diff) * delta;
+    }
   }
 }
 

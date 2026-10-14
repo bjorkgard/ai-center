@@ -203,3 +203,20 @@ test("the Cooling slider follows the live duty until you drag it", async ({ page
   await slider.fill("0.4");
   await expect(label).toContainText("Duty 0.40 (set)");
 });
+
+test("in view=cooling Home frames the halls placed now, not the ones placed at load", async ({
+  page,
+}) => {
+  await open(page, "dev=1&view=cooling");
+  const zoom = async () => {
+    await page.getByRole("application", { name: "3D campus view" }).focus();
+    await page.keyboard.press("0");
+    await expect
+      .poll(async () => (await page.evaluate("window.__sceneDev.camera().animating")) as boolean)
+      .toBe(false);
+    return ((await page.evaluate("window.__sceneDev.camera()")) as { zoom: number }).zoom;
+  };
+  const before = await zoom();
+  await page.evaluate("window.__sceneDev.setPlacedHalls(12)");
+  expect(await zoom()).toBeLessThan(before);
+});

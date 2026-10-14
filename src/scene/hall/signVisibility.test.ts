@@ -209,3 +209,15 @@ test("a snap clears the slot's fade timing, so signFade never reports a previous
   expect(fader.opacity(0)).toBe(0);
   expect(fader.timing(0)).toEqual({ start: null, end: null });
 });
+
+test("a panel that reverses mid-fade carries only the time since the reversal towards its new target", () => {
+  const fader = new SignFader(1);
+  fader.setTarget(0, true, 0, true);
+  fader.setTarget(0, false, 0, false);
+  fader.step(50);
+  expect(fader.opacity(0)).toBeCloseTo(0.75, 6);
+  fader.setTarget(0, true, 150, false);
+  // The 100 ms before the reversal still fade out: 0.75 - 0.5 = 0.25, then 10 ms back up.
+  fader.step(160);
+  expect(fader.opacity(0)).toBeCloseTo(0.3, 6);
+});

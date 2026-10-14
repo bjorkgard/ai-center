@@ -213,6 +213,8 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   const firstApply = useRef(true);
   const interactive = params.view !== "lookdev";
   const campusView = params.view === "home";
+  // Every view that renders the campus scene keeps its Home on the halls placed now.
+  const campusScene = campusView || params.view === "cooling";
   // The startup pose frames the campus in the safe area (CEO C25) and follows the safe area and
   // the window size until the camera is moved: the key is the framing as the startup left it.
   const startupKey = useRef<string | null>(null);
@@ -240,14 +242,14 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
 
   // The next home() frames the halls placed now; a placed hall never moves the camera (CEO C25).
   useEffect(() => {
-    if (!campusView) return;
+    if (!campusScene) return;
     const frame = () => ({ bounds: campusBounds(), home: campusHome(placedHalls()) });
     rig.setCampus(frame());
     return subscribeCampus(() => {
       rig.setCampus(frame());
       driverRef.current?.invalidateFrozen();
     });
-  }, [rig, campusView]);
+  }, [rig, campusScene]);
 
   useEffect(() => {
     rig.setViewport({ width: size.width, height: size.height });
