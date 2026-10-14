@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:net";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { maxBytes } from "./shots.config.ts";
+import { maxBytes, readyExpression, viewUrl, views } from "./shots.config.ts";
 import {
   checkBuildIdentity,
   checkConsole,
@@ -53,5 +53,27 @@ describe("ShotFailed", () => {
       await expect(ensurePortFree(port)).rejects.toThrow(ShotFailed);
       await expect(ensurePortFree(port)).rejects.toThrow(`port ${port} is already in use`);
     });
+  });
+});
+
+describe("shots config", () => {
+  test("every entry waits on the scene ready signal (S-RW20)", () => {
+    for (const view of views) expect(view.ready).toBe(readyExpression);
+    expect(readyExpression).toContain("__sceneReady");
+  });
+
+  test("the 04a entry adds dev=1 to the contract URL", () => {
+    const entry = views.find((v) => v.file === "docs/img/04a-core.png");
+    expect(entry?.query).toBe("dev=1");
+    expect(viewUrl("http://x", "home", entry?.query)).toBe(
+      "http://x/?source=mock&scenario=steady&seed=1&freeze=1&view=home&dev=1",
+    );
+    expect(viewUrl("http://x", "home")).toBe(
+      "http://x/?source=mock&scenario=steady&seed=1&freeze=1&view=home",
+    );
+  });
+
+  test("the spike entry is gone", () => {
+    expect(views.some((v) => v.name.startsWith("spike"))).toBe(false);
   });
 });

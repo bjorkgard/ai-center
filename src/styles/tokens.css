@@ -20,6 +20,8 @@
   --color-glass: rgb(255 255 255 / 0.06);
   --color-glass-border: rgb(255 255 255 / 0.08);
   --color-text: #e6ebf5;
+  --color-text-2: #a3acbd;
+  --color-text-3: #8a93a6;
   --color-cyan: #22d3ee;
   --color-claude: #f59e0b;
   --color-codex: #d1fae5;
@@ -68,4 +70,12 @@
   --status-shape-waiting-user: beacon-triangle;
   --status-shape-error: square;
   --status-shape-done: check;
+}
+
+/* Motion (design D20): one easing for everything. */
+:root {
+  --dur-fast: 150ms;
+  --dur-ui: 250ms;
+  --dur-scene: 600ms;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
