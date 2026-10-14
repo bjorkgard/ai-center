@@ -53,6 +53,12 @@ A low-poly isometric campus in dark slate and concrete, lit by cool moonlight wi
 
 ![Look-dev view: hall, rack row with six status LEDs, fibre, vendor trim](docs/img/04c-lookdev.png)
 
+## Hall (chunk 06)
+
+One data hall built in code: floor slab, walls, a cutaway roof, cold and hot aisle tiles, a door as one merged mesh on a shared vertex-coloured material, and the windows as a second mesh on the shared window glow, with a sign panel above the door that reads the hall letter and project name from one shared canvas atlas. The roof is one clipping plane, cut away in every view; the sign fades out over 200 ms when it faces away or its project name drops under 12 px. `?view=hall` frames one hall; `?dev=1` adds a collapsed Hall section with the roof toggle (`__sceneDev.setRoofCut(on)`). The hall costs 4 scene draw calls (3 main pass, 1 shadow).
+
+![One data hall with the roof cut away](docs/img/06-hall.png)
+
 ## Controls
 
 Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` returns home, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.
@@ -79,4 +85,4 @@ Branches are `chunk/NN-slug`, with one pull request per chunk and a Conventional
 
 ## Status
 
-Chunk 02b in progress. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.
+Chunk 06 (parametric data hall) built. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.

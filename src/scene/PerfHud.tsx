@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore } from "../app/store/index.ts";
+import { isRoofCut, setRoofCut, subscribeRoof } from "./hall/roof.ts";
 import { hudRows } from "./hud.ts";
 import { getSceneProbe, type SceneStats } from "./stats.ts";
 
@@ -10,12 +11,15 @@ const BUTTON =
 // Dev perf HUD (S-RW4, DR11): top-right of the safe area, 8 px inset, Geist Mono 12 px
 // with tabular numerals, solid fill, no blur. It reads the probe on a timer, not per frame.
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
-// projection toggle and the right-panel toggle.
+// projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
+// chunk 06) each hold one chunk's dev controls (design-review Phase 3 WD14).
 export function PerfHud({ frozen }: { frozen: boolean }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
   const rightPanelOpen = useStore((s) => s.rightPanelOpen);
   const [cameraOpen, setCameraOpen] = useState(true);
+  const [hallOpen, setHallOpen] = useState(false);
+  const roofCut = useSyncExternalStore(subscribeRoof, isRoofCut);
   const [view, setView] = useState<{ stats: SceneStats | null; fps: number }>({
     stats: null,
     fps: 0,
@@ -81,6 +85,30 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
               onClick={() => useStore.getState().setRightPanelOpen(!rightPanelOpen)}
             >
               {rightPanelOpen ? "Hide" : "Show"} right panel
+            </button>
+          </div>
+        )}
+      </section>
+      <section data-testid="dev-hall" className="mt-2 border-t border-white/12 pt-2">
+        <button
+          type="button"
+          aria-expanded={hallOpen}
+          aria-controls="dev-hall-body"
+          className="flex w-full items-center justify-between text-caption text-text-2 hover:text-text"
+          onClick={() => setHallOpen(!hallOpen)}
+        >
+          Hall
+          <span aria-hidden="true">{hallOpen ? "-" : "+"}</span>
+        </button>
+        {hallOpen && (
+          <div id="dev-hall-body">
+            <button
+              type="button"
+              aria-pressed={roofCut}
+              className={BUTTON}
+              onClick={() => setRoofCut(!roofCut)}
+            >
+              Roof cut {roofCut ? "on" : "off"}
             </button>
           </div>
         )}

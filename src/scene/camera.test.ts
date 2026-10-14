@@ -6,6 +6,7 @@ import {
   ISO_ELEVATION,
   ORTHO_ZOOM,
   PERSPECTIVE_FOV,
+  SEMANTIC_ZOOM,
   clampDistance,
   clampZoom,
   createCameraRig,
@@ -289,4 +290,11 @@ test("a nudge never leaves the campus bounds or the zoom range", () => {
   expect(Math.abs(rig.framing.target.z)).toBeLessThanOrEqual(CAMPUS_BOUNDS.halfZ + 1e-9);
   expect(rig.framing.zoom).toBe(ORTHO_ZOOM.max);
   expect(run(10)).toBe(false);
+});
+
+test("SEMANTIC_ZOOM is inside the zoom range and the 12 px letter zoom at the isometric pose", () => {
+  expect(SEMANTIC_ZOOM).toBeGreaterThanOrEqual(ORTHO_ZOOM.min);
+  expect(SEMANTIC_ZOOM).toBeLessThanOrEqual(ORTHO_ZOOM.max);
+  // A vertical 0.28-unit capital projects to 0.28 x cos(elevation) x zoom pixels.
+  expect(0.28 * Math.cos(ISO_ELEVATION) * SEMANTIC_ZOOM).toBeCloseTo(12, 6);
 });

@@ -20,6 +20,12 @@ interface SceneDevHooks {
   project(point: [number, number, number]): { x: number; y: number } | null;
   // Lights in the scene by three.js type (04c rig completeness check).
   rigLights(): Record<string, number>;
+  // Cuts or restores the roof of every hall (chunk 06); anything but true or false warns.
+  setRoofCut(on: boolean): void;
+  // Forces a quality tier; medium and low run without bloom.
+  setQuality(tier: import("./store/ui.ts").QualityTier): void;
+  // Opacity of a hall's sign panel by slot 0-11.
+  signOpacity(slot: number): number | null;
   // Dispose events the shared material library received since the hooks installed.
   materialDisposeEvents(): number;
   // Disposes one shared library material on purpose, so a test can see the guard count it.

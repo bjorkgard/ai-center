@@ -1,4 +1,4 @@
-export type ViewName = "home" | "lookdev";
+export type ViewName = "home" | "lookdev" | "hall";
 
 export interface AppParams {
   dev: boolean;
@@ -50,7 +50,7 @@ export function parseParams(search: string): ParsedParams {
   const dev = pick("dev", { 0: false, 1: true }, false);
   const webgl = pick("webgl", { 0: false }, true);
   const calm = pick("calm", { 0: false, 1: true }, true);
-  const view = pick<ViewName>("view", { home: "home", lookdev: "lookdev" }, "home");
+  const view = pick<ViewName>("view", { home: "home", lookdev: "lookdev", hall: "hall" }, "home");
   const freeze = pick("freeze", { 1: true }, false);
   const source = word("source");
   const scenario = word("scenario");
