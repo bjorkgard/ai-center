@@ -23,6 +23,13 @@ import {
   setDuty,
   subscribePlant,
 } from "./plant/plantDev.ts";
+import {
+  displayedRate,
+  packetRateOverride,
+  setPacketRate,
+  subscribeNetwork,
+} from "./fibre/networkDev.ts";
+import { PACKET } from "./fibre/packets.ts";
 import { SIGN_SLOTS } from "./hall/hallLayout.ts";
 import { RACK_SLOTS } from "./hall/rackLayout.ts";
 import { hudRows } from "./hud.ts";
@@ -36,7 +43,7 @@ const BUTTON =
 // with tabular numerals, solid fill, no blur. It reads the probe on a timer, not per frame.
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
 // projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
-// chunk 06, Racks from chunk 07, Campus from chunk 08, Cooling from chunk 09) each hold one chunk's dev controls (design-review Phase 3 WD14).
+// chunk 06, Racks from chunk 07, Campus from chunk 08, Cooling from chunk 09, Network from chunk 10) each hold one chunk's dev controls (design-review Phase 3 WD14).
 export function PerfHud({ frozen }: { frozen: boolean }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
@@ -46,11 +53,14 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
   const [racksOpen, setRacksOpen] = useState(false);
   const [campusOpen, setCampusOpen] = useState(false);
   const [coolingOpen, setCoolingOpen] = useState(false);
+  const [networkOpen, setNetworkOpen] = useState(false);
   const [rackHall, setRackHall] = useState(0);
   const placed = useSyncExternalStore(subscribeCampus, placedHalls);
   const waypoints = useSyncExternalStore(subscribeCampus, showWaypoints);
   const forced = useSyncExternalStore(subscribePlant, dutyOverride);
   const [live, setLive] = useState<number | null>(null);
+  const forcedRate = useSyncExternalStore(subscribeNetwork, packetRateOverride);
+  const rate = displayedRate(forcedRate);
   const duty = displayedDuty(forced, live);
   const roofCut = useSyncExternalStore(subscribeRoof, isRoofCut);
   const racks = useSyncExternalStore(subscribeRacks, () => shownCount(rackHall));
@@ -258,6 +268,34 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
                 value={duty}
                 aria-label="Cooling duty"
                 onChange={(event) => setDuty(Number(event.target.value))}
+              />
+            </label>
+          </div>
+        )}
+      </section>
+      <section data-testid="dev-network" className="mt-2 border-t border-white/12 pt-2">
+        <button
+          type="button"
+          aria-expanded={networkOpen}
+          aria-controls="dev-network-body"
+          className="flex w-full items-center justify-between text-caption text-text-2 hover:text-text"
+          onClick={() => setNetworkOpen(!networkOpen)}
+        >
+          Network
+          <span aria-hidden="true">{networkOpen ? "-" : "+"}</span>
+        </button>
+        {networkOpen && (
+          <div id="dev-network-body">
+            <label className="mt-2 flex items-center justify-between gap-2 text-text-2">
+              Packets {rate.toFixed(1)}/s ({forcedRate === null ? "default" : "set"})
+              <input
+                type="range"
+                min={0}
+                max={PACKET.maxRate}
+                step={0.5}
+                value={rate}
+                aria-label="Packet rate"
+                onChange={(event) => setPacketRate(Number(event.target.value))}
               />
             </label>
           </div>

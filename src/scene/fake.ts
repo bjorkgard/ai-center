@@ -2,6 +2,7 @@ import { createRng, hash01 } from "../sim/rng.ts";
 import { RACK_SLOTS } from "./hall/rackLayout.ts";
 import { SIGN_SLOTS } from "./hall/hallLayout.ts";
 import type { Status } from "./materials.ts";
+import { PACKET, packetGap, packetTravel, wrapPhase } from "./fibre/packets.ts";
 import { TOWER_COUNT } from "./plant/plantLayout.ts";
 import { VAPOUR, clampDuty, fanTurnsPerSecond, particleAge } from "./plant/vapour.ts";
 import type { HallSign, RackLoad, SceneSignals } from "./signals.ts";
@@ -55,6 +56,8 @@ export interface FakeOptions {
   racks?: number;
   // The dev duty slider: a number replaces the fake duty, null leaves it alone.
   dutyOverride?: () => number | null;
+  // The dev packet rate: a number replaces the default, null leaves it alone.
+  packetRateOverride?: () => number | null;
 }
 
 // The fake duty: a slow swell around 0.75 that starts at 0.75 at scene time 0, so the frozen
@@ -63,7 +66,13 @@ export const FAKE_DUTY = { mean: 0.75, swing: 0.2, period: 90 } as const;
 // A frame step above this is a pause or a jump in scene time, and a fan does not catch up on it.
 const MAX_FAN_STEP = 1;
 
-export function createFakeSignals({ seed, now, racks, dutyOverride }: FakeOptions): SceneSignals {
+export function createFakeSignals({
+  seed,
+  now,
+  racks,
+  dutyOverride,
+  packetRateOverride,
+}: FakeOptions): SceneSignals {
   // Every hall and rack drawn once up front, so reads in the frame loop allocate nothing.
   const loads: RackLoad[][] = Array.from({ length: SIGN_SLOTS }, (_, hall) =>
     Array.from({ length: RACK_SLOTS }, (_, rack) => {
@@ -121,6 +130,15 @@ export function createFakeSignals({ seed, now, racks, dutyOverride }: FakeOption
         fanTurned[fan] += TAU * fanTurnsPerSecond(duty(), reducedMotion) * step;
       }
       return fanStart[fan] + fanTurned[fan];
+    },
+    packetRate() {
+      const forced = packetRateOverride?.() ?? null;
+      const rate = forced ?? PACKET.defaultRate;
+      return Number.isNaN(rate) ? 0 : Math.min(Math.max(rate, 0), PACKET.maxRate);
+    },
+    // Every line reads the same closed form: the line only decides where the distance wraps.
+    packetPhase(_line, i, length, count, reducedMotion = false) {
+      return wrapPhase(packetTravel(now(), reducedMotion) + packetGap(length, count) * i, length);
     },
   };
 }

@@ -6,6 +6,16 @@
 
 A live 3D AI data-centre dashboard that tracks Claude and Codex agents and subagents, styled like a strategy game.
 
+## World
+
+The campus, built in code from pure layouts and closed-form fake signals, chunk by chunk:
+
+![One data hall with the roof cut away](docs/img/06-hall.png)
+![One data hall with 16 racks and pulsing status LEDs](docs/img/07-racks.png)
+![The campus at night: halls A and B, pads, roads, gate, parking and trees](docs/img/08-campus.png)
+![The cooling plant at night: three towers with vapour and two chillers](docs/img/09-cooling.png)
+![The power yard and the fibre with packets leaving the vault](docs/img/10-power-network.png)
+
 ## Development setup
 
 Install Vite+ (`vp`); it installs the Node version pinned in `.node-version`. Then:
@@ -67,7 +77,7 @@ Each hall owns one rack InstancedMesh (16 bodies) and one LED InstancedMesh (208
 
 ## Campus (chunk 08)
 
-The static campus around the halls, from a pure layout (`src/scene/campus/layout.ts`): 12 hall slots on a 4 x 3 grid (A and B in the front row nearest the gate, filling toward the back), the road grid, and zones for the cooling plant, power yard, gate, parking and loading dock. Halls A and B stand with the seeded fake racks; every other slot shows an empty pad with its number `01`-`12`, which appears once it measures 12 px. The site has roads, a parking lot with instanced parked cars (three dark greys, lights off), a security gate with a barrier boom, a loading dock with bay doors, instanced road lamps on the warm glow, trees, a perimeter fence open at the gate and a gate monument reading SYNAPSE HORIZON. The camera bounds, the ground, its grid and the shadow camera all come from the campus extent, and the first view and `0` frame the placed halls plus the plant, power and gate zones. The whole home view costs 33 scene draw calls with shadows on (27 for the campus, 6 for the cooling plant of chunk 09). `?dev=1` adds a collapsed Campus section (placed halls 2-12, waypoint graph toggle) with `__sceneDev.setPlacedHalls(n)` and `__sceneDev.setWaypoints(on)`.
+The static campus around the halls, from a pure layout (`src/scene/campus/layout.ts`): 12 hall slots on a 4 x 3 grid (A and B in the front row nearest the gate, filling toward the back), the road grid, and zones for the cooling plant, power yard, gate, parking and loading dock. Halls A and B stand with the seeded fake racks; every other slot shows an empty pad with its number `01`-`12`, which appears once it measures 12 px. The site has roads, a parking lot with instanced parked cars (three dark greys, lights off), a security gate with a barrier boom, a loading dock with bay doors, instanced road lamps on the warm glow, trees, a perimeter fence open at the gate and a gate monument reading SYNAPSE HORIZON. The camera bounds, the ground, its grid and the shadow camera all come from the campus extent, and the first view and `0` frame the placed halls plus the plant, power and gate zones. The whole home view costs 38 scene draw calls with shadows on (27 for the campus, 6 for the cooling plant of chunk 09, 5 for the power yard and fibre of chunk 10). `?dev=1` adds a collapsed Campus section (placed halls 2-12, waypoint graph toggle) with `__sceneDev.setPlacedHalls(n)` and `__sceneDev.setWaypoints(on)`.
 
 ![The campus at night: halls A and B, pads, roads, gate, parking and trees](docs/img/08-campus.png)
 
@@ -76,6 +86,12 @@ The static campus around the halls, from a pure layout (`src/scene/campus/layout
 The cooling plant stands in the plant zone at the top left of the home view: three low-poly cooling towers with an open fan stack each, two chillers, and a fan turning in every stack. Towers and chillers cast shadows. The vapour is up to 60 soft billboards per tower in one InstancedMesh (one draw call for the tower group), `#8090A8` at opacity 0.35 under normal alpha blending with no depth write, ordered back to front against the camera each frame. Each billboard grows from 1.2 to 2.4 units over a 6 s life and rises 0.6 units a second; it fades in over 0.5 s and out over the last 1.5 s through the per-instance fade, so a rebirth never pops. Vapour is a closed form of scene time and seed (particle `i` has age `(t + offset) mod 6 s` and shows while `i < 60 x duty`), so every frozen shot has full plumes and a duty change reaches them as particles are reborn. Fans turn 0.5 times a second at duty 1 and a tenth of that at duty 0; with reduced motion the vapour is 30% and the fans a quarter of their speed. The duty, each particle's age and each fan's angle come from `SceneSignals` (`duty()`, `vapourPhase(i)`, `fanAngle(i)`), seeded in `src/scene/fake.ts`. `?view=cooling` frames the plant zone; `?dev=1` adds a collapsed Cooling section with a duty slider (it follows the live duty until you drag it) and `__sceneDev.setDuty(value)`.
 
 ![The cooling plant at night: three towers with vapour and two chillers](docs/img/09-cooling.png)
+
+## Power and network (chunk 10)
+
+The power yard stands in the power zone, left of the gate: a fenced substation with three transformers, three generators with exhaust stacks, three fuel tanks lying on saddles and the fibre entry vault at the zone's east edge, on the axis of the road in front of the first hall row. Transformers, generators and tanks cast shadows; the whole yard is one merged mesh (2 scene draw calls). The fibre runs from the vault along the road grid (the first road row, then a column road, then the road in front of a hall's row) to each placed hall's door side, with rounded right-angle bends of radius 0.6, 0.4 in from the kerb and 0.03 above the road; the last 0.6 units climb the wall beside the door to a small entry box. Lines that start the same way share their tubes, with a grey junction box where they part. Only placed halls get a line (A and B always); the lines are rebuilt when the placed set changes and the old geometry is disposed. The fibre costs 3 draw calls: the tubes, the junction and entry boxes, and one InstancedMesh for every line's packets. Packets are pale cyan spheres (`#A5F3FC`, emissive 3.2, the top of the glow ladder) that move at 2.5 units a second, one a second per line by default and at most 12 on a line (never closer than 1.2): a line of length `L` holds `n` packets (`ceil(rate L / 2.5)`, capped at 12 and at `L / 1.2`) and packet `j` has travelled `2.5 t + j L / n` units, wrapped to the line, so they sit evenly over the whole line and every frozen shot has populated lines; with reduced motion they move at 25% of that and the spacing stays. The rate and the lines' travelled distance come from `SceneSignals` (`packetRate()`, `packetPhase(line, i, length, count)`, which places packet `i`), computed from scene time alone in `src/scene/fake.ts`. `?view=power` frames the power zone and the start of the road beyond its vault; `?dev=1` adds a collapsed Network section with a packet-rate slider and `__sceneDev.setPacketRate(perSecond)`, and the read-only `__sceneDev.fibreLines()` and `__sceneDev.packetSpeed()`.
+
+![The power yard at night: substation, generators, tanks, the vault and the fibre with packets](docs/img/10-power-network.png)
 
 ## Controls
 
@@ -103,4 +119,4 @@ Branches are `chunk/NN-slug`, with one pull request per chunk and a Conventional
 
 ## Status
 
-Chunk 09 (cooling plant) built. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.
+Chunk 10 (power yard, fibre and packets) built; the world gallery above shows chunks 06 to 10. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PLAN.md](docs/PLAN.md) for the build plan.

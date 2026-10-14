@@ -40,6 +40,12 @@ interface SceneDevHooks {
   fanTurnRate(): number | null;
   // The duty the plant drew last (read-only); null before the first frame.
   liveDuty(): number | null;
+  // Sets the packets a second on every fibre line 0-10 (chunk 10); out of range input clamps and warns.
+  setPacketRate(perSecond: number): void;
+  // Fibre lines drawn now (read-only); null before the first frame.
+  fibreLines(): number | null;
+  // Units a second a packet moves as drawn, measured from its matrix (read-only); null before it moves.
+  packetSpeed(): number | null;
   // Forces a quality tier; medium and low run without bloom.
   setQuality(tier: import("./store/ui.ts").QualityTier): void;
   // Opacity of a hall's sign panel by slot 0-11.

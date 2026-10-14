@@ -36,8 +36,10 @@ import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { HALL_FRAMING } from "./hall/hallLayout.ts";
 import { subscribeRacks } from "./hall/racksDev.ts";
 import { subscribeRoof } from "./hall/roof.ts";
+import { subscribeNetwork } from "./fibre/networkDev.ts";
 import { subscribePlant } from "./plant/plantDev.ts";
 import { COOLING_FRAMING } from "./plant/plantLayout.ts";
+import { POWER_FRAMING } from "./power/powerLayout.ts";
 import { LOOKDEV_FRAMING } from "./lookdevFraming.ts";
 import { MarkPass } from "./MarkPass.ts";
 import { setBloomGlow } from "./materials.ts";
@@ -214,7 +216,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   const interactive = params.view !== "lookdev";
   const campusView = params.view === "home";
   // Every view that renders the campus scene keeps its Home on the halls placed now.
-  const campusScene = campusView || params.view === "cooling";
+  const campusScene = campusView || params.view === "cooling" || params.view === "power";
   // The startup pose frames the campus in the safe area (CEO C25) and follows the safe area and
   // the window size until the camera is moved: the key is the framing as the startup left it.
   const startupKey = useRef<string | null>(null);
@@ -239,6 +241,7 @@ function SceneRuntime({ rig, params, control, onReady, onRestored, bloom }: Runt
   useEffect(() => subscribeRoof(() => driverRef.current?.invalidateFrozen()), []);
   useEffect(() => subscribeRacks(() => driverRef.current?.invalidateFrozen()), []);
   useEffect(() => subscribePlant(() => driverRef.current?.invalidateFrozen()), []);
+  useEffect(() => subscribeNetwork(() => driverRef.current?.invalidateFrozen()), []);
 
   // The next home() frames the halls placed now; a placed hall never moves the camera (CEO C25).
   useEffect(() => {
@@ -499,6 +502,13 @@ function Scene({ params, onReady }: { params: AppParams; onReady: (ready: boolea
       created.setFraming({
         target: new Vector3(...COOLING_FRAMING.target),
         zoom: COOLING_FRAMING.zoom,
+      });
+    } else if (params.view === "power") {
+      // The campus scene, framed on the power zone and its vault.
+      created.setCampus({ bounds: campusBounds(), home: campusHome(placedHalls()) });
+      created.setFraming({
+        target: new Vector3(...POWER_FRAMING.target),
+        zoom: POWER_FRAMING.zoom,
       });
     }
     return created;

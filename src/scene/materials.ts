@@ -9,6 +9,7 @@ import {
   type Material,
 } from "three";
 import { ROOF_CUT_CONSTANT } from "./hall/hallLayout.ts";
+import { PACKET } from "./fibre/packets.ts";
 import { VAPOUR } from "./plant/vapour.ts";
 
 // Status palette (design D17); the same table drives LEDs, dots and table cells.
@@ -222,6 +223,13 @@ function lampMaterial(): MeshStandardMaterial {
   return material;
 }
 
+// The network packets: pale cyan spheres, above the fibre and below chunk 18's beacon (4.0).
+function packetMaterial(): MeshStandardMaterial {
+  const material = glow(PACKET.color, 3.2);
+  material.name = "packet";
+  return material;
+}
+
 const LEDS = Object.fromEntries(
   STATUS_ORDER.map((status) => [status, glow(STATUS_COLORS[status], LED_INTENSITY)]),
 ) as Record<Status, MeshStandardMaterial>;
@@ -258,6 +266,8 @@ export const MATERIALS = {
   vapour: vapourMaterial(),
   window: glow(WINDOW_COLOR, 2),
   fibre: glow(FIBRE_COLOR, 2.6),
+  // The packets (chunk 10): the top of the fibre's ladder step, pale cyan at 3.2 (WD2).
+  packet: packetMaterial(),
   claude: new MeshStandardMaterial({
     color: VENDOR_COLORS.claude,
     emissive: VENDOR_COLORS.claude,

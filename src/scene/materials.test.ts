@@ -350,3 +350,23 @@ test("the vapour material is a library instance on the fade helper, and no glow"
   // setBloomGlow leaves it alone: it has no emissive to scale.
   expect("emissiveIntensity" in MATERIALS.vapour).toBe(false);
 });
+
+test("emissive ladder with the packets: fibre 2.6 < packets 3.2, pale cyan above the bloom threshold", () => {
+  expect(MATERIALS.packet.emissiveIntensity).toBe(3.2);
+  expect(MATERIALS.packet.name).toBe("packet");
+  expect(MATERIALS.packet.emissiveIntensity).toBeGreaterThan(MATERIALS.fibre.emissiveIntensity);
+  expect(`#${MATERIALS.packet.emissive.getHexString().toUpperCase()}`).toBe("#A5F3FC");
+  expect(emitted(MATERIALS.packet)).toBeGreaterThan(RENDER.bloom.luminanceThreshold);
+  expect(allMaterials()).toContain(MATERIALS.packet);
+});
+
+test("with bloom off the packets are x1.5 and stay above the fibre", () => {
+  try {
+    setBloomGlow(false);
+    expect(MATERIALS.packet.emissiveIntensity).toBeCloseTo(3.2 * 1.5, 9);
+    expect(MATERIALS.packet.emissiveIntensity).toBeGreaterThan(MATERIALS.fibre.emissiveIntensity);
+  } finally {
+    setBloomGlow(true);
+  }
+  expect(MATERIALS.packet.emissiveIntensity).toBe(3.2);
+});

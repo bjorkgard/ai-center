@@ -4,6 +4,7 @@ import { setPlacedHalls, setWaypoints } from "./campus/campusDev.ts";
 import { simulateFrameInterval } from "./loop/monitor.ts";
 import { ledColor, setFakeLoad, setRackCount, shownCount } from "./hall/racksDev.ts";
 import { setRoofCut } from "./hall/roof.ts";
+import { fibreLines, packetSpeed, setPacketRate } from "./fibre/networkDev.ts";
 import { fanTurnRate, liveDuty, setDuty } from "./plant/plantDev.ts";
 import { signFadeTiming, signOpacity } from "./hall/signVisibility.ts";
 import { guardDisposeEvents } from "./render.ts";
@@ -42,6 +43,11 @@ export function installSceneDev(
     fanTurnRate,
     // The duty the plant drew last (read-only), or null before the first frame.
     liveDuty,
+    setPacketRate,
+    // Fibre lines drawn now (read-only), or null before the first frame.
+    fibreLines,
+    // Units a second a packet moves as drawn (read-only), or null before it has moved.
+    packetSpeed,
     // Forces a quality tier: medium and low turn bloom off, which scales the glow (WD4).
     setQuality: (tier) => {
       if (tier !== "high" && tier !== "medium" && tier !== "low") {

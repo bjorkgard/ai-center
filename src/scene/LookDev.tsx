@@ -6,6 +6,7 @@ import type { CameraRig } from "./camera.ts";
 import { fenceBayGeometry, treeGeometry } from "./campus/parts.ts";
 import { Hall, SignPanelMesh } from "./hall/Hall.tsx";
 import { SLAB, createLookDevSignals, type Vec3 } from "./lookdevLayout.ts";
+import { PACKET } from "./fibre/packets.ts";
 import { MATERIALS } from "./materials.ts";
 import { Plant } from "./plant/Plant.tsx";
 import { SignalsContext, useSignals } from "./signals.ts";
@@ -49,6 +50,11 @@ function Trim() {
         material={MATERIALS.fibre}
         shadow={false}
       />
+      {[-2.2, 0.6, 3.4].map((x) => (
+        <mesh key={x} position={[x, 0.13, 3.7]} material={MATERIALS.packet}>
+          <sphereGeometry args={[PACKET.radius, 8, 4]} />
+        </mesh>
+      ))}
     </>
   );
 }
