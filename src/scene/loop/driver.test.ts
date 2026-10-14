@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { createRenderDriver, type DriverOptions } from "./driver.ts";
+import { createRenderDriver, FATAL_AFTER, type DriverOptions } from "./driver.ts";
 import { createFakeEnv } from "./fakeEnv.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -162,6 +162,52 @@ test("freeze renders one frame at scene time 0 and then only on invalidateFrozen
   expect(times).toEqual([0, 0]);
   run(fake, 60, 1000);
   expect(times).toHaveLength(2);
+});
+
+test("freeze retries a failing frame on the next tick until it succeeds", () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const onFatal = vi.fn();
+  let n = 0;
+  const { fake, driver } = setup({
+    freeze: true,
+    onFatal,
+    render: () => {
+      if (++n <= 2) throw new Error("not yet");
+    },
+  });
+  driver.start();
+  fake.step(16.7);
+  fake.step(16.7);
+  fake.step(16.7);
+  expect(n).toBe(3);
+  expect(onFatal).not.toHaveBeenCalled();
+  run(fake, 60, 1000);
+  expect(n).toBe(3);
+  driver.invalidateFrozen();
+  run(fake, 60, 100);
+  expect(n).toBe(4);
+});
+
+test("freeze with an always-failing render calls onFatal after FATAL_AFTER ticks", () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const onFatal = vi.fn();
+  let n = 0;
+  const { fake, driver } = setup({
+    freeze: true,
+    onFatal,
+    render: () => {
+      n++;
+      throw new Error("frozen boom");
+    },
+  });
+  driver.start();
+  for (let i = 0; i < FATAL_AFTER - 1; i++) fake.step(16.7);
+  expect(onFatal).not.toHaveBeenCalled();
+  fake.step(16.7);
+  expect(onFatal).toHaveBeenCalledTimes(1);
+  expect(onFatal).toHaveBeenCalledWith("frozen boom");
+  expect(n).toBe(FATAL_AFTER);
+  expect(fake.pending()).toBe(0);
 });
 
 test("a one-off frame error keeps looping and logs once", () => {

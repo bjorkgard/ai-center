@@ -1,3 +1,24 @@
+## [0.5.1](https://github.com/bjorkgard/ai-center/compare/v0.5.0...v0.5.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* quantise shots without dithering at quality 100 ([#16](https://github.com/bjorkgard/ai-center/issues/16)) ([5ebf513](https://github.com/bjorkgard/ai-center/commit/5ebf513866fc130c532e94c496ffa82994b74a92))
+
+# [0.5.0](https://github.com/bjorkgard/ai-center/compare/v0.4.0...v0.5.0) (2026-10-14)
+
+
+### Features
+
+* add lighting rig, material library and look-dev view ([#15](https://github.com/bjorkgard/ai-center/issues/15)) ([a3c6d7b](https://github.com/bjorkgard/ai-center/commit/a3c6d7b37fd9a7070ce78c288fe08811e706b0d2))
+
+# [0.4.0](https://github.com/bjorkgard/ai-center/compare/v0.3.0...v0.4.0) (2026-10-14)
+
+
+### Features
+
+* add glass UI shell with loader, toasts and safe area ([#14](https://github.com/bjorkgard/ai-center/issues/14)) ([ae34502](https://github.com/bjorkgard/ai-center/commit/ae345028d130a4cbaff3f9e1960a5b4549ade24f))
+
 ## [0.2.1](https://github.com/bjorkgard/ai-center/compare/v0.2.0...v0.2.1) (2026-10-12)
 
 

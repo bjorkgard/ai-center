@@ -113,6 +113,7 @@ export function createRenderDriver(options: DriverOptions): RenderDriver {
     } catch (err) {
       errorCount++;
       consecutiveErrors++;
+      if (freeze) frozenPending = true;
       const message = err instanceof Error ? err.message : String(err);
       if (!logged.has(message)) {
         logged.add(message);
