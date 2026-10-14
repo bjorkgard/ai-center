@@ -1,0 +1,18 @@
+# Paths excluded from the graphify knowledge graph (gitignore syntax).
+# .gitignore is honored as well; this file can only exclude more.
+
+# Screenshots and image assets: the vision pass costs tokens and adds no architecture.
+docs/img/
+docs/designs/*.png
+e2e/__screenshots__/
+public/
+
+# ADR 0001 raw benchmark runs; the ADR itself summarizes them.
+docs/adr/0001-results/
+
+# Agent tooling and generated hook wrappers.
+.claude/
+.vite-hooks/
+
+# Test fixtures for scripts/check-workflows.ts.
+scripts/fixtures/
