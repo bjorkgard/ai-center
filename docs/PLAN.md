@@ -125,7 +125,7 @@ One source switch (`mock | live | replay`) in a dev menu; the rest of the app ca
 
 ## 4. README and screenshot protocol (applies to every chunk)
 
-- Images live in `docs/img/NN-<slug>.png` (NN = chunk number), 1280x720 PNG, compressed under 200 KB: `scripts/shots.ts` quantizes each capture with `sharp(...).png({ palette: true, quality: 80, effort: 10 })` (`sharp` is a dev dependency, never in the SEA bundle; eng E2).
+- Images live in `docs/img/NN-<slug>.png` (NN = chunk number), 1280x720 PNG, compressed under 200 KB: `scripts/shots.ts` quantizes each capture with `sharp(...).png({ palette: true, quality: 100, effort: 10, dither: 0 })`, with no dithering so flat 3D faces stay flat and quality 100 so bloom gradients do not band (`sharp` is a dev dependency, never in the SEA bundle; eng E2).
 - Captured by `vp run shots` (Playwright, Chromium), which opens the app with `?source=mock&scenario=steady&seed=1&freeze=1&view=<name>`. `freeze=1` stops the animation clock at a fixed time so images are reproducible.
 - Each chunk adds its view name(s) to `scripts/shots.config.ts`, so old images regenerate when the look changes.
 - Exception: `14b-release.png` shows a GitHub Release page, so it is captured by hand, not by `vp run shots`.
