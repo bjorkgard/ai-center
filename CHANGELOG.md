@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/bjorkgard/ai-center/compare/v0.10.0...v0.11.0) (2026-10-14)
+
+
+### Features
+
+* add power yard, road-grid fibre and closed-form packets ([#26](https://github.com/bjorkgard/ai-center/issues/26)) ([5009ba1](https://github.com/bjorkgard/ai-center/commit/5009ba1ffb249271fc55c56243ca8cbe0d4fc7ea))
+
 # [0.10.0](https://github.com/bjorkgard/ai-center/compare/v0.9.0...v0.10.0) (2026-10-14)
 
 
