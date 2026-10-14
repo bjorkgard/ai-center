@@ -23,3 +23,23 @@
   - Trigger to pick up: chunk 36's M1 Air-class runs show a visible stutter in the first seconds after launch.
   - Effort: S (human ~2h / CC ~10 min).
   - Depends on: chunk 04a frame monitor.
+
+- **P3: View-fitted shadow camera** (deferred by /plan-ceo-review C29, 2026-10-14, Phase 3 review)
+  - What: fit the directional light's shadow camera to the visible ground area each time the camera moves, snapped to whole shadow-map texels so shadows do not shimmer, instead of one 2048 map stretched over the whole campus.
+  - Why: with the campus-fitted map (chunk 08, CEO W-RW1), one shadow texel is about 0.03 world units over a campus of about 60 x 45 units [estimated], about 7 CSS px at the maximum zoom of 240 px per unit, so shadow edges look soft or blocky when zoomed close.
+  - Pros: crisp shadows at every zoom for the same 2048 map. Cons: shadow camera updates on every camera move; texel snapping needed to avoid shimmer; casters outside the view must still be included so off-screen objects do not lose their shadows.
+  - Context: `src/scene/LightRig.tsx` (shadow camera extent), `src/scene/camera.ts` (zoom range), chunk 36 auto quality tiering, `docs/PLAN.md` "CEO review record: Phase 3", Section 7 P-1 and C29.
+  - Effort: human S / CC S (human ~3h / CC ~15 min).
+  - Priority: P3.
+  - Trigger to pick up: chunk 36, or shadows look blocky at close zoom on the campus.
+  - Depends on: chunk 08 campus layout and shadow fit.
+
+- **P3: Static shadow caching** (deferred by /plan-eng-review E29, 2026-10-14, Phase 3 review)
+  - What: render the directional light's shadow map only when a caster moves or the light changes (`renderer.shadowMap.autoUpdate = false`, set `needsUpdate` on change), with moving parts (fans, later vehicles) either excluded from casting or flagging an update.
+  - Why: three re-renders the shadow map every rendered frame (`WebGLShadowMap.js:86`), also in C16's 30 fps calm mode, although most campus casters never move; an all-day tab spends GPU on identical shadows.
+  - Pros: less GPU per frame, most in calm mode. Cons: a moving part that forgets to flag freezes its shadow; fan shadows stop turning unless fans stop casting; interacts with the view-fitted shadow TODO (C29), which needs an update on every camera move.
+  - Context: `src/scene/LightRig.tsx`, `src/scene/render.ts` (quality tiers), chunk 36 auto tiering, `docs/PLAN.md` "Eng review record: Phase 3", E29.
+  - Effort: human S / CC S (human ~3h / CC ~15 min).
+  - Priority: P3.
+  - Trigger to pick up: chunk 36's M1 Air runs show calm mode GPU-bound or the shadow pass dominating frame time.
+  - Depends on: chunk 08 campus and chunk 36 measurements.
