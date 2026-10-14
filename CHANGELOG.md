@@ -1,3 +1,10 @@
+## [0.5.1](https://github.com/bjorkgard/ai-center/compare/v0.5.0...v0.5.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* quantise shots without dithering at quality 100 ([#16](https://github.com/bjorkgard/ai-center/issues/16)) ([5ebf513](https://github.com/bjorkgard/ai-center/commit/5ebf513866fc130c532e94c496ffa82994b74a92))
+
 # [0.5.0](https://github.com/bjorkgard/ai-center/compare/v0.4.0...v0.5.0) (2026-10-14)
 
 
