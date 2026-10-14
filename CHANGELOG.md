@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/bjorkgard/ai-center/compare/v0.7.0...v0.8.0) (2026-10-14)
+
+
+### Features
+
+* add instanced racks with status LEDs and seeded fake load ([#23](https://github.com/bjorkgard/ai-center/issues/23)) ([86df05f](https://github.com/bjorkgard/ai-center/commit/86df05f7a3b10c871fa2293bab231e4ea0f853c8))
+
 # [0.7.0](https://github.com/bjorkgard/ai-center/compare/v0.6.0...v0.7.0) (2026-10-14)
 
 
