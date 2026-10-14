@@ -187,7 +187,7 @@ Minimum supported window 1280x720. All gutters 16px.
 ### Semantic zoom (design D7)
 
 - Zoomed out (below the threshold): each hall shows a billboard label with project name, session count and a worst-status dot. Per-rack labels are hidden.
-- Zoomed in: billboards fade out (200 ms) and rack detail and LEDs show.
+- Zoomed in: billboards fade out (200 ms) and rack detail and LEDs show. (Phase 3 design review D8, WD3: a hall's billboard also shows while zoomed in whenever its wall sign panel faces away or measures under 12 CSS px, so each hall always has exactly one label.)
 - Label text is never smaller than 12 CSS px on screen.
 
 ### Data mode and replay (design D8)
@@ -199,7 +199,7 @@ Minimum supported window 1280x720. All gutters 16px.
 
 ### Empty and first-run states (design D9)
 
-- Dormant hall: LEDs off, desaturated materials, grey floor sign reading "No sessions".
+- Dormant hall: LEDs off, desaturated materials, grey floor sign reading "No sessions". (Phase 3 design review: the sign is a panel on the front wall, UI-5; dormant halls are desaturated through colour attributes, CEO W-RW6.)
 - KPI tiles at zero show "0" and a flat sparkline, never a dash.
 - No log files found: a centred glass card reads "Watching ~/.claude/projects and ~/.codex/sessions. No sessions in the last 24 h." with two buttons, "Drop a .jsonl to replay" and "Try the demo" (starts mock `steady`).
 
@@ -324,7 +324,8 @@ Defined in chunk 01 as CSS variables in `src/styles/tokens.css` and mapped into 
 - When `prefers-reduced-motion` is set, a `reducedMotion` store flag:
   - turns glides into instant cuts and panel transitions into fades only;
   - slows packets to 25% speed and cuts vapour and rain density to 30%;
-  - removes the lightning flash.
+  - removes the lightning flash;
+  - holds rack LEDs at a steady 0.8 of their level and turns cooling fans at 25% speed (Phase 3 design review D12, WD7).
 - Chunk 04 adds the tokens and the flag. Every animated chunk checks both modes in its acceptance.
 
 ### Glass panel (design D18)
@@ -494,48 +495,84 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [x] 05. Camera controls and camera rig
 - **Goal:** Map-style navigation and a programmatic glide API.
 - **Depends on:** 04b.
-- **Tasks:** Left-drag pan, right-drag free rotate, scroll zoom (ortho zoom, not dolly), clamped to campus bounds and zoom range. Controls are three's `MapControls` (`three/examples/jsm/controls/MapControls.js`, installed with three; left-drag pan and right-drag rotate are its defaults, and it has `zoomToCursor` and damping), with a custom clamp of target and zoom to the campus bounds, and the perspective distance clamp from 04a; the C16 driver calls `controls.update()` each frame, and a `change` event or damping that is still settling counts as camera motion, so calm mode waits for the camera to stop (CEO S-RW16). Map feel (CEO C20): scroll zoom aims at the point under the cursor, still clamped; pan and rotate ease to a stop over about 250 ms [estimated], off under `reducedMotion`, and a new drag or glide stops the damping; a double-click on empty ground glides to `cameraRig.home()`. Empty ground means the nearest raycast hit is the ground mesh; chunk 24's double-click on an entity zooms close and cancels any home glide (CEO S-RW25). `cameraRig.glideTo(target, zoom, ms=600)` using the D20 easing (instant cut when `reducedMotion`), interruptible by user input, framing the target inside the store `safeArea` rect (section 4b, design D5). If `safeArea` changes during a glide, the glide retargets so the target ends inside the new rect (CEO S-RW37). A `safeArea` with no width or height (a window below the supported 1280x720) falls back to the full canvas with one console warning (CEO S-RW38). Expose in a dev menu for manual testing: a collapsible section under the perf HUD (glide test, projection toggle, right-panel toggle) (design-review DR11). Keyboard focus on the canvas shows as four small cyan corner brackets framing the visible canvas area (the `safeArea`), on `:focus-visible` only, not the D21 ring around the whole viewport (approved mockup, design-review D2/D3). Keyboard camera controls (CEO C19): the canvas is focusable (`tabIndex=0`, `role="application"`, a static `aria-label` until chunk 24 adds the live summary) and sits right after the top bar in the Tab order (design-review DR12); its `aria-label` is "3D campus view" and `aria-describedby` points to visually hidden text "Arrow keys pan, plus and minus zoom, Q and E rotate, 0 returns home, P switches perspective." (design-review DR15); while it has focus, arrows pan, `+` (or `=`) and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or Home glides to `cameraRig.home()` (the whole campus framed in the `safeArea`), and `P` toggles ortho and perspective (D9, CEO S-RW26, S-RW30). Keys never fire while typing in inputs, steps use the D20 easing over `--dur-ui` (instant under `reducedMotion`), and a key press counts as input for calm mode (C16). Step sizes (design-review DR13): one arrow press pans 10% of the `safeArea`'s shorter side; one `+`/`=` or `-` press zooms by x1.25; a held key keeps stepping at the key-repeat rate, each step starting from the current animated position, so movement stays smooth and nothing queues [values estimated].
+- **Tasks:** Left-drag pan, right-drag free rotate, scroll zoom (ortho zoom, not dolly), clamped to campus bounds and zoom range. Controls are three's `MapControls` (`three/examples/jsm/controls/MapControls.js`, installed with three; left-drag pan and right-drag rotate are its defaults, and it has `zoomToCursor` and damping), with a custom clamp of target and zoom to the campus bounds, and the perspective distance clamp from 04a; the C16 driver calls `controls.update()` each frame, and a `change` event or damping that is still settling counts as camera motion, so calm mode waits for the camera to stop (CEO S-RW16). Map feel (CEO C20): scroll zoom aims at the point under the cursor, still clamped; pan and rotate ease to a stop over about 250 ms [estimated], off under `reducedMotion`, and a new drag or glide stops the damping; a double-click on empty ground glides to `cameraRig.home()`. Empty ground means the nearest raycast hit is the ground mesh; chunk 24's double-click on an entity zooms close and cancels any home glide (CEO S-RW25). `cameraRig.glideTo(target, zoom, ms=600)` using the D20 easing (instant cut when `reducedMotion`), interruptible by user input, framing the target inside the store `safeArea` rect (section 4b, design D5). If `safeArea` changes during a glide, the glide retargets so the target ends inside the new rect (CEO S-RW37). A `safeArea` with no width or height (a window below the supported 1280x720) falls back to the full canvas with one console warning (CEO S-RW38). Expose in a dev menu for manual testing: a collapsible section under the perf HUD (glide test, projection toggle, right-panel toggle) (design-review DR11). Keyboard focus on the canvas shows as four small cyan corner brackets framing the visible canvas area (the `safeArea`), on `:focus-visible` only, not the D21 ring around the whole viewport (approved mockup, design-review D2/D3). Keyboard camera controls (CEO C19): the canvas is focusable (`tabIndex=0`, `role="application"`, a static `aria-label` until chunk 24 adds the live summary) and sits right after the top bar in the Tab order (design-review DR12); its `aria-label` is "3D campus view" and `aria-describedby` points to visually hidden text "Arrow keys pan, plus and minus zoom, Q and E rotate, 0 returns home, P switches perspective." (design-review DR15); while it has focus, arrows pan, `+` (or `=`) and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or Home glides to `cameraRig.home()` (the whole campus framed in the `safeArea`; from chunk 08 the placed campus, CEO C25), and `P` toggles ortho and perspective (D9, CEO S-RW26, S-RW30). Keys never fire while typing in inputs, steps use the D20 easing over `--dur-ui` (instant under `reducedMotion`), and a key press counts as input for calm mode (C16). Step sizes (design-review DR13): one arrow press pans 10% of the `safeArea`'s shorter side; one `+`/`=` or `-` press zooms by x1.25; a held key keeps stepping at the key-repeat rate, each step starting from the current animated position, so movement stays smooth and nothing queues [values estimated].
 - **Acceptance:** Pan, rotate, zoom work with mouse and trackpad in all three browsers. Camera cannot leave bounds, in ortho and in perspective. Dev-menu glide reaches target in about 600 ms and cancels on drag. Opening the right panel during a glide still ends with the target inside the new `safeArea` (unit test on the rig with a fake clock, CEO S-RW37). Context menu suppressed on right-drag. With the canvas focused, each camera key moves the camera and it stays in bounds, in all three engines; a unit test covers the key map, the focus gate and the DR13 step sizes (one arrow press pans 10% of the shorter `safeArea` side; one `+` zooms by x1.25) (CEO C19, design-review DR13). Zoom-to-cursor keeps the world point under the cursor fixed while inside bounds (unit test), and in an e2e a scroll over a corner moves that corner toward the centre less than a centre zoom would; a double-click on empty ground glides home (e2e) (CEO C20). With reduced motion emulated, glides and key steps are instant cuts and damping is off (e2e), and a fake-clock test shows that damping still settling holds the 60 fps cap (design D20, CEO S-RW21).
 - **README:** "Controls" line, including the camera keys.
 
 ### Phase 3: World building (static, no data)
 
-Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates its baseline in the same PR (CEO C17).
+File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get their own file (`hall/buildHall.ts`, `hall/signAtlas.ts`, `hall/slots.ts`, `scene/signals.ts`, `scene/fake.ts`, `sim/rng.ts`, `campus/layout.ts`, `campus/waypoints.ts`, `plant/vapour.ts`, `fibre/route.ts`), and each chunk's 3D view code lives in one file (`hall/Hall.tsx`, `campus/Campus.tsx`, `plant/Plant.tsx`, `network/Network.tsx`), split by part only past about 300 lines; review tasks that name per-part view files map to these. Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates its baseline in the same PR (CEO C17); from chunk 08 a look change also updates the campus baseline (CEO C28). Every draw-call bar in this phase reads the perf HUD's scene number (shadow pass included, post-processing excluded) at the high tier with shadows on (CEO W-RW2, S-RW4). Triangle budgets (eng-review Phase 3 D4, E28) [estimated]: unit tests count each builder's triangles against per-part caps, in the chunk that adds the part: hall body 2,000; rack 12; LED 12; tower 600; chiller 200; fan 64; tree 60; parked car 120; lamp 60; fence bay 24; gate 400; dock 600; monument 100; vapour quad 2; packet 48; fibre tube 12 per 0.25 units of length; and an e2e reads the HUD's triangle count at 12 placed halls, frozen, at 150k or less. Every dev control in this phase lives in a collapsible section of the `dev=1` HUD menu (`src/scene/PerfHud.tsx`) and has a `window.__sceneDev` hook, so Playwright drives it in the production build (CEO W-RW12, S-RW2). Sections, in build order under the HUD and in its Geist Mono 12 px style: Camera (open at first, as in chunk 05), then Hall (06), Racks (07), Campus (08), Cooling (09) and Network (10), all collapsed by default (design-review Phase 3 D20, WD14). Every moving value (rack count, LED load, duty, vapour particle phase, fan angle, packet phase) comes from the pure `src/scene/fake.ts` as a function of scene time and `seed`, frozen under `freeze=1`; dev controls override it, and chunks 18 and 22 replace it with store values (CEO W-RW7). Scene components read these values only through one `SceneSignals` interface (`rackCount(hall)`, `ledLoad(hall, rack)`, `duty()`, `vapourPhase(i)`, `fanAngle(i)`, `packetPhase(line, i)`, evaluated at scene time); `fake.ts` is its first implementation, chunks 18 and 22 add a store-backed one, and no component imports `fake.ts` directly (CEO W-RW28). Every new custom shader is covered by `renderer.debug.onShaderError` (three `WebGLRenderer.js:169-195`), set where the renderer is created: a compile failure logs one `[scene]` line naming the material and counts in the HUD's frame-error row, and rendering continues without that mesh, as for C23 frame errors (CEO W-RW30). Every `__sceneDev` setter clamps out-of-range, non-integer or NaN input to its valid range and logs one `console.warn` naming the argument (CEO W-RW31). Roof toggles and placed-hall changes log one `[scene]` transition line each, as S-RW40 does for other scene state (CEO W-RW36). Fake project names on signs are fixed fictional strings in `fake.ts`, never read from the machine, so committed images carry no real project names (D16; CEO W-RW34). Flat site surfaces that are not entities (roads, parking, empty slots, aprons) carry `userData.ground`, so C20's double-click home works on them; halls, racks, plant and vehicles do not (CEO W-RW35). Per-instance fades (eng-review Phase 3 D3, E27): one helper in `src/scene/materials.ts` adds a per-instance `instanceOpacity` attribute, and for atlas text a per-instance UV rectangle, to library materials through `onBeforeCompile` with a fixed `customProgramCacheKey`, so sign panels, slot-pad numbers and vapour fade one instance at a time while keeping the 04c shared-material rule; a unit test feeds it a stand-in shader and asserts the injected attribute and the opacity multiply; its compile failures go through W-RW30. Emissive ladder (design-review D7, WD2), lowest to highest: sign panel 0.5 (under the 0.6 bloom threshold so its text never smears) < rack LEDs 1.0 < lamps 1.6 < windows 2.0 < fibre 2.6 < packets 3.2 < chunk 18's waiting beacon 4.0 [values estimated; existing values from `src/scene/materials.ts`]; hues stay as in variant-B-2, and the beacon is told apart from the warm windows by brightness, motion and position. A unit test in `materials.test.ts` asserts the order, so no later material outshines the beacon. While bloom is off (medium and low tiers, or bloom auto-disabled under D10), every glow material's emissive is scaled by 1.5 [estimated], keeping the same order, with no new meshes or draw calls; a unit test covers the factor and the order, `__sceneDev.setQuality(tier)` forces a tier, and the chunk 08 PR shows one frozen `home` shot with bloom forced off (design-review Phase 3 D9, WD4). Site palette (design-review Phase 3 D15, WD10) [estimated]: colour in the scene only means something: status (D17), vendor trim (D17), cyan network (D10) and warm windows and lamps (D14). Site furniture uses neutral slate and concrete steps: roads `#1a2130` (a step above the ground `#121926`); kerbs, markings and parking lines `#3a4559`; parked cars in three dark desaturated greys with their lights off; the gate boom dark grey with warm-white `#E8DCC8` stripes; trees `#1d2b2a` with trunks `#2a2420`; fence `#2e3748`; cold-aisle tiles a grey step lighter than the hall floor and hot-aisle tiles a step darker (chunk 22 tints hot aisles later). A unit test keeps every furniture colour's hue and saturation away from the status and vendor colours. Shadow casters in this phase: hall bodies, racks, plant (towers, chillers), power parts (transformers, generators, tanks), trees and parked cars; LEDs, windows, signs, roads, lamps, fibre, packets and vapour do not cast (CEO W-RW23).
 
 #### [ ] 06. Parametric data hall
 - **Goal:** One hall built in code from parameters.
 - **Depends on:** 04c, 05 (CEO C22).
-- **Tasks:** `buildHall({ slots: 16, rows: 2 })`: floor slab, walls, cutaway roof (roof hidden or sliced above a height, toggleable), cold-aisle and hot-aisle floor tiles, door, floor sign plane for the hall letter and project name (canvas texture, shared atlas). Low poly, merged geometry for static parts.
-- **Acceptance:** One hall renders, roof cutaway toggle works, hall sign text is at least 12 CSS px at default zoom (design D7). Static hall costs 3 or fewer draw calls.
-- **README:** Image `06-hall.png`.
+- **Tasks:** `buildHall({ slots: 16, rows: 2 })`: floor slab, walls, cutaway roof (roof hidden or sliced above a height, toggleable), cold-aisle and hot-aisle floor tiles, door, and a sign panel on the front wall's face above the door for the hall letter and project name (canvas texture, shared atlas; approved mockup `hall-identity-20261014/variant-B.png`, design-review Phase 3 D3/D4, UI-5). Low poly, merged geometry for static parts.
+- **Acceptance:** One hall renders, roof cutaway toggle works: `applyRendererSettings` sets `localClippingEnabled`, the hall body material holds exactly one clipping plane with `clipShadows`, a toggle changes only that plane's constant (unit tests), and toggling changes the roof region of a frozen `view=hall` capture (e2e) (CEO W-RW14). The sign panel shows only while it faces the camera and its letter measures at least 12 CSS px at the current camera pose, and fades out otherwise; a unit test sweeps elevation over `ELEVATION_RANGE` and azimuth in 45 degree steps in both projections and checks the rule against an expected value it computes from its own two `project` calls, and an e2e shows the sign at the `view=hall` framing and hides it after zooming out (design D7, CEO W-RW5, W-RW17, W-RW24). Static hall costs 4 or fewer scene draw calls: 3 main pass + 1 shadow (CEO C24); a unit test counts the meshes, `castShadow` flags and the hall's share of the instanced panel draw in `buildHall` output, and an e2e at `view=hall&dev=1` with racks at 0 reads the HUD scene count (eng-review Phase 3 Section 3). Two halls tinted with `setHallTint` share material instances (unit test, CEO W-RW6, W-RW21). `mergeHallParts` with mismatched parts throws `HallBuildError` (unit test, CEO W-RW13, W-RW21).
+- **README:** Image `06-hall.png` (`view=hall`).
+- **Hall construction (CEO C24):** one merged hall body (slab, walls, roof, aisle tiles, door) built with three's `mergeGeometries` (`three/examples/jsm/utils/BufferGeometryUtils.js`) on one new shared library material with vertex colours (the concrete, slate and roof greys become colours); the cutaway roof is a clipping plane on that shared material with `clipShadows`, toggled for all halls at once: cut, the plane sits 0.01 units above the wall top, so the roof slab (built wholly above the wall top) is removed and walls and racks stay; uncut, it sits above the roof top. The roof starts cut in every Phase 3 view (`home`, `hall`, `racks`, `cooling`, `power`, look-dev), since variant-B-2 shows open halls with lit racks (CEO W-RW25); windows use the shared window glow; the sign comes from the shared atlas. The body casts and receives shadows. Clipping needs `renderer.localClippingEnabled = true` (three `WebGLShadowMap.js:442` also checks it for shadows), set in `applyRendererSettings`; the toggle moves the plane above the tallest part instead of adding or removing it, so no shader recompiles; no other library material carries a clipping plane (unit test) (CEO W-RW14, W-RW19). `mergeGeometries` returns null and logs on mismatched attributes, so the exported pure `mergeHallParts(parts)` throws `HallBuildError` instead, `buildHall` calls it, and the C23 scene-error path reports it (CEO W-RW13, W-RW21).
+- **Per-hall looks (CEO W-RW6):** each hall's body and aisle tiles carry a per-hall colour attribute range, written by `setHallTint(hall, tint)` and `setAisleTint(hall, tint)`, so chunk 18's dormant desaturation and chunk 22's heat wash write attributes, never materials (chunk 04c: shared instances only; CEO W-RW21).
+- **Sign and semantic zoom (CEO W-RW5, W-RW17, W-RW24, W-RW26):** the letter measure is the 2D screen distance in CSS px between the projected bottom-centre and top-centre of a capital letter in the sign's smallest text line (the project name; the hall letter is drawn larger) (`cameraRig.project`), at the current pose: projection, zoom or distance, elevation and azimuth. The sign panel is visible only while its face points toward the camera and that measure is at least 12 CSS px (design D7), re-checked whenever the camera changes, and fades over 200 ms when it crosses; the fade can dip below 12 px for those 200 ms, as D7's own billboard fade does. Separately, `SEMANTIC_ZOOM` in `src/scene/camera.ts` is the ortho zoom at which the measure reaches 12 CSS px at the isometric pose; in perspective the effective zoom is `zoomForDistance` at the camera's target distance (`camera.ts`). Chunk 18's billboards and rack detail switch on `SEMANTIC_ZOOM` (D7), and a billboard also shows whenever its hall's panel is hidden by this rule, so from chunk 18 on every hall has exactly one label at every pose (design-review Phase 3 D8, WD3, amending D7); until chunk 18 a hall whose panel is hidden has no label. The panel stands upright on the wall, so it never reads upside down. All halls' panels are one InstancedMesh on the shared atlas material with the E27 fade helper (per-instance opacity for the 200 ms fade, per-instance atlas region), one draw for every panel; an e2e checks a panel's opacity goes from 1 to 0 within about 200 ms after zooming out (eng-review Phase 3 D3, E27). Panel anatomy (design-review Phase 3 D10, WD5) [sizes estimated]: about 3.2 x 0.8 units on the front wall's face above the door; slate face `#232b3a`; text `--color-text-2` `#A3ACBD`; the hall letter in Geist 600 at a 0.5-unit cap height, a middle dot, then the project name in Geist 500 at 0.28 units (the line the 12 px measure uses); emissive 0.5, under the 0.6 bloom threshold (WD2). A dormant hall (D9) reads "A · No sessions" in `--color-text-3` `#8A93A6`. A 0.08-unit stripe along the panel's bottom edge is neutral slate in Phase 3 and takes D8's overflow sign colour from chunk 19. The atlas is one shared canvas texture; `setSign(slot, letter, project)` redraws only that slot's region, and the texture count stays constant. Before its first draw the atlas awaits `document.fonts.load` for the sign font (Geist is `font-display: swap`, `src/styles/tokens.css:1-6`, so an early `fillText` would draw the fallback and never redraw), with a 3 s timeout [estimated] after which it draws with the fallback and logs one `[scene]` warning; the scene ready signal (`src/app/App.tsx:38`) waits for the atlas, so shots and baselines always capture one font (CEO W-RW29). A null 2D context throws `SignAtlasError` into the C23 scene-error path. A project name wider than its region is truncated with an ellipsis; an empty name draws the letter only; a slot outside 0-11 throws `SignAtlasError` (CEO W-RW33).
+- **Dev controls (design-review Phase 3 D20, WD14):** a "Hall" section with the roof cut toggle and `__sceneDev.setRoofCut(on)`.
+- **View (CEO W-RW7):** `view=hall` frames one hall with the roof cut away; `src/app/params.ts` and `scripts/shots.config.ts` gain it. The look-dev vignette renders the `buildHall` output in place of its own slab and wall (C17).
 
 #### [ ] 07. Instanced racks and LEDs
 - **Goal:** Racks and LEDs as instances with per-instance colour and intensity buffers.
 - **Depends on:** 06.
-- **Tasks:** One InstancedMesh for rack bodies, one for blade LEDs (e.g. 8 per rack), per-instance colour attribute. Slot allocator inside a hall (stable slot per key). Dev slider for rack count 0-16 and a fake load pulse per rack.
-- **Acceptance:** Slider adds and removes racks without frame hitches. Draw calls do not grow with rack count. LEDs pulse with fake load.
-- **README:** Image `07-racks.png`.
+- **Tasks:** One InstancedMesh for rack bodies, one for LEDs (a status strip plus 12 blades per rack; design-review Phase 3 D11, WD6), per-instance colour attribute. Slot allocator inside a hall (stable slot per key). Dev slider for rack count 0-16 and a fake load pulse per rack.
+- **Acceptance:** The slider adds and removes racks without reallocating: a count change writes only `mesh.count` and instance attributes, and the geometry and attribute objects are the same objects before and after (unit test); `renderer.info.memory.geometries` is unchanged across 0, 16 and 0 racks (e2e through `__sceneDev`; Vitest has no WebGL) (CEO W-RW8, W-RW23). LED pulse checks both reduced-motion modes: under reduced motion LEDs hold a steady 0.8 of their level (design D20; design-review Phase 3 D12, WD7). Draw calls do not grow with rack count. LEDs pulse with the seeded fake load, and two frozen captures of `view=racks` match (CEO W-RW7). Slot allocator unit tests pass (CEO W-RW9).
+- **README:** Image `07-racks.png` (`view=racks`).
+- **Instances (CEO W-RW8):** each hall owns its rack and LED InstancedMeshes (ADR 0001 RW8), allocated once at capacity: 16 racks and 16 x 13 = 208 LEDs. Each rack has one wide status strip on top in the main session's D17 colour and 12 blade LEDs below, one per active subagent in its own status colour; unlit blades are dark; more than 12 subagents keep all 12 lit, and panels show the exact count (design-review Phase 3 D11, WD6). LEDs carry status by colour only, because shapes cannot show at LED size; the statuses that need action have non-colour cues elsewhere: an error sends chunk 22's technician cart to the rack and counts in the attention chip (D6), and a waiting rack gets chunk 18's beacon; panels and tables show every status with its D17 shape (design-review Phase 3 D19, WD13). LED colours come from the D17 status table (`statusLed`, `STATUS_COLORS`). The look-dev rack row renders through these instances.
+- **Slot allocator (CEO W-RW9):** a pure module `src/scene/hall/slots.ts`. Unit tests: a key keeps its slot; a new key takes the lowest free slot; a freed slot is reused only after its key leaves; a 17th key gets no slot and is counted (overflow halls are chunk 19's, D8); the same inputs give the same layout.
+- **Fake load and view (CEO W-RW7, W-RW20, W-RW37):** `src/scene/fake.ts`, seeded by a small RNG in `src/sim/rng.ts` that chunk 11's mock generator reuses, gives each hall's rack count and each rack's LED load from scene time and `seed`. The pulse moves an LED's emissive between 0.6 and 1.0 of its level with a period of 1.2-3.0 s set by load [estimated], never lower, so every D17 colour stays legible. The seeded hero mix is 60% tool, 25% thinking, 10% idle and 5% waiting for the status strips, no errors, and 0-6 lit blades per rack (design-review Phase 3 D11, WD6). `view=racks` shows the chunk 06 hall with a fixed 16 racks (an override, not the time-varying fake count) and the seeded LED load.
+- **Dev controls (CEO W-RW12, W-RW20):** a "Racks" section (hall picker, count slider 0-16, fake load on or off) with `__sceneDev.setRackCount(hall, n)` and `__sceneDev.setFakeLoad(on)`.
 
 #### [ ] 08. Campus layout and site furniture
 - **Goal:** Ground plan with hall slots and the static campus.
 - **Depends on:** 07.
-- **Tasks:** Campus grid with a hall-slot allocator (deterministic positions for up to 12 halls, A/B fixed first), roads, parking with instanced parked cars, security gate with barrier, loading dock with bay doors. Waypoint graph for vehicles (used later): gate, dock, each hall door.
-- **Acceptance:** Two halls (A, B) plus site furniture render. Dev toggle shows the waypoint graph. Total draw calls under 40.
-- **README:** Image `08-campus.png` as new hero image.
+- **Tasks:** Campus grid with the hall-slot position table (deterministic positions for up to 12 halls, A/B fixed first), roads, parking with instanced parked cars, security gate with barrier, loading dock with bay doors, road lamps (CEO W-RW3) and the site perimeter (CEO C27). Waypoint graph for vehicles (used later): gate, dock, each hall door.
+- **Acceptance:** Two halls (A, B) plus site furniture render. Dev toggle shows the waypoint graph. Total scene draw calls under 40 (CEO W-RW2), read by an e2e from `__sceneDev.stats()` at frozen `home` with shadows on in Chromium (eng-review Phase 3 Section 3). The PR shows `08-campus.png` beside `docs/designs/variant-B-2.png` (section 4b D14, CEO W-RW4). The campus baseline passes in `vp run e2e:local` (CEO C28). Startup and `home()` frame the placed halls, plant, power and gate inside the `safeArea` at 1280x720 and 1920x1080, and placing a third hall through the dev menu widens the next `home()` (unit test on the rig with the layout; CEO C25). The chunk 05 camera e2e that encodes the old home is updated to the C25 contract, not deleted: `e2e/camera.spec.ts:121` frames the placed-campus extent corners, `:185-187` centres the home extent instead of the origin, and `:240` reads the startup zoom from the rig instead of 80 (CEO W-RW38). Layout and waypoint unit tests pass (CEO W-RW1, W-RW9).
+- **README:** Image `08-campus.png` (`view=home`) as new hero image. The "Controls" line says `0` or Home frames the placed campus (CEO C25, W-RW40).
+- **Campus layout (CEO W-RW1):** a pure module `src/scene/campus/layout.ts` maps slot indices 0-11 (A and B first) to positions, the road grid, the furniture, plant, power and gate zones, and the campus extent. `CAMPUS_BOUNDS` (`src/scene/camera.ts`), the ground and grid size (`src/scene/Ground.tsx`) and the shadow camera extent (`src/scene/LightRig.tsx`) are derived from the extent instead of constants; the rig gains `setCampus({ bounds, home })`, read by `clampTarget` and the home fit at call time, so `camera.ts` never imports campus code and a newly placed hall widens the next `home()` (CEO W-RW27); a zero-size or NaN extent keeps the previous bounds and logs one warning, as S-RW38 does for the `safeArea` (CEO W-RW32); and `ORTHO_ZOOM.min` is lowered if needed so a home fit is never clamped. Assigning projects to slot indices stays in chunk 19's reconciler (D8), which needs no positions and so no dependency on this chunk. Composition follows variant-B-2 (design-review D6, WD1): at the startup view the cooling plant sits top-left, the power yard and fuel tanks left and lower-left, the hall grid in the centre growing toward the top-right, the gate and monument bottom-centre, parking bottom-right, and the loading dock on the hall grid's right flank. Sizes [estimated]: a 16-rack hall is about 8 x 6 units (two rows of 8 at rack pitch 0.8, cold aisle 1.2, hot aisles 0.8, walls 0.4); slot pitch 11 x 9 units (hall plus a 3-unit road); a 4 x 3 slot grid with A and B in the front row nearest the gate, filling toward the back; towers about 2.5x the hall wall height. Plan view (x right, z toward the camera's lower left, not to scale):
+
+  ```text
+            -z (screen top-right)
+     ┌─────────────────────────────────────────────┐
+     │ TOWERS   │  slot 9   slot 10  slot 11 slot 12 │
+     │ chillers │  slot 5   slot 6   slot 7  slot 8  │
+     │──────────┤  slot 3   slot 4   (dock on right) │
+     │ POWER    │  [A]      [B]        DOCK          │
+     │ substation, tanks, generators   │ PARKING     │
+     │          vault ── fibre ──      │             │
+     │                 GATE + MONUMENT                │
+     └─────────────────────────────────────────────┘
+            +x+z corner (screen bottom-centre)
+  ``` Unit tests: every slot and zone lies inside the bounds; slots do not overlap each other or any zone; the whole-campus fit at 1280x720 is at least `ORTHO_ZOOM.min`.
+- **First glance and home (CEO C25):** the startup pose and `cameraRig.home()` frame the extent of the placed halls plus the plant, power and gate zones, read from the layout: startup once at load, `home()` on each press. This amends chunk 05's home ("the whole campus framed") to the placed campus; bounds still cover all 12 slots. A placed hall never moves (D8); only the next `home()` widens.
+- **Road lamps (CEO W-RW3):** one instanced post mesh and one instanced lamp-head mesh on a shared warm glow material along the road grid; chunk 34 raises their emissive at night.
+- **Site perimeter (CEO C27):** one instanced low-poly tree (trunk and canopy in one geometry with a colour attribute, on its own shared `tree` library material with no clipping plane, CEO W-RW19) on seeded perimeter and road-edge spots; a perimeter fence (instanced posts, merged panels) open at the gate; the gate monument with the "SYNAPSE HORIZON" wordmark, matching the top-bar wordmark (design-review Phase 3 D18, WD12; not the mockup's "SYNAPSE AI DATA CENTRE"), from the shared sign atlas under the chunk 06 12 px pose rule (W-RW5). The look-dev view adds one tree and one fence bay.
+- **Empty slots (design-review Phase 3 D16, D17, WD11; approved mockup `empty-slot-20261014/variant-B.png`, UI-6) [estimated]:** each empty slot is a flat pad `#1c2433` (a step above the ground, darker than any hall surface) with a 0.06-unit `#3a4559` outline and its slot number, `01` to `12` in slot order, painted at the front edge facing the gate in Geist Mono at a 0.6-unit cap height in `#3a4559`; the number shows only while it measures at least 12 CSS px at the current pose, the chunk 06 rule. Slot numbers, not hall letters, because chunk 19 assigns letters by project order and overflow halls (A2) take the lowest free slot (D8). Pads carry `userData.ground` (W-RW35). The numbers are one InstancedMesh on the atlas with the E27 fade helper (eng-review Phase 3 D3).
+- **Waypoints (CEO W-RW9):** unit tests: the graph is connected; gate to dock and gate to every hall door have a path; no edge crosses a hall footprint.
+- **Views (CEO W-RW7):** from this chunk `view=home` shows the campus; until chunk 18, halls A and B show the seeded fake rack set, so the hero has lit racks as in variant-B-2. The existing `home` shots entries regenerate with it (section 4).
+- **Dev controls (CEO W-RW12):** a "Campus" section: waypoint graph toggle and placed-hall count (A and B always, up to 12) with `__sceneDev.setWaypoints(on)` and `__sceneDev.setPlacedHalls(n)`.
+- **Campus baseline (CEO C28, W-RW15):** `e2e/campus.spec.ts` captures the frozen `home` view (1280x720, `freeze=1`, `seed=1`, after the ready signal) with `toHaveScreenshot` (`maxDiffPixelRatio: 0.005`) in the look-dev Playwright project (Chromium on the Mac, skipped when `CI` is set), baseline under `e2e/__screenshots__/`. `playwright.config.ts`: the `lookdev` project's `testMatch` becomes `/lookdev\.spec\.ts|campus\.spec\.ts/`, and the chromium, firefox (both CI branches) and webkit `testIgnore` patterns add `campus\.spec\.ts`, so the baseline is never written to the gitignored `test-results/`. Every PR that changes the campus look (09, 10, 18-23, 34, 35) updates it in the same PR. When two such PRs are open at once (C26 lets 18 run beside 09 and 10), the one that merges second rebases and regenerates the baseline and the `home` shots on top; binary images are never hand-merged (CEO W-RW39).
 
 #### [ ] 09. Cooling plant
 - **Goal:** Cooling towers, chillers, vapour.
 - **Depends on:** 08.
 - **Tasks:** Low-poly towers and chillers. Vapour as instanced billboards with a soft shader, rate controlled by a `duty` value 0-1 (dev slider). Fan rotation speed follows duty.
-- **Acceptance:** Duty slider visibly ramps vapour and fans. Vapour costs one draw call per tower group. No transparency sorting artefacts in Safari or Firefox.
-- **README:** Image `09-cooling.png`.
+- **Acceptance:** Duty slider visibly ramps vapour and fans. Two frozen captures of `view=cooling` match (CEO W-RW16), and a unit test shows the closed-form vapour at scene time 0 has 60 visible particles per tower at duty 1 and none at duty 0 (E26). Vapour costs one draw call per tower group. Vapour uses normal (not additive) alpha blending with `depthWrite: false` and a back-to-front instance sort when the camera moves (unit test on the sort, CEO W-RW18); the PR shows frozen vapour at duty 1 from four azimuths in Chromium, Firefox and WebKit, plus a recorded manual Safari check (CEO W-RW8; Playwright WebKit is not Safari, eng E12). Under normal blending, overlapping billboards converge to the vapour colour, so a unit test checks that the vapour colour's linear luminance (read from the shader uniform, not `emissive`) stays below `RENDER.bloom.luminanceThreshold` (CEO W-RW10, W-RW18). With reduced motion, vapour density is 30% (design D20; unit test on the rate function and one e2e with reduced motion emulated, CEO W-RW8); fans turn at 25% of their duty speed under reduced motion, the D20 packet factor (design-review Phase 3 D12, WD7).
+- **README:** Image `09-cooling.png` (`view=cooling`, framed on the cooling zone from the chunk 08 layout).
+- **Vapour and fan look (design-review Phase 3 D14, WD9) [estimated]:** vapour `#8090A8` (linear luminance about 0.27, under the 0.6 bloom threshold) at opacity 0.35; billboards grow from 1.2 to 2.4 units over a 6 s life, rise 0.6 units/s with seeded drift; up to 60 per tower at duty 1, emission linear in duty, none at duty 0. Fans turn 0.5 times a second at duty 1 and at 10% of that at duty 0, so the plant never looks stopped; reduced motion: vapour 30% (D20), fans 25% (WD7). Each particle fades in over 0.5 s and out over the last 1.5 s of its 6 s life through the E27 helper, so closed-form rebirth (E26) never pops (eng-review Phase 3 D3) [estimated].
+- **Duty and dev controls (CEO W-RW7, W-RW12, W-RW16):** duty, each vapour particle's phase and each fan's angle come from `src/scene/fake.ts` (seeded, frozen under `freeze=1`), so the campus baseline stays stable from this chunk on. Vapour is a closed form of scene time and seed, not a simulation: particle i has age (t + offset_i) mod 6 s and shows when i < 60 x duty, so plumes are full at scene time 0 (every frozen shot) and a duty change takes effect as particles are reborn, within one 6 s life (eng-review Phase 3 D2, E26); a "Cooling" section holds the duty slider, with `__sceneDev.setDuty(value)`.
 
 #### [ ] 10. Power and network infrastructure
 - **Goal:** Substation, generators, fuel tanks, fibre vault, fibre lines.
 - **Depends on:** 08.
-- **Tasks:** Substation (transformers, fence), generators with exhaust stacks, fuel tanks. Fibre entry vault. Fibre lines as curved tubes from vault to each hall slot (rebuilt when hall set changes, geometry disposed). Packet layer stub: instanced glowing spheres moving along a curve at a dev-set rate.
-- **Acceptance:** All parts render. Packets travel smoothly along lines. Removing a hall slot in the dev menu removes its fibre line and `renderer.info.memory.geometries` returns to the previous count.
-- **README:** Image `10-power-network.png`. "World" gallery section with images 06-10.
+- **Tasks:** Substation (transformers, fence), generators with exhaust stacks, fuel tanks. Fibre entry vault. Fibre lines from the vault to each placed hall, routed on the road grid (rebuilt when the hall set changes, geometry disposed; CEO W-RW11). Packet layer stub: instanced glowing spheres moving along a line at a dev-set rate.
+- **Acceptance:** All parts render. Packets travel smoothly along lines, and two frozen captures match (CEO W-RW7); a unit test shows each line holds its capped packet count spread along its length at scene time 0 (E26). With reduced motion, packets move at 25% speed (design D20; unit test and one e2e, CEO W-RW8). Removing a hall slot in the dev menu removes its fibre line, and `renderer.info.memory.geometries` and `textures` return to the previous counts (CEO W-RW11). Route unit test: every line reaches its hall's door side and crosses no hall footprint.
+- **README:** Image `10-power-network.png` (`view=power`, framed on the power and vault zones from the chunk 08 layout). "World" gallery section with images 06-10.
+- **Fibre routing (CEO W-RW11):** lines follow the road grid from the vault to each placed hall's door side with rounded right-angle bends, as in variant-B-2, never through a hall footprint; only placed halls get a line (A and B always). Look (design-review Phase 3 D13, WD8) [estimated]: tube radius 0.05 units, laid 0.03 above the road and 0.4 in from the kerb, bend radius 0.6, the last 0.6 units climbing the door-side wall to a small entry box; grey junction boxes where lines branch, as one instanced mesh.
+- **Packets and dev controls (CEO W-RW7, W-RW12):** packets are pale cyan spheres `#A5F3FC` of radius 0.08 at emissive 3.2 (WD2), at least 1.2 units apart, moving at 2.5 units/s, by default 1 per second per line and at most 12 moving per line, 25% speed under reduced motion (D20) (design-review Phase 3 D13, WD8) [estimated]; packet phase comes from `src/scene/fake.ts` as a closed form: packet j has phase (2.5 t + 1.2 j) mod the line length for j below the rate cap, so lines are populated at scene time 0 (eng-review Phase 3 D2, E26); a "Network" section holds the packet rate, with `__sceneDev.setPacketRate(perSecond)`; hall slots are added and removed through the chunk 08 placed-hall control.
 
 ### Phase 4: Data layer
 
@@ -608,8 +645,8 @@ Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates i
 
 #### [ ] 18. Store-to-scene binding for racks
 - **Goal:** Racks reflect real sessions.
-- **Depends on:** 10, 13.
-- **Tasks:** Transient store subscription writes rack instance data each frame: one rack per main session in its project hall, blade LEDs lit per active subagent, LED pulse rate and brightness from tokens/min, vendor colour trim, status colours from the section 4b status palette (design D17), and a slow amber-white beacon above racks in `waiting_user` (design D6). Hall billboard labels (`aria-hidden`, eng re-review E7; project, session count, worst status) show below the zoom threshold and fade to rack detail above it (section 4b, design D7). Dormant halls use the section 4b style: LEDs off, desaturated materials, grey "No sessions" sign (design D9). Static halls A and B only for now (overflow next chunk).
+- **Depends on:** 08, 13 (CEO C26; was 10, 13).
+- **Tasks:** Transient store subscription writes rack instance data each frame: one rack per main session in its project hall, the rack's status strip in the session's status colour, blade LEDs lit per active subagent (up to 12; more keep all 12 lit; chunk 07, design-review Phase 3 D11), LED pulse rate and brightness from tokens/min, vendor colour trim, status colours from the section 4b status palette (design D17), and a slow amber-white beacon above racks in `waiting_user` (design D6), at the top of the Phase 3 emissive ladder, 4.0 (design-review Phase 3 D7, WD2). Hall billboard labels (`aria-hidden`, eng re-review E7; project, session count, worst status) show below the zoom threshold (`SEMANTIC_ZOOM`, chunk 06, CEO W-RW5) and fade to rack detail above it (section 4b, design D7); a hall's billboard also shows above the threshold whenever its sign panel is hidden by chunk 06's pose rule, so each hall has exactly one label at every pose (design-review Phase 3 D8, WD3). Dormant halls use the section 4b style: LEDs off, desaturated through the hall's colour attribute (chunk 06 `setHallTint`, never a per-hall material; CEO W-RW6, W-RW22), grey "No sessions" sign (design D9). Static halls A and B only for now (overflow next chunk).
 - **Acceptance:** `steady` mock shows racks matching the debug panel counts. `burst` lights 10 blades in one rack. Zero React re-renders of scene components per frame, asserted by a render-count test hook in a Vitest test of the binding (G11).
 - **README:** Image `18-live-racks.png`.
 
@@ -622,8 +659,8 @@ Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates i
 
 #### [ ] 20. Scene reconciliation, animations, and leak test
 - **Goal:** Halls appear, overflow, and disappear at runtime with no leaks.
-- **Depends on:** 18, 19.
-- **Tasks:** Scene layer diffs layouts: `entering` halls rise from the ground (1.5 s), `retiring` halls power down LEDs then sink and fade (3 s), then all owned geometry, materials, and textures are disposed. Fibre lines, signs and overflow conduit lines (cyan, parent to overflow) rebuilt per change; existing halls never move. Delivery truck drives gate to dock to hall door on rack or hall creation (D12), queued if several at once. Automated leak test: Playwright runs `churn` at 60x for 5 min, reads `renderer.info` and heap (Chromium) via a debug hook.
+- **Depends on:** 18, 19, 10 (CEO C26: fibre rebuild needs chunk 10).
+- **Tasks:** Scene layer diffs layouts: `entering` halls rise from the ground (1.5 s), `retiring` halls power down LEDs then sink and fade (3 s), then all owned geometry, materials, and textures are disposed. The fade darkens through the hall's colour attribute or happens by sinking below the ground, never through a per-hall transparent material, since hall bodies share one opaque material (CEO W-RW6, W-RW22). Fibre lines, signs and overflow conduit lines (cyan, parent to overflow) rebuilt per change; existing halls never move. Delivery truck drives gate to dock to hall door on rack or hall creation (D12), queued if several at once. Automated leak test: Playwright runs `churn` at 60x for 5 min, reads `renderer.info` and heap (Chromium) via a debug hook.
 - **Acceptance:** `overflow` scenario creates `A2` and `A3` and removes them when load drops. Leak test: geometry and texture counts return to baseline (plus or minus 0) after churn; Chromium heap growth under 10%. Runs in all three browsers via `vp run e2e:local` on the Mac (eng review D6). A project that returns while its hall is sinking cancels the retire and the hall rises again with no leaked objects (G10).
 - **README:** Image `20-overflow.png` (hall with overflow). Short GIF optional, same folder.
 
@@ -636,8 +673,8 @@ Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates i
 
 #### [ ] 22. Ambient life from real signals
 - **Goal:** Packets, heat, cooling ramp, technician cart.
-- **Depends on:** 21.
-- **Tasks:** Packets along fibre lines with rate proportional to that hall's tokens/min. Heat wash: shader tint on aisle tiles from hot-aisle °C (amber to red). Cooling tower duty bound to total hall heat. Technician cart: on agent error, drives the waypoint graph to the rack, plays a node-swap animation, stays until the error clears (D12). Multiple errors queue with a cap of 3 carts.
+- **Depends on:** 21, 09 (CEO C26: cooling ramp needs chunk 09; chunk 10 arrives through 20).
+- **Tasks:** Packets along fibre lines with rate proportional to that hall's tokens/min. Heat wash: tint on aisle tiles from hot-aisle °C (amber to red), written to the aisle tiles' colour attribute through chunk 06's `setAisleTint` (CEO W-RW6, W-RW22). Cooling tower duty bound to total hall heat. Technician cart: on agent error, drives the waypoint graph to the rack, plays a node-swap animation, stays until the error clears (D12). Multiple errors queue with a cap of 3 carts.
 - **Acceptance:** `errors` scenario dispatches carts to the right racks and they leave when errors clear. Heat wash and tower vapour visibly follow load in `burst`. Every animated effect reads only store values (no hidden randomness), so frozen screenshots are deterministic.
 - **README:** Image `22-life.png`.
 
@@ -749,14 +786,14 @@ Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates i
 #### [ ] 36. Cross-browser performance pass
 - **Goal:** Meet the budget in all three browsers.
 - **Depends on:** 35.
-- **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night, with `calm=0` so the 60 fps cap holds (CEO C16). Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine (an M1 Air-class Mac; required here because chunk 03 measured on an M1 Max, CEO C11). Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis, extending the 04a frame monitor (CEO S-RW5) rather than adding a second one. Draw-call and triangle budgets enforced by a test that fails CI when exceeded.
+- **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night, with `calm=0` so the 60 fps cap holds (CEO C16). Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine (an M1 Air-class Mac; required here because chunk 03 measured on an M1 Max, CEO C11). Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis, extending the 04a frame monitor (CEO S-RW5) rather than adding a second one. Draw-call and triangle budgets enforced by a test that fails CI when exceeded, starting from Phase 3's per-part caps and 150k campus total (eng-review Phase 3 D4, E28).
 - **Acceptance:** Measured on the Mac via `vp run e2e:local` (eng review D6). 60 fps median at high or auto-dropped tier in all three; never under 30 fps p95. Results table appended to `docs/adr/0002-perf.md`.
 - **README:** "Performance" section with the results table.
 
 #### [ ] 37. Provenance audit, accessibility, final README
 - **Goal:** Ship-ready polish.
 - **Depends on:** 36.
-- **Tasks:** Walk every panel and confirm every number has the right badge versus the feasibility table. Keyboard focus order, visible focus rings, colour contrast on glass. Audit that every animated chunk honours the reduced-motion flag from chunk 04 (design D20). Error states: log server down, empty logs, parse failures. Final README pass: hero image, full gallery, architecture diagram, configuration, known limits.
+- **Tasks:** Walk every panel and confirm every number has the right badge versus the feasibility table. Keyboard focus order, visible focus rings, colour contrast on glass. A colour-blindness simulation (protanopia, deuteranopia) of the campus confirms the error cart and waiting beacon read without colour (Phase 3 design review D19, WD13). Audit that every animated chunk honours the reduced-motion flag from chunk 04 (design D20). Error states: log server down, empty logs, parse failures. Final README pass: hero image, full gallery, architecture diagram, configuration, known limits.
 - **Acceptance:** Audit checklist committed and fully ticked. axe-core e2e reports no serious issues on the dashboard. Fresh clone + README instructions reach a working app.
 - **README:** Final version per section 4 skeleton.
 
@@ -770,7 +807,7 @@ Each Phase 3 chunk adds its new materials to the 04c look-dev view and updates i
 04a → 04c → 06                           (look, parallel to 04b and 05; CEO C22)
 04a → 11 → 12 → 13 → 15 → 16 → 17       (data track, parallel to 04b-10; CEO S-RW1)
      11 → 14 ─────┘ ; 02b → 14 ; 14 → 14b (downloads)
-10 + 13 → 18;  13 → 19;  18 + 19 → 20 → 21 → 22 → 23
+08 + 13 → 18;  13 → 19;  18 + 19 + 10 → 20 → 21;  21 + 09 → 22 → 23   (CEO C26)
 23 → 24 → 25, 26;  25 → 27 → 28, 29(+26), 30, 31 → 32(+29), 33
 27 → 34 → 35 → 36 → 37
 ```
@@ -4741,18 +4778,1395 @@ Overall score basis: the lowest rated pass, before (Passes 2 and 5 at 5) and aft
 
 None.
 
+## CEO review record: Phase 3 (/plan-ceo-review, 2026-10-14)
+
+Target: Phase 3 (chunks 06, 07, 08, 09, 10) of `docs/PLAN.md`, branch `phase-3-world-building`, base `main` at `5cc28e9`. Reviewer: Claude (in-host). Review depth: implementation-ready, Phase 3 only. No Phase 3 design doc exists; the finder returns `docs/designs/phase-2-scene-foundation.md` (the Phase 2 CEO summary). Questions in this record are numbered WQ1, WQ2... (shown in chat as D1, D2...); ledger rows continue the CEO series at C24. Findings are numbered W-F1, W-F2..., required work W-RW1, W-RW2..., so they do not collide with earlier series.
+
+### 0A. Premise (Phase 3)
+
+- Real problem: the approved mockup (design D14) is the product's identity, and every data-driven chunk (18-23) needs a place to put things: halls with rack slots, a campus with hall slots and roads, a waypoint graph for vehicles, cooling and power parts whose motion later follows load, and fibre lines for packets.
+- Target outcome: a static campus that matches variant-B-2, built in code, whose moving parts (rack count, LED pulse, duty, packet rate, hall slots) already run from dev controls, so chunks 18-23 only rebind them to the store.
+- Do-nothing cost: Phase 5 cannot start; chunk 18 depends on 10.
+- Phase 3 as written solves this directly, with these gaps:
+  - W-F1 [P1] Nobody owns the campus size [measured: `src/scene/camera.ts:21` `CAMPUS_BOUNDS` half extents 14 x 14 with the comment "chunk 06 sizes the real campus"; `src/scene/Ground.tsx:5` ground 40 units; `src/scene/LightRig.tsx:3` shadow camera +-12]. A 12-slot campus with roads, cooling, power, parking and gate is about 60 x 45 units [estimated], so camera clamps, home framing, ground and the one 2048 shadow map are all sized for the test cube. `ORTHO_ZOOM.min` is 10 (`camera.ts:15`) and the home fit of a campus that size is about 11 px per unit at 1280x720 [estimated], so a slightly larger campus could not be framed at all.
+  - W-F2 [P1] Draw-call bars have no counting rule [measured: three 0.186.1 `WebGLShadowMap.js:548` draws casters through `renderBufferDirect`, which counts in `info.render.calls` (`WebGLBufferRenderer.js:15`, `WebGLInfo.js:20`)]. The 04a HUD's scene number includes the shadow pass, so a shadow-casting mesh costs 2. Chunk 06's "static hall costs 3 or fewer draw calls" cannot hold for a shadow-casting body plus emissive windows plus a sign texture (at least 4) [inference]. No budget exists for the full static campus (12 halls), although chunk 36 adds a CI test that "fails when exceeded".
+  - W-F3 [P1] The first five seconds may look empty [inference from `camera.ts:302-318`: `home()` frames `CAMPUS_BOUNDS`]. Halls A and B always exist (D8) and the grid holds 12 slots, so a fresh campus is 2 halls among 10 empty slots. If home frames the whole grid, halls are about 90 px wide [estimated] and most of the frame is bare ground; variant-B-2 frames about three halls and the plant. Storyboard step 2 ("Sees the campus (5 s)", "delight") depends on this view, and `08-campus.png` becomes the README hero.
+  - W-F4 [P1] Mockup parts and a later dependency have no builder [measured: chunk 34 Tasks "night mode raises emissive LEDs, hall lights, road lamps"; chunk 08 Tasks list roads, parking, gate, dock only]. Road lamps are needed by chunk 34. Variant-B-2 also shows perimeter trees, a fence and the "SYNAPSE AI DATA CENTRE" monument at the gate; no chunk builds them.
+  - W-F5 [P1] Chunk 08 lost its mockup check [measured: section 4b D14 "Chunks 04c and 08 compare a frozen screenshot against variant-B-2"; section 7 risk "compare screenshot to mockup at 04 and 08"; chunk 08 Acceptance has no such item].
+  - W-F6 [P2] The hall sign conflicts with design D7 [measured: chunk 06 Acceptance "at least 12 CSS px at default zoom"; D7 "Label text is never smaller than 12 CSS px on screen"]. A floor sign shrinks with zoom, so it breaks D7 when zoomed out unless it hides; "default zoom" is undefined (`ORTHO_ZOOM.default` 80 against a home fit near 11). The semantic-zoom threshold that chunk 18's billboards use is not defined anywhere. Floor text also reads upside down after a 180 degree rotation (C19 `Q`/`E`).
+  - W-F7 [P1] Later per-hall looks would need per-hall materials [measured: chunk 04c "shared instances only (no per-mesh materials)"; chunk 18 dormant halls "desaturated materials"; chunk 22 heat wash "shader tint on aisle tiles" per hall]. Unless chunk 06 builds the hall so per-hall tint goes through instance or vertex colour (or shared variant materials), chunks 18 and 22 must break the 04c rule.
+  - W-F8 [P1] Phase 3 has no shot views and no deterministic fakes [measured: `src/app/params.ts:79` allows `view` home and lookdev only; section 4 "Each chunk adds its view name(s)"]. Chunks 06, 07, 09 and 10 need README images. The fake load pulse (07), duty (09) and packet motion (10) must be pure functions of scene time and `seed`, or `freeze=1` shots and baselines drift (section 4; chunk 22 "no hidden randomness").
+  - W-F9 [P2] Three acceptance items cannot fail or cannot run: 07 "without frame hitches" (no measure); 09 "no transparency sorting artefacts in Safari or Firefox" (Playwright WebKit is not Safari, eng E12); 09 and 10 animate but check no reduced-motion mode (design D20: "Every animated chunk checks both modes in its acceptance"; D20 already sets vapour density 30% and packets 25% speed).
+  - W-F10 [P2] Pure logic without tests: the rack slot allocator (07), the hall-slot allocator and the waypoint graph (08) have no unit tests in their acceptance, and 07 does not say what a 17th rack key gets (overflow belongs to the chunk 19 reconciler, D8).
+  - W-F11 [P2] Vapour could bloom [measured: `src/scene/render.ts:30` bloom `luminanceThreshold` 0.6; `src/scene/materials.test.ts` checks glow materials sit above it]. White vapour near full alpha crosses the threshold and the towers glow, the "generic neon" risk in section 7.
+  - W-F12 [P2] Fibre routing is unspecified: "curved tubes from vault to each hall slot" would cut across hall footprints, while variant-B-2 runs fibre along the roads with rounded right-angle bends. "Each hall slot" and "rebuilt when hall set changes" disagree on whether empty slots get a line.
+  - W-F13 [P2] Sequencing: chunk 18 depends on 10 (section 6), but binds only racks in halls A and B (chunks 07, 08); chunk 22 is the first user of cooling (09) and fibre (10). The first live-data scene waits on two set-dressing chunks.
+  - W-F14 [P3] Five README images are the same shot [measured: `scripts/shots.config.ts:10-14` captures 01, 02, 04a, 04b and 04c-scene from `view=home`; four are 33.8 KB in `docs/img/`]. After chunk 08 all five become the campus.
+
+### 0B. Existing code leverage (Phase 3)
+
+| Sub-problem | Existing code | Plan as written | Reuse |
+|---|---|---|---|
+| Hall slab, wall, windows, roof | `Hall()` and `Block()` in `src/scene/LookDev.tsx:8-71`, `SLAB` and `RACK` in `src/scene/lookdevLayout.ts` | `buildHall` from scratch | generalise into `buildHall`; look-dev renders `buildHall` output |
+| Rack and LED placement, six status colours | `ledPlacements()` in `lookdevLayout.ts:15-25` | chunk 07 instances | same layout maths feeds the instance matrices |
+| Shared materials, dispose guard | `MATERIALS`, `statusLed()` (`src/scene/materials.ts`), `guardDisposeEvents` (`src/scene/render.ts`) | new materials | join the library; guard covers them |
+| Glow above the bloom threshold test | `src/scene/materials.test.ts` | none for vapour | mirror it: vapour stays below |
+| Merged static geometry | three `mergeGeometries` (`three/examples/jsm/utils/BufferGeometryUtils.js:133`, installed with three 0.186.1) | "merged geometry" | use it; it returns null and logs `console.error` on mismatched attributes |
+| Ground and grid | `src/scene/Ground.tsx` (40 units) | not mentioned | size from the campus layout |
+| Shadow camera | `src/scene/LightRig.tsx` (+-12) | not mentioned | fit to the campus layout |
+| Bounds, home, clamps | `CAMPUS_BOUNDS`, `home()`, `clampTarget` (`src/scene/camera.ts`) | not mentioned | derive from the campus layout |
+| Empty-ground double-click | `isEmptyGround` (`src/scene/pick.ts`, `userData.ground`) | not mentioned | hall floors and roads stay non-ground, so a double-click on them does not go home |
+| Dev controls | collapsible Camera section in `src/scene/PerfHud.tsx:54-87`, `window.__sceneDev` (`src/scene/devHooks.ts`) under `dev=1` | "dev slider", "dev toggle", "dev menu" | new sections there; hooks for Playwright |
+| Draw-call split | `src/scene/drawCalls.ts`, `MarkPass.ts` | budgets | budgets read the HUD's scene number |
+| Views and shots | `src/app/params.ts`, `scripts/shots.config.ts` | images only | add view names and entries |
+| Look-dev baseline | `e2e/lookdev.spec.ts`, `e2e/__screenshots__/` | each chunk extends it (C17) | as planned |
+| Per-hall instanced meshes, owned geometry disposal | ADR 0001 RW6, RW8 | chunk 07 | as planned |
+
+New dependencies needed: none.
+
+Reality rows:
+- REALITY: premise-table finding unverified=3 (campus extent about 60 x 45 units and home fit about 11 px per unit at 1280x720; Safari sorting of instanced vapour; floor-sign legibility under ACES tone mapping and bloom) docs/PLAN.md:505
+- REALITY: already-done pass `git log origin/main -- 'src/scene/*hall*' 'src/scene/*campus*' 'src/scene/*rack*'` is empty; only the look-dev vignette (`src/scene/LookDev.tsx`) draws a hall-like slab docs/PLAN.md:505
+- REALITY: surface-check finding `mergeGeometries` exists in three 0.186.1 (`BufferGeometryUtils.js:133`); `vp run shots` and `vp run e2e:local` exist (`package.json:17-18`); `view` accepts only `home` and `lookdev` (`src/app/params.ts:79`), so every Phase 3 view name is new docs/PLAN.md:510
+- REALITY: binding-decisions pass D7, D8, D9, D10, D12, D14, D17, D20, C16 (calm mode), C17 (look-dev per chunk), C22 (06 depends on 04c and 05) and ADR 0001 (per-hall instanced meshes) honoured; `gstack-decision-search --scope branch --recent 50` returned none for this branch docs/PLAN.md:503
+- REALITY: numbers finding chunk 06's "3 or fewer draw calls" counts shadow draws [measured: three source above]; chunk 08's "under 40" has no stated count rule; vapour, packet and pulse rates are unset; campus size is [estimated] docs/PLAN.md:509
+- REALITY: deferred-asks pass no TODO triggers inside Phase 3 (`vp run doctor`, E18 before chunk 14, C18 at chunk 36) TODOS.md:5
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; Phase 3 is five chunk PRs (06-10) plus this review's docs PR (D18) docs/PLAN.md:31
+
+### 0C. Dream state (Phase 3)
+
+```text
+  CURRENT STATE                   THIS PLAN (06-10)                   12-MONTH IDEAL
+  one canvas, final look on a --> a static campus like the mockup: --> the campus is a map of your
+  test cube and a look-dev        parametric halls, instanced         work: every project a hall you
+  vignette; map controls and      racks, roads, gate, dock, cooling,  recognise at a glance, growing
+  glide; bounds sized for a       power, fibre; every moving part     outward as you start projects,
+  28 x 28 box                     on a dev control                    calm when you are idle, and the
+                                                                      first glance looks like the
+                                                                      mockup, not an empty lot
+```
+
+Phase 3 moves toward the ideal. Gaps: who sizes the campus (W-F1), what the first glance frames (W-F3), and the per-hall looks that Phase 5 needs (W-F7).
+
+### Mode (Phase 3)
+
+SELECTIVE EXPANSION, chosen by the user (WQ1, 2026-10-14; question answer, not auto-decided). The recommendation was SCOPE REDUCTION by the file-count rule: about 50 distinct changed files [estimated] across five chunk PRs. Under SELECTIVE EXPANSION, Phase 3 scope is held and hardened, and each addition is offered separately for Add, Defer or Skip. No approach decision was needed before the mode.
+
+### Required work applied without a new choice (Phase 3)
+
+Each item repairs a gap against an approved contract, so it is in scope under the hold-scope check; none changes a stated limit. All are applied to the chunk text above (chunks 06-10 and the Phase 3 heading), after C24-C28 settled.
+- W-RW1 (W-F1; chunk 05 "clamped to campus bounds" and `cameraRig.home()` "the whole campus framed"): chunk 08 adds `src/scene/campus/layout.ts`, a pure module with the 12 hall-slot positions in slot order (A and B first), the road grid, the furniture, plant, power and gate zones, and the campus extent. `CAMPUS_BOUNDS`, the ground size, the grid and the shadow camera extent are derived from that extent instead of constants, and `ORTHO_ZOOM.min` is lowered when needed so the home fit is never clamped. Unit tests: every slot and zone lies inside the bounds; slots do not overlap each other or any zone; the home fit at 1280x720 is at least `ORTHO_ZOOM.min`. The slot assignment logic stays in chunk 19's reconciler (D8); chunk 08 owns positions and order only.
+- W-RW2 (W-F2; CEO S-RW4 "the bar applies to scene draw calls"): every Phase 3 draw-call bar reads the perf HUD's scene number, which includes the shadow pass, at the high tier with shadows on; post-processing is shown, not counted. Chunk 06's per-hall number is decision C24.
+- W-RW3 (W-F4; chunk 34 "road lamps"): chunk 08 builds road lamps along the road grid as one instanced post mesh and one instanced lamp-head mesh on a shared warm glow material; chunk 34 raises their emissive at night.
+- W-RW4 (W-F5; section 4b D14, section 7 look risk): chunk 08 acceptance gains the frozen comparison: the PR shows `08-campus.png` beside `docs/designs/variant-B-2.png`, as 04c did for the look-dev view.
+- W-RW5 (W-F6; design D7 "never smaller than 12 CSS px") [measure and visibility rule superseded by W-RW17 and W-RW24]: chunk 06 defines `SEMANTIC_ZOOM`, the ortho zoom at which the floor sign's letter height reaches 12 CSS px at the isometric angle. The floor sign fades out over 200 ms below it (D7) and chunk 18's billboards use the same constant. The sign atlas is one shared canvas texture; `setSign(slot, letter, project)` redraws only that slot's region, and the texture count stays constant. Acceptance replaces "at least 12 CSS px at default zoom" with: a unit test computes the on-screen letter height at `SEMANTIC_ZOOM` (at least 12 px), and an e2e shows the sign above it and hides it below.
+- W-RW6 (W-F7; chunk 04c "shared instances only (no per-mesh materials)", chunks 18 and 22): each hall's per-hall looks (aisle tiles for the chunk 22 heat wash, the chunk 18 dormant desaturation) are driven by a colour attribute on that hall's own geometry, never by a per-hall material. Unit test: two halls built with different tints use the same material instances.
+- W-RW7 (W-F8; section 4 shots contract, chunk 22 "no hidden randomness"): new `view` values in `src/app/params.ts`, each with a shots entry: `hall` (06: one hall framed, roof cut away), `racks` (07: the same hall with 16 racks at the seeded fake load), `cooling` (09) and `power` (10), the last two framed on the campus zones from W-RW1; from chunk 08 `home` shows the campus. A pure `src/scene/fake.ts` (seeded by a small RNG in `src/sim/rng.ts`, which chunk 11's mock generator reuses; CEO W-RW37) gives rack count per hall, LED load, duty and packet phase as functions of scene time and `seed`; under `freeze=1` they read the frozen time, so shots and baselines repeat. Dev controls override the fake; chunks 18 and 22 replace it with store values. Until chunk 18, halls A and B in `home` show the seeded fake rack set, so the hero has lit racks as in variant-B-2.
+- W-RW8 (W-F9; design D20, eng E12) [the `renderer.info` check is e2e-only per W-RW23; vapour blending is fixed to normal blending with a sort per W-RW18]: chunk 07's "without frame hitches" becomes measurable: each hall's rack and LED InstancedMeshes are allocated once at capacity 16 (and 16 x LEDs per rack); a count change writes only `mesh.count` and instance attributes, and `renderer.info.memory.geometries` is unchanged across 0, 16 and 0 (unit test, plus an e2e through `__sceneDev`). Chunk 09's sorting check becomes: the vapour material has `depthWrite: false`, and either its blending needs no order or the instances are sorted back to front when the camera moves (unit test on the sort); the PR shows frozen vapour at duty 1 from four azimuths in Chromium, Firefox and WebKit, and a manual Safari check is recorded in the PR. Chunks 09 and 10 check reduced motion: vapour density 30% and packets at 25% speed (D20), by unit tests on the rate functions and one e2e each with reduced motion emulated.
+- W-RW9 (W-F10; D8 stable slots and section 1 D18 test policy): chunk 07's rack slot allocator is pure, with unit tests: a key keeps its slot; a new key takes the lowest free slot; a freed slot is reused only after its key leaves; a 17th key gets no slot and is counted (overflow is chunk 19's); same inputs give the same layout. Chunk 08's waypoint graph has unit tests: it is connected; gate to dock and gate to every hall door have a path; no edge crosses a hall footprint.
+- W-RW10 (W-F11; section 7 "reads as generic neon", D14) [test method superseded by W-RW18]: vapour colour and opacity keep its peak luminance below `RENDER.bloom.luminanceThreshold`.
+- W-RW11 (W-F12; D14 mockup, D8 halls never move): chunk 10 routes fibre on the road grid from the vault to each placed hall's door side, with rounded right-angle bends, never through a hall footprint (unit test on the route); a line exists only for a placed hall; removing a slot in the dev menu disposes its line, and geometry and texture counts return to the previous values.
+- W-RW12 (CEO S-RW2 parameters read in production builds; prior learning `e2e-runs-production-build`): every Phase 3 dev control (rack count, fake load, waypoint graph, duty, packet rate, hall slots) lives in new collapsible sections of the `dev=1` HUD menu (`src/scene/PerfHud.tsx`), and each has a `window.__sceneDev` hook so Playwright drives it in the production build.
+- W-RW13 (Prime Directive 1; `mergeGeometries` returns null and logs on mismatched attributes, `BufferGeometryUtils.js:158-186`) [the throwing function is `mergeHallParts` per W-RW21]: `buildHall` throws a named `HallBuildError` instead of passing null on, so the C23 scene-error path reports it; unit test with mismatched parts.
+
+Recorded without a change: W-F14 (five README images from `home`). Section 4 regenerates old images by design; the README picks which to show.
+
+Added after the first spec review (reviewer `refuter`, score 6/10, REWORK; each fix tied to an approved contract, checked by Claude where marked):
+- W-RW14 (C24 clipped roof; three `WebGLShadowMap.js:442` [measured], `localClippingEnabled` set nowhere in `src` [measured: grep]): `applyRendererSettings` enables local clipping; the toggle moves the plane's constant instead of changing the plane list, so no shader recompiles; unit and e2e checks.
+- W-RW15 (C28 baseline; `playwright.config.ts:23-49` match only `lookdev.spec.ts` [measured]): the `lookdev` project matches `campus.spec.ts` too, and the three browser projects ignore it.
+- W-RW16 (W-RW7 determinism, C28): vapour particle phases and fan angles come from `fake.ts`; chunk 09 checks two frozen captures match.
+- W-RW17 (D7, W-RW5) [metric superseded by W-RW24: 2D screen distance at the current pose, and `SEMANTIC_ZOOM` at the iso pose only]: `SEMANTIC_ZOOM` is defined by projecting the letter through the rig at the four 90 degree azimuths (an axis-aligned floor glyph projects to about 0.41 of its height vertically, so the earlier sine-of-elevation formula gave about 8.5 px [reviewer derivation, checked by Claude: screen-up vector (-1, 2, -1)/sqrt 6 for a camera along (1, 1, 1)]); perspective compares `zoomForDistance` at the target distance.
+- W-RW18 (W-RW10 made testable): vapour uses normal alpha blending with a back-to-front sort, so overlap converges to the vapour colour; the test reads the colour uniform, since a soft shader has no `emissive`.
+- W-RW19 (C24, C27): only the hall body material carries the clipping plane; trees get their own shared material.
+- W-RW20 (W-RW12, W-RW7): `setRackCount(hall, n)` names the hall; `view=racks` pins 16 racks.
+- W-RW21 (W-RW6, W-RW13 test seams): exported `mergeHallParts(parts)` throws `HallBuildError`; `setHallTint` and `setAisleTint` write the colour ranges.
+- W-RW22 (W-RW6 consistency): chunk 18's dormant look, chunk 20's fade and chunk 22's heat wash go through colour attributes or sinking, never per-hall materials; chunk 05's home line points to C25.
+- W-RW23 (feasibility): `renderer.info` counts are read only in e2e (Vitest has no WebGL); the Phase 3 heading lists which meshes cast shadows.
+Added after the second spec review (refuter, 8/10, REWORK; 13 of 14 first-review issues fixed):
+- W-RW24 (D7 "never smaller than 12 CSS px"; camera reaches elevation 12-85 degrees and any azimuth, `src/scene/controls.ts:51-52`, `src/scene/keyboard.ts:7` [reviewer citation]): the floor sign's visibility is judged at the current pose with a named measure (2D screen distance between the projected bottom-centre and top-centre of the letter); `SEMANTIC_ZOOM` stays the iso-pose constant that chunk 18's billboards use. The unit test sweeps elevation and 45 degree azimuths in both projections.
+- W-RW25 (D14 variant-B-2 open halls; W-RW7 lit racks in `home`; C28 baseline): the roof starts cut in every Phase 3 view; the cut plane sits 0.01 units above the wall top with the roof slab wholly above it.
+- Record hygiene: W-RW5, W-RW8, W-RW10 and W-RW13 are tagged with what superseded them; the Phase 3 heading lists vapour phase and fan angle among the seeded values.
+
+After the third spec review (refuter, 9/10, REWORK; cap of three reviews reached, so these fixes were checked by Claude against the text, not re-reviewed):
+- W-RW26 (D7 "Label text is never smaller than 12 CSS px"): the letter measure is taken on the sign's smallest text line (the project name), not the larger hall letter; the sweep test computes its expected value from its own `project` calls; chunk 06's e2e names the `view=hall` framing.
+- Record hygiene: W-RW17 is tagged as superseded by W-RW24.
+- Carried to the review sections: the shared world-space cut plane during chunk 20's rise and sink (Section 4, owner chunk 20); the pose range with no hall label (low elevation and zoom above `SEMANTIC_ZOOM`) and the 200 ms fade below 12 px (Section 11).
+
+Added in the review sections (each tied to an approved contract; see the section that found it):
+- W-RW27 (C25; Section 1 A-1): `rig.setCampus({ bounds, home })`.
+- W-RW28 (W-RW7; A-2): the `SceneSignals` seam.
+- W-RW29 (section 4 determinism, C28; A-3): the atlas waits for Geist; the ready signal waits for the atlas; `SignAtlasError`.
+- W-RW30 (C23; Section 2 E-1): `renderer.debug.onShaderError` routed to `[scene]` and the HUD.
+- W-RW31 (Prime Directive 1; E-2): dev setters clamp and warn.
+- W-RW32 (S-RW38; E-3): degenerate campus extent keeps the previous bounds.
+- W-RW33 (Prime Directive 1; E-4): sign text truncation, empty names, bad slots.
+- W-RW34 (D16; Section 3): fixed fictional names in `fake.ts`.
+- W-RW35 (C20; Section 4 D-1): flat site surfaces are ground for double-click home.
+- W-RW36 (S-RW40; Section 8 O-1): roof and placed-hall transition logs.
+- W-RW37 (reuse; Section 5 Q-1): `src/sim/rng.ts` shared with chunk 11.
+- W-RW38 (C25; Section 6): `e2e/camera.spec.ts` updated to the new home, not deleted.
+- W-RW39 (C26, C28; Section 9 R-1): later PR regenerates baselines and shots.
+- W-RW40 (C25; Section 9 R-2): README "Controls" line.
+
+- Routed, not changed: reduced-motion behaviour for the chunk 07 LED pulse and the chunk 09 fans has no D20 rule, so it goes to Section 11 as UI-4 (owner `/plan-design-review`); both chunks' acceptance checks both modes against it. Upright signs (delight item 5) and the empty-slot look go to Section 11; the view-fitted shadow camera (item 6) to Section 7. Merge conflicts on the binary campus baseline when C26 lets 18 run beside 09 and 10 go to Section 9.
+
+### 0G. Selective-expansion checks (Phase 3)
+
+Hold-scope checks:
+- Complexity: about 50 distinct files [estimated] across five PRs, with new modules for the hall builder, rack instances, campus layout, waypoint graph, cooling, power and fibre, far over the 8-file mark. Challenge result: each chunk is its own PR (D18) of about 10 files; the hall builder, layout and fake module are pure and tested without rendering; no smaller set gives chunks 18-23 their halls, slots, waypoints, plant and fibre.
+- Minimum change: nothing in Phase 3 can be deferred without breaking a later chunk: 06 and 07 feed 18; 08's slots, gate, dock and waypoints feed 19, 20 and 22; 09 feeds 22's cooling ramp; 10 feeds 20's fibre rebuild and 22's packets. Parked cars and bay doors are look-only but are the approved mockup (D14) and cost little. No deferral proposed.
+- Invariants kept: D7, D8, D9, D10, D12, D14, D17, D20, section 4 protocol, C16 calm mode, C17 look-dev per chunk, C22 dependencies, ADR 0001 per-hall instanced meshes. Repairs needed to meet them: W-RW1 to W-RW13 above, and the chunk 06 bar (C24).
+
+10x check: the 10x version of Phase 3 is a campus that opens looking like the mockup with only two projects, grows outward without moving a hall, and costs a fixed, tested number of draw calls per hall, so Phase 5 only rebinds dev controls to the store. That is about 1.3x the effort of the phase as written [estimated].
+
+Delight scan (adjacent improvements of about 30 CC-minutes or less):
+1. Home frames the campus that exists (placed halls, plant, gate), with empty slots shown as reserved pads, instead of all 12 slots (W-F3).
+2. Let chunk 18 start after chunk 08, so live racks arrive two chunks earlier (W-F13).
+3. Site perimeter from the mockup: instanced trees, a perimeter fence and the "SYNAPSE AI DATA CENTRE" monument at the gate (W-F4).
+4. A screenshot baseline for the frozen campus `home` view in `vp run e2e:local`, so the README hero cannot drift from the mockup unnoticed.
+5. Floor signs that stay upright when the camera is rotated past 90 degrees (W-F6).
+6. A shadow camera fitted to the visible area, so shadows stay crisp at maximum zoom.
+
+Platform potential: the campus layout module (W-RW1) is what chunk 19 assigns slots in, chunk 20 animates, chunk 21 and 22 route vehicles on, and chunk 25 builds area presets from; the fake module (W-RW7) is the seam chunks 18 and 22 rebind. Item 5 is a design detail and goes to Section 11. Item 6 is a quality-tier knob and goes to chunk 36 (Section 7). Items 1-4 are offered below, one question each, after C24.
+
+### Decision ledger (CEO, Phase 3)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C24 chunk 06 per-hall draw-call bar (Claude, 0G hold check) | chunk 06 Acceptance "Static hall costs 3 or fewer draw calls"; S-RW4 bars read the HUD scene number; shadow draws count [measured: three `WebGLShadowMap.js:548`, `WebGLInfo.js:20`]; W-F2 | at most 4 (3 main + 1 shadow): one merged hall body with a colour attribute on one new shared library material, roof cut by a clipping plane with `clipShadows`, windows on the shared glow, sign from the shared atlas | none | approved | WQ2 answer "Bar 4: 3 main + 1 shadow (recommended)", 2026-10-14; scope: chunk 06 hall construction and its per-hall bar; count rule (S-RW4) and chunk 08 total unchanged |
+| C25 first-glance and home framing (Claude, 0G delight 1) | chunk 05 `cameraRig.home()` "the whole campus framed"; startup pose target origin at `ORTHO_ZOOM.default` 80 (`src/scene/camera.ts:161`); storyboard step 2; variant-B-2; W-F3 | startup and home frame the extent of placed halls plus the plant, power and gate zones, read from the layout (startup once at load, home on each press); bounds cover all 12 slots | none | approved | WQ3 answer "Add to this plan's scope (recommended)", 2026-10-14; scope: chunk 08 startup pose and `home()` target (amends chunk 05 C19 "whole campus" to the placed campus); bounds (W-RW1) and empty-slot look (Section 11) unchanged |
+| C26 chunk 18 start (Claude, 0G delight 2) | section 6 `10 + 13 → 18`; chunk 20 rebuilds fibre lines (10); chunk 22 first user of cooling (09) and packets (10); W-F13 | 18 depends on 08 and 13; 20 depends on 18, 19 and 10; 22 depends on 21 and 09 | none | approved | WQ4 answer "Add to this plan's scope (recommended)", 2026-10-14; scope: dependency lines of chunks 18, 20, 22 and section 6 only; no task text changes |
+| C27 site perimeter (Claude, 0G delight 3) | variant-B-2 (design D14); W-F4; chunk 08 "under 40" draw calls | chunk 08: one instanced low-poly tree (colour attribute, shared material) on seeded perimeter and road-edge spots; perimeter fence (instanced posts, merged panels) open at the gate; gate monument with the wordmark from the shared sign atlas; look-dev adds a tree and a fence bay; chunk 08 bar stays under 40 | none | approved | WQ5 answer "Add to this plan's scope (recommended)", 2026-10-14; scope: chunk 08 perimeter parts only; road lamps stay W-RW3 |
+| C28 campus baseline (Claude, 0G delight 4) | C17 look-dev baseline pattern (`e2e/lookdev.spec.ts`, its own Chromium project, skipped in CI); section 4b D14 compare at 08; W-RW4 | chunk 08 adds `e2e/campus.spec.ts`: frozen `home` baseline (1280x720, `freeze=1`, `seed=1`, after the ready signal, `maxDiffPixelRatio: 0.005`) in the look-dev project, Mac only; every PR that changes the campus look updates it in the same PR | none | approved | WQ6 answer "Add to this plan's scope (recommended)", 2026-10-14; scope: one spec and baseline from chunk 08; look-dev baseline and W-RW4 compare unchanged |
+| C29 view-fitted shadow camera TODO (Claude, Section 7 P-1) | P-1: one 2048 shadow map over about 60 x 45 units [estimated] gives about 7 CSS px per texel at `ORTHO_ZOOM.max` 240; chunk 36 owns quality knobs | Phase 3 keeps the campus-fitted shadow camera (W-RW1); view-fitted shadows are a P3 item in `TODOS.md` | none | deferred | WQ8 answer "Add to TODOS.md (recommended)", 2026-10-14; scope: TODO only, postponed not rejected; no chunk text changed |
+| UI-4 reduced motion for LED pulse and fans (Claude, Section 11) | D20 names packets, vapour, rain and lightning only; chunks 07 and 09 acceptance check both modes against UI-4 | LEDs steady at 0.8, fans at 25% | none | approved | Phase 3 design review D12 answer "7A Steady LEDs, fans 25% (recommended)", 2026-10-14; applied to chunks 07, 09 and section 4b D20 |
+| UI-5 floor sign orientation (Claude, Section 11) | W-RW24 floor sign can read sideways or upside down after rotation | upright sign panel on the front wall, token values | none | approved | Phase 3 design review board D3 (variant B) and D4 confirmation, D10 "5A Token-based panel (recommended)", 2026-10-14; applied to chunk 06 and section 4b D9 |
+| UI-6 empty hall-slot look (Claude, Section 11) | C25 frames placed halls; empty slots appear when panning | marked pad with its slot number under the 12 px rule | none | approved | Phase 3 design review board D3 (variant B) and D4 confirmation, D16 "11A", D17 "11bA Slot number (recommended)", 2026-10-14; applied to chunk 08 |
+| UI-7 hall-label gap and fade (Claude, Section 11; refuter 3 note) | D7; W-RW24 hides signs by pose; chunk 18 billboards switch on `SEMANTIC_ZOOM` | panel when readable, else chunk 18 billboard; the 200 ms fade accepted as D7's | none | approved | Phase 3 design review D8 "3A Panel, else billboard (recommended)", 2026-10-14; applied to chunks 06, 18 and section 4b D7 |
+
+Approval readiness: PASS. Checked rows and answers: C24 (WQ2, A), C25 (WQ3, A), C26 (WQ4, A), C27 (WQ5, A), C28 (WQ6, A), C29 (WQ8, A, deferred to `TODOS.md`); scope documents WQ7 (A). Each row's chunk text applies only that answer's scope. UI-4 to UI-7 are unresolved and kept out of accepted work (owner `/plan-design-review`). W-RW1 to W-RW40 are required repairs, each citing its approved contract.
+
+### Answered decision C24 (WQ2)
+
+Answer: A, "Bar 4: 3 main + 1 shadow (recommended)", 2026-10-14.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Count rule | S-RW4 (approved): HUD scene number, shadow pass included | same | same | same | same |
+| Per-hall bar | chunk 06 Acceptance (approved limit) | at most 3, rule unstated | at most 4: 3 main + 1 shadow | at most 3 | none |
+| Halls cast shadows | D14 rig "one directional with soft shadow" | unstated | yes (body) | no (receive only) | unstated |
+| Hall body | chunk 06 "merged geometry for static parts" | merged | one merged body (slab, walls, roof, aisle tiles, door) with a colour attribute on one new shared library material | same as A | merged, split left to the implementer |
+| Cutaway roof | chunk 06 "roof hidden or sliced above a height, toggleable" | toggleable | clipping plane on the shared body material, with `clipShadows` | clipping plane on the shared body material | toggleable, method open |
+| Per-hall tint | W-RW6 (pending, required) | via colour attribute | via colour attribute | via colour attribute | via colour attribute |
+| Full-campus budget | chunk 08 "under 40" (2 halls); chunk 36 CI budget | unchanged | unchanged | unchanged | unchanged |
+
+Question: D2 — C24: What should chunk 06's per-hall draw-call bar be? Project: Synapse Horizon, branch phase-3-world-building, CEO review of Phase 3. ELI10: Chunk 06 promises a hall costs at most 3 draw calls. The perf HUD counts the shadow pass too, so any hall that casts a shadow pays twice for its shadow-casting part. A hall with a body, glowing windows and a sign cannot get under 4 while it casts a shadow. Stakes if we pick wrong: a bar nobody can meet gets ignored, or a bar is met by dropping shadows and the campus looks flat next to the mockup. Recommendation: A because one coloured body with a clipped roof keeps the original intent (3 main draws), keeps shadows, and gives chunks 18 and 22 their per-hall colour path for free. Note: options differ in kind, not coverage — no completeness score. Net: A changes the number to match the real counting rule; B keeps the number by dropping hall shadows; C drops the per-hall check.
+Header: Hall bar
+A) Bar 4: 3 main + 1 shadow (recommended)
+One merged hall body on one shared vertex-coloured material, roof cut by a clipping plane, windows and sign separate. Effort M, risk low. ✅ Keeps hall shadows from the D14 rig while holding 3 main-pass draws. ✅ The colour attribute is the per-hall path chunks 18 and 22 need. ❌ Changes the approved number from 3 to 4 and adds one library material.
+B) Bar 3, no hall shadows
+Same merged body and clipped roof, but halls only receive shadows, so the count stays 3. Effort M, risk medium. ✅ Keeps the original number exactly as approved. ✅ Saves one draw call per hall, 12 at a full campus. ❌ Halls stop casting shadows, flatter than the mockup's night look.
+C) No per-hall bar
+Drop the chunk 06 number and rely on chunk 08's total and chunk 36's later budget test. Effort S, zero implementation work. ✅ No new construction rule for the implementer to follow. ✅ Nothing to argue about in chunk 06 review. ❌ Per-hall cost stays unknown until 12 halls exist in chunk 20.
+
+### Answered decision C25 (WQ3)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-14.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Startup pose | 04a/05 code: target origin, zoom 80 (`camera.ts:161`) | origin, zoom 80: about 16 world units across at 1280 px, whatever chunk 08 puts there | the home framing below, applied once at load | unchanged; TODO records the gap | unchanged |
+| `home()` target | chunk 05 (C19, approved): "the whole campus framed in the safeArea" | all 12 slots and the plant (W-RW1 bounds) | the extent of placed halls plus the plant, power and gate zones, read from the layout on each press | unchanged | unchanged |
+| Camera bounds | W-RW1 (required) | full campus extent | same | same | same |
+| Empty-slot look | none (Section 11 design question) | bare ground | unchanged here | unchanged | unchanged |
+| Hero `08-campus.png` | section 4 shots, `home` view | whatever the startup pose shows | placed halls, plant and gate, like variant-B-2 | unchanged | unchanged |
+
+Question: D3 — C25: Should the first glance and the home key frame the campus that exists, instead of all 12 hall slots? Project: Synapse Horizon, branch phase-3-world-building, CEO review of Phase 3. ELI10: Today the app opens on the middle of the map at a fixed zoom, and the home key frames all 12 hall slots. A new user has only halls A and B, so home shows two small halls among ten empty lots, and the opening view shows whatever happens to sit in the middle. The mockup instead frames a few halls with the cooling and power plant. This choice decides what the README hero and the first five seconds look like. Stakes if we pick wrong: the first impression is an empty car park, not "my agents live here", and the README hero does not match the mockup. Recommendation: A because it makes the opening view and home match the approved mockup at the cost of one extent function in the layout module that chunk 08 builds anyway. Note: options differ in kind, not coverage — no completeness score. Net: A changes what home means (the campus that exists, growing as halls are added); B and C keep the whole grid.
+Header: First glance
+A) Add to this plan's scope (recommended)
+Chunk 08: startup and home frame the placed halls plus plant, power and gate, read from the layout; bounds still cover all 12 slots. Effort S, risk low. ✅ The opening view and README hero look like the approved mockup with only two halls. ✅ Home grows with the campus as chunk 20 places halls, without moving any hall. ❌ Changes chunk 05's approved meaning of home from the whole grid to the placed campus.
+B) Defer to TODOS.md
+Keep the current startup pose and whole-grid home now; record the gap with a trigger. Effort S, zero implementation work now. ✅ No change to the approved chunk 05 home behaviour this phase. ✅ The gap is written down with a trigger to revisit. ❌ Chunk 08's hero and first glance ship looking emptier than the mockup.
+C) Skip
+Keep startup at the map centre and home on all 12 slots; record the reason in NOT in scope. Effort S, zero implementation work. ✅ Home always shows every slot a hall can ever take. ✅ No new framing rule to test. ❌ The first glance shows mostly empty slots for every new user.
+
+### Answered decision C26 (WQ4)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-14.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Chunk 18 depends on | section 6 and chunk 18 (approved) | 10, 13 | 08, 13 | 10, 13; TODO records the option | 10, 13 |
+| Chunk 20 depends on | chunk 20 (approved) | 18, 19 (10 through 18) | 18, 19, 10 (fibre rebuild needs 10) | unchanged | unchanged |
+| Chunk 22 depends on | chunk 22 (approved) | 21 (09 and 10 through 18) | 21, 09 (10 through 20) | unchanged | unchanged |
+| Chunk 18 task text | chunk 18 Tasks | racks, blades, beacon, billboards, dormant style | unchanged | unchanged | unchanged |
+| Implementation work | none | none | none (docs only) | none | none |
+
+Question: D4 — C26: Should chunk 18 (racks driven by live data) be allowed to start right after chunk 08, instead of waiting for cooling (09) and power (10)? Project: Synapse Horizon, branch phase-3-world-building, CEO review of Phase 3. ELI10: The plan makes the first live-data scene chunk wait for the cooling towers and power yard, but it only lights racks inside halls A and B. Cooling and fibre are first used two chunks later (20 and 22). Changing three dependency lines lets the live racks happen as soon as the halls and campus exist, and lets cooling and power be built alongside. Stakes if we pick wrong: either the first "my agents are live" moment waits on set dressing, or a later chunk starts without a part it needs. Recommendation: A because it is a docs-only change that keeps every real need (20 still waits for fibre, 22 for cooling) and frees the order of work. Note: options differ in kind, not coverage — no completeness score. Net: A frees ordering at no build cost; the gain is only real if you choose to build 18 before 09 and 10.
+Header: Chunk order
+A) Add to this plan's scope (recommended)
+Section 6 and chunk text: 18 depends on 08 and 13; 20 adds 10; 22 adds 09. Effort S, zero implementation work. ✅ Live racks can land before cooling and power, two chunks sooner. ✅ Every real dependency is still explicit: fibre before 20, cooling before 22. ❌ Gains nothing if you build the chunks strictly in number order anyway.
+B) Defer to TODOS.md
+Keep 18 after 10 now; record the reorder with a trigger. Effort S, zero implementation work. ✅ Section 6 stays exactly as approved this phase. ✅ The option is written down for when parallel work starts. ❌ Hidden coupling stays: 20 and 22 rely on 09 and 10 only through 18.
+C) Skip
+Keep 18 after 10 and say why in NOT in scope. Effort S, zero implementation work. ✅ One fixed order, nothing to track. ✅ No edits to Phase 5 chunk headers. ❌ Live data in the scene waits on two set-dressing chunks.
+
+### Answered decision C27 (WQ5)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-14.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Trees | variant-B-2 (D14) | none | one instanced low-poly tree mesh (trunk and canopy in one geometry with a colour attribute, shared material) along the perimeter and road edges, seeded placement | TODO | none |
+| Perimeter fence | variant-B-2 | none | instanced posts plus merged panels on the campus edge, open at the gate | TODO | none |
+| Gate monument | variant-B-2 "SYNAPSE AI DATA CENTRE" | none | slab with the wordmark from the shared sign atlas (W-RW5), beside the gate | TODO | none |
+| Chunk 08 draw calls | chunk 08 "under 40" (approved) | about 30 [estimated] | about 37 [estimated], bar unchanged | unchanged | unchanged |
+| Look-dev view | C17 | chunk 08 adds its materials | also one tree and a fence bay | unchanged | unchanged |
+| Road lamps | W-RW3 (required) | in chunk 08 | same | same | same |
+
+Question: D5 — C27: Should chunk 08 also build the site perimeter from the mockup: trees, a fence and the gate monument? Project: Synapse Horizon, branch phase-3-world-building, CEO review of Phase 3. ELI10: The mockup's campus sits in dark trees behind a fence, with a lit "SYNAPSE AI DATA CENTRE" monument at the gate. No chunk builds any of these, so the campus would float on bare ground. They are cheap: one instanced tree, one instanced fence and one sign slab that reuses the hall sign atlas. Stakes if we pick wrong: the hero looks like a model on a table instead of a place, or we spend draw calls and review time on scenery. Recommendation: A because these three parts are what make variant-B-2 read as a real site, and each is one or two draw calls in chunk 08, which already places everything around them. Note: options differ in kind, not coverage — no completeness score. Net: A buys the mockup's sense of place for about 7 draw calls; B and C keep chunk 08 to the functional parts.
+Header: Perimeter
+A) Add to this plan's scope (recommended)
+Chunk 08 builds instanced trees, a perimeter fence open at the gate and the gate monument sign on the shared atlas. Effort S, risk low. ✅ The campus reads as a real site, as in variant-B-2, not a model on a table. ✅ Reuses the sign atlas and the layout zones that chunk 08 already builds. ❌ Adds about 7 scene draw calls [estimated], leaving chunk 08 close to its under-40 bar.
+B) Defer to TODOS.md
+Ship chunk 08 with roads, parking, gate, dock and lamps only; record the perimeter with a trigger. Effort S, zero implementation work now. ✅ Chunk 08 stays focused on parts later chunks use. ✅ The look gap is written down for the chunk 34 or 37 polish pass. ❌ The README hero ships without the mockup's site edge.
+C) Skip
+No trees, fence or monument; record the reason in NOT in scope. Effort S, zero implementation work. ✅ Fewest draw calls and the smallest chunk 08. ✅ Nothing extra to keep in step with day and night later. ❌ The campus floats on bare ground, unlike the approved mockup.
+
+### Answered decision C28 (WQ6)
+
+Answer: A, "Add to this plan's scope (recommended)", 2026-10-14.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B | C |
+|---|---|---|---|---|---|
+| Campus baseline | C17 pattern (approved for look-dev) | none | `e2e/campus.spec.ts`: frozen `home` at 1280x720 (`freeze=1`, `seed=1`, after the ready signal), `toHaveScreenshot` with `maxDiffPixelRatio: 0.005`, in the look-dev Playwright project (Chromium on the Mac, skipped in CI), baseline under `e2e/__screenshots__/` | TODO | none |
+| Who updates it | C17 "a deliberate look change updates the baseline in the same PR" | n/a | chunks 08, 09, 10 and every later chunk that changes `home` (18-23, 34, 35) update it in the same PR | n/a | n/a |
+| Mockup compare in PR | W-RW4 (required) | chunk 08 PR | same | same | same |
+| Seeded content | W-RW7 (required) | fake module | same (the baseline needs it) | same | same |
+
+Question: D6 — C28: Should the frozen campus home view get a screenshot baseline, like the look-dev view has? Project: Synapse Horizon, branch phase-3-world-building, CEO review of Phase 3. ELI10: The look-dev view already fails a local test if its pixels drift, so a material or light change cannot slip through unseen. The campus home view becomes the README hero in chunk 08, but nothing would catch a later change that makes it look worse. A second baseline guards it the same way, on the Mac only. Stakes if we pick wrong: the hero slowly drifts from the mockup with nobody noticing, or every scene chunk pays a baseline update. Recommendation: A because the pattern, project and threshold already exist from chunk 04c, so this is one spec file, and the hero is the image people judge the project by. Note: options differ in kind, not coverage — no completeness score. Net: A trades a baseline update in each look-changing PR for a guard on the hero.
+Header: Hero guard
+A) Add to this plan's scope (recommended)
+Chunk 08 adds `e2e/campus.spec.ts`: frozen `home` baseline in the existing look-dev project, Mac only, updated in the same PR on deliberate changes. Effort S, risk low. ✅ A look regression on the hero fails `vp run e2e:local` instead of shipping. ✅ Reuses the look-dev project, threshold and folder from chunk 04c. ❌ Every PR that changes the campus look (09, 10, 18-23, 34, 35) must refresh the baseline.
+B) Defer to TODOS.md
+Rely on the look-dev baseline and the chunk 08 mockup compare for now; record the guard with a trigger. Effort S, zero implementation work now. ✅ No baseline churn while Phase 3 and 5 reshape the campus. ✅ The guard is written down for when the look settles. ❌ Drift in the hero between chunk 08 and the trigger goes unseen.
+C) Skip
+Keep only the look-dev baseline and the chunk 08 compare; record why in NOT in scope. Effort S, zero implementation work. ✅ One baseline to maintain. ✅ No extra spec in the Mac-only suite. ❌ Nothing automated guards the README hero.
+
+### Scope document approval (Phase 3)
+
+WQ7 answer "Approve and continue (recommended)", 2026-10-14: approves these versions of the working plan (chunks 06-10 and this record through W-RW26) and the CEO summary. Implementation and the items routed to Sections 7, 9 and 11 stay unapproved.
+
+### 0I. Temporal interrogation (Phase 3)
+
+```text
+  HOUR 1 (foundations):   unit scale from lookdevLayout.ts (rack 0.55 x 1.1 x 0.8, pitch 0.8) sets hall size;
+                          new library materials (hall body with vertex colours and the clip plane, tree, lamp,
+                          vapour, packet); localClippingEnabled in applyRendererSettings; new view values
+  HOUR 2-3 (core logic):  mergeGeometries needs identical attributes on every part (position, normal, uv, color);
+                          colour ranges per hall part; the plane constant for cut and uncut; the letter measure
+                          through rig.project; slot allocator; layout extent and home extent
+  HOUR 4-5 (integration): CAMPUS_BOUNDS becomes a rig input, so camera.test.ts, controls.test.ts and
+                          e2e/camera.spec.ts:121-193 (home frames campus corners, home centres the origin,
+                          start zoom 80) change with C25; ORTHO_ZOOM.min may move; the shadow camera grows
+                          (check acne and bias); every `home` shot and the look-dev baseline regenerate
+  HOUR 6+ (polish/tests): vapour sort and four-azimuth shots, Safari manual check, reduced-motion e2e,
+                          draw-call e2e counts, mockup compare, campus baseline wiring
+```
+
+Feasibility blockers: none. Pending choices: UI-4, upright signs, empty-slot look and the hall-label gap (Section 11); view-fitted shadows (Section 7). Effort for the phase: human ~2 weeks / CC ~5 h [estimated: five chunks of about 10 files].
+
+### Section 1: Architecture (Phase 3)
+
+```text
+  src/app/params.ts  view: home | lookdev | hall | racks | cooling | power
+          │
+  src/scene/SceneCanvas.tsx ── view switch ──┬── LookDevScene (C17: buildHall, instances, tree, fence bay)
+          │                                  └── Campus (08) / hall views (06, 07) / framed zones (09, 10)
+          │ rig.setCampus({ bounds, home })   (W-RW27)
+          ▼
+  src/scene/camera.ts  bounds, home fit, SEMANTIC_ZOOM ◄──── campus/layout.ts (pure: slots 0-11, roads, zones, extent)
+                                                                 │
+          campus/waypoints.ts (pure graph) ◄─────────────────────┤──► Ground.tsx, LightRig.tsx (extent)
+          fibre/route.ts (pure, road grid) ◄─────────────────────┤──► plant (09), power (10), perimeter (C27)
+                                                                 └──► road lamps (W-RW3)
+  hall/buildHall.ts ── mergeHallParts (pure) ── setHallTint / setAisleTint (colour attribute ranges)
+  hall/signAtlas.ts  one CanvasTexture, waits for Geist (W-RW29)       hall/slots.ts (pure allocator)
+  hall/RackInstances.tsx  capacity 16, statusLed colours               materials.ts (+ new shared entries)
+  SceneSignals ◄── fake.ts (Phase 3) / store-backed (chunks 18, 22)    (W-RW28)
+  PerfHud.tsx dev sections + devHooks.ts __sceneDev                    (W-RW12)
+```
+
+Findings:
+- A-1 [P1] Bounds and home are imported constants [measured: `src/scene/camera.ts:21`, read by `clampTarget` at `:139` and the home fit at `:310`]. C25 says placing a hall widens the next `home()`, so both must be runtime inputs. Fixed by W-RW27 (chunk 08): `rig.setCampus({ bounds, home })`; `camera.ts` imports no campus code; camera and controls tests take bounds from a fixture.
+- A-2 [P2] W-RW7 names no seam for "chunks 18 and 22 replace it". Fixed by W-RW28 (Phase 3 heading): one `SceneSignals` interface; `fake.ts` is its first implementation.
+- A-3 [P1] The sign atlas can bake the fallback font [measured: Geist is `font-display: swap`, `src/styles/tokens.css:1-6`; inference: a canvas `fillText` before the font loads draws the fallback and is not redrawn]. Shots and the C28 baseline would flip between fonts with load timing. Fixed by W-RW29 (chunk 06): the atlas awaits the font with a 3 s timeout [estimated], the ready signal waits for the atlas, a timeout logs one `[scene]` warning; a null 2D context throws `SignAtlasError` into the C23 path.
+- State machines: diagrams below. Invalid transitions are prevented by construction: the roof plane has two constants only; sign visibility is a pure function of the pose; placed halls only grow or shrink by whole slots in slot order (D8).
+- Scaling: capped at 12 halls (D8). A full campus is about 125 scene draw calls [estimated: 12 x (hall 4 + racks 3) + about 40 for site, plant, power and perimeter]; chunk 36 owns the CI budget. Nothing grows with data in Phase 3.
+- Single points of failure: the shared materials (a dispose blanks every hall; RW6 guard counts it), the one sign atlas, the one clip plane.
+- Security architecture: no endpoint, no data mutation; new `view` values pass the existing allowlist; dev hooks exist only under `dev=1` (S-RW2).
+- Production failures: `mergeGeometries` null (W-RW13, W-RW21), null 2D context and font timeout (A-3), WebGL context loss (the atlas re-uploads from its canvas when three rebuilds textures [inference: three re-creates GL state on restore]).
+- Rollback: each chunk is one squash-merged PR; revert it as `fix: revert <title>` (CONTRIBUTING runbook). No data or migrations; images regenerate.
+- Value test: the C28 baseline (consumer: `vp run e2e:local`, user-approved WQ6; retires when the hero is no longer the README image) and the W-RW4 mockup compare (consumer: the chunk 08 PR reviewer, D14; one image pair, retires after chunk 08).
+- Elegant and platform: the pure layout and the `SceneSignals` seam make chunks 19-25 bind data without touching geometry.
+- Cherry-pick fit: C25 needs A-1; C27 uses its own material (W-RW19); C28 needs A-3 and W-RW16; C26 has no architectural effect.
+
+```text
+  ROOF CUT (per campus, one plane)           SIGN VISIBILITY (per hall, per pose)        PLACED HALLS (dev menu until chunk 19)
+  cut ──toggle──► uncut                      visible ──measure<12px──► fading(200ms)     {A,B} ──add──► {A,B,C} ... up to 12
+   ▲               │                           ▲                          │                 ▲                     │
+   └────toggle─────┘                           └──measure>=12px── hidden ◄┘                 └──────remove─────────┘
+  (only two plane constants;                 (fading reverses if the measure recovers)    (A and B never removed; slot order fixed)
+   no add/remove of planes)
+```
+
+Decision gate: A-1 to A-3 repair approved contracts (C25 behaviour, W-RW7 seam, section 4 determinism and C28), so they are applied as W-RW27 to W-RW29 without a new question.
+
+### Section 2: Error & Rescue Map (Phase 3)
+
+```text
+  METHOD/CODEPATH                     | WHAT CAN GO WRONG                                   | ERROR CLASS
+  ------------------------------------|-----------------------------------------------------|---------------------------
+  mergeHallParts(parts) (06)          | parts with mismatched attributes; three returns null | HallBuildError
+  buildHall({ slots, rows }) (06)     | slots not rows x n, zero or negative                | HallBuildError
+  signAtlas init (06)                 | canvas.getContext("2d") is null                     | SignAtlasError
+  signAtlas font wait (06)            | Geist not loaded within 3 s                         | none (timeout path)
+  setSign(slot, letter, project) (06) | slot outside 0-11                                   | SignAtlasError
+                                      | name too wide, empty, unusual Unicode               | none (truncate, letter only)
+  custom shader compile (09, 10)      | driver rejects GLSL                                 | onShaderError callback
+  slots.allocate(key) (07)            | 17th key                                            | none (null, overflow count)
+  rig.setCampus(extent) (08)          | zero-size or NaN extent                             | none (warn, keep previous)
+  waypoints.path(a, b) (08)           | no path between nodes                               | WaypointError
+  fibre route(hall) (10)              | no route on the road grid                           | FibreRouteError
+  fibre rebuild on hall change (10)   | old line not disposed                               | none (leak; e2e counts)
+  __sceneDev setters (07-10)          | NaN, negative, non-integer, out of range, bad hall  | none (clamp, warn)
+  applyRendererSettings (06)          | localClippingEnabled not set: roof never clips      | none (unit test)
+
+  ERROR CLASS / PATH         | RESCUED? | RESCUE ACTION                                   | USER SEES
+  ---------------------------|----------|-------------------------------------------------|-------------------------------
+  HallBuildError             | Y        | C23 boundary; log with part names               | scene-error card, panels work
+  SignAtlasError             | Y        | C23 boundary; log with slot                     | scene-error card, panels work
+  WaypointError              | Y        | C23 boundary (static data; unit tests prevent)  | scene-error card
+  FibreRouteError            | Y        | C23 boundary (static data; unit tests prevent)  | scene-error card
+  font timeout               | Y        | draw with fallback font, one [scene] warning    | signs in a system font
+  shader compile failure     | Y        | one [scene] line, HUD frame-error count, skip   | that effect missing (vapour or
+                             |          | that mesh, keep rendering (C23 policy)          | packets), rest of scene fine
+  17th rack key              | Y        | overflow counted for chunk 19                   | nothing in Phase 3
+  bad setCampus extent       | Y        | keep previous bounds, one warning (S-RW38)      | camera unchanged
+  dev setter input           | Y        | clamp, one console warning naming the argument  | the clamped value
+```
+
+Findings:
+- E-1 [P1] Custom shader failures were silent to the user and the HUD [measured: three logs to the console only unless `renderer.debug.onShaderError` is set, `WebGLProgram.js:866-883`]. Fixed by W-RW30 (Phase 3 heading), under the approved C23 policy (log once, count, keep rendering).
+- E-2 [P2] Dev setters had no input rule. Fixed by W-RW31.
+- E-3 [P2] A degenerate campus extent had no rescue. Fixed by W-RW32, mirroring S-RW38.
+- E-4 [P2] Sign text edge cases (long, empty, out-of-range slot) had no rule. Fixed by W-RW33.
+- No catch-alls: every rescued class is named; the C23 boundary already tells WebGL failures from scene errors by class (eng E24).
+
+Decision gate: E-1 follows the approved C23 policy; E-2 to E-4 follow S-RW38 and Prime Directive 1 without changing behaviour a user approved. Applied as W-RW30 to W-RW33. 0 GAPS remain.
+
+### Section 3: Security & threat model (Phase 3)
+
+| Threat | Likelihood | Impact | Mitigated? |
+|---|---|---|---|
+| New `view` values as an injection point | Low | Low | yes: the S-RW2 allowlist; unknown values fall back with a warning |
+| A page script calls `__sceneDev` setters | Low (same origin, localhost, `dev=1` only) | Low (visual only) | yes: S-RW2 gate; W-RW31 clamps input |
+| Real project names in committed README images and baselines | Medium (shots run on the developer's machine) | Medium (D16: nothing leaves localhost) | yes: W-RW34, fake names are fixed fictional strings; chunk 18 owns real names on screen |
+| Sign text as a script vector | Low | Low | yes: canvas `fillText` renders text only, never HTML |
+
+No new endpoints, dependencies, secrets or stored data. Audit logging: not applicable. One finding (S3-1, W-RW34) fixed.
+
+### Section 4: Data flow and interaction edge cases (Phase 3)
+
+```text
+  layout.ts ──► rig.setCampus ──► clampTarget / home fit        shadow: zero or NaN extent ─► keep previous, warn (W-RW32)
+     │      ──► Ground, LightRig, fibre route, waypoints        shadow: overlap or no path ─► unit tests; runtime ─► C23
+  SceneSignals (fake.ts) ──► instance attributes per frame      shadow: NaN from a dev hook ─► clamped at the setter (W-RW31)
+                                                                shadow: freeze=1 ─► frozen scene time, same values
+  setSign ──► font wait ──► atlas region ──► CanvasTexture      shadow: font timeout ─► fallback + warning (W-RW29)
+                                                                shadow: long, empty, bad slot ─► W-RW33
+                                                                shadow: context lost ─► re-upload from the canvas
+```
+
+Async ordering: font load, atlas draw, first frame, ready signal, shot capture.
+- Invariant: no shot or baseline capture happens before the atlas has drawn every sign with its final font.
+- Mechanism: the ready signal is `first frame rendered AND atlas ready` (W-RW29).
+
+```text
+  order 1 (font first)          order 2 (frame first)            order 3 (font times out)
+  font ✓ ─► atlas ✓             frame ✓ (ready waits)            frame ✓ (ready waits)
+  frame ✓ ─► ready ✓            font ✓ ─► atlas ✓ ─► ready ✓     3 s ─► atlas (fallback) ─► warn ─► ready ✓
+  capture: Geist                capture: Geist                   capture: fallback, the baseline fails loudly
+```
+
+- Regression proof: a unit test with a fake `document.fonts` that resolves before the first frame, after it, and never; it asserts ready waits for the atlas each time.
+
+Interaction edge cases:
+
+| Interaction | Edge case | Handled? | How |
+|---|---|---|---|
+| Roof toggle | rapid toggles | yes | two plane constants, no recompile (W-RW14) |
+| Rack slider | dragged 0-16-0 fast | yes | fixed capacity, count only (W-RW8) |
+| Placed halls | 12 to 2 while packets travel removed lines | yes | lines and packets disposed per hall (W-RW11) |
+| Placed halls | change during a home glide | yes | the glide keeps its target; the next `home()` reads the new extent (C25) |
+| Reduced motion | toggled while the scene runs | yes | rates read the store flag each frame (D20) |
+| Camera | rotate to 12 degree elevation, zoom in | yes | sign hides by the pose measure (W-RW24) |
+| Double-click | on a road, parking or empty slot | yes after W-RW35 | flat site surfaces carry `userData.ground` (C20) |
+| Double-click | on a hall, rack or tower | yes | not ground, no home; chunk 24 adds entity zoom |
+| Window resize | below 1280x720 | yes | S-RW38 full-canvas fallback |
+| Context loss | during the atlas font wait | yes | canvas kept; texture re-uploads on restore |
+| Chunk 20 rise and sink | the shared world-space cut plane shows a sinking hall's roof | not in Phase 3 | owner chunk 20 (carried, refuter 3 note) |
+
+Findings: D-1 [P2] double-click home would fail on most of the campus surface, since roads, parking and slots cover it and only the bare ground mesh is "ground" [measured: `src/scene/pick.ts`]. Fixed by W-RW35 (C20 behaviour). D-2 the ordering invariant above, fixed by W-RW29.
+
+Decision gate: S3-1 and D-1 keep approved behaviour (D16, C20) working; applied as W-RW34 and W-RW35.
+
+### Section 5: Code quality (Phase 3)
+
+- Q-1 [P2] No seeded RNG exists in `src` [measured: grep for mulberry, seededRandom, createRng returns nothing; the spike's was deleted in 04a], and chunk 11's mock generator needs one too. Fixed by W-RW37: one RNG in `src/sim/rng.ts` (the scaffold's empty `src/sim/`), used by `fake.ts` and chunk 11.
+- Q-2 [P3] `src/scene/SceneCanvas.tsx` is 494 lines [measured: `wc -l`] and Phase 3 adds four view branches to it. Guidance for the implementer, not a requirement: a table from view name to content and framing keeps the switch flat.
+- Q-3 [P3] Hall and rack sizes live in `src/scene/lookdevLayout.ts`; chunk 06 moves them into the hall module and the look-dev view renders `buildHall` output (already in chunk 06's View item), so there is one source of truth.
+- Over-engineering check: `SceneSignals` has two real implementations (fake now, store in chunks 18 and 22); the layout module has five consumers (chunks 08, 10, 19, 20, 25). Neither is speculative.
+- Naming: `HallBuildError`, `SignAtlasError`, `WaypointError`, `FibreRouteError` name what failed.
+
+Decision gate: Q-1 applied as W-RW37 (shared code, reuse ladder rung 1 for chunk 11); Q-2 and Q-3 need no change.
+
+### Section 6: Test review (Phase 3)
+
+```text
+  NEW ITEM                                   TYPE        HAPPY                         FAILURE / EDGE
+  buildHall + mergeHallParts (06)            unit        merged body, 4 draws budget   mismatched parts -> HallBuildError
+  clip plane + localClippingEnabled (06)     unit+e2e    flag set, one plane            toggle moves constant only; roof region changes
+  setHallTint / setAisleTint (06)            unit        two tints, shared materials    range bounds
+  sign measure + visibility (06)             unit+e2e    visible at view=hall           sweep 12-85 deg, 45 deg azimuths, both projections
+  sign atlas font wait (06)                  unit        ready waits for atlas          font before/after first frame, never (timeout)
+  setSign text rules (06)                    unit        letter and name drawn          long name truncated, empty name, bad slot throws
+  slot allocator (07)                        unit        stable slot per key            lowest free, reuse after leave, 17th null
+  rack instances (07)                        unit+e2e    count change only              same objects; geometries constant 0-16-0
+  fake.ts / SceneSignals (07-10)             unit        same seed same values          freeze=1 frozen; dev override wins
+  layout (08)                                unit        slots and zones in bounds      no overlap; home fit >= ORTHO_ZOOM.min
+  rig.setCampus + C25 home (08)              unit+e2e    placed extent framed           third hall widens next home; NaN extent kept
+  waypoints (08)                             unit        connected, all doors reached   no edge through a footprint
+  ground flag on site surfaces (08)          unit        roads, parking are ground      halls and plant are not
+  campus baseline (08, C28)                  e2e local   frozen home matches            look change fails until baseline updated
+  vapour (09)                                unit+e2e    sorted, below bloom threshold  reduced motion 30%; four-azimuth shots
+  fibre route + rebuild (10)                 unit+e2e    lines reach door sides         remove hall: counts return; no footprint crossing
+  packets (10)                               unit+e2e    frozen captures match          reduced motion 25%
+  onShaderError hook (09, 10)                unit        handler logs once, counts      stubbed compile failure keeps rendering
+  dev setters (07-10)                        unit        valid input applied            NaN, negative, too large clamped and warned
+```
+
+Assertion check: every row maps to an approved requirement (C24-C28, W-RW1-W-RW38, D7, D8, D20, C20, C23). No row weakens an exact count: the 0-16-0 geometry check asserts equality, the draw-call bars assert at most the stated number. `no_claim` notes: draw-call counts from Playwright Chromium (SwiftShader) prove counts, not frame time (eng E12); the campus baseline proves pixel stability on the Mac's Chromium only, not Firefox or Safari looks; the vapour four-azimuth shots and the Safari check are reviewed by eye.
+
+Required update (W-RW38): `e2e/camera.spec.ts:121`, `:185-187` and `:240` encode the old whole-grid home and the origin start at zoom 80; they move to the C25 contract in chunk 08, never deleted.
+
+Test ambition:
+- 2am Friday: the campus baseline, the draw-call e2e at 2 and 12 placed halls, and the 0-16-0 geometry count.
+- Hostile QA: rotate to 12 degrees and zoom to the sign threshold; drag the slider end to end for 10 s; set placed halls 12 to 2 to 12 and compare geometry counts. The last is chunk 20's churn leak test at scale; Phase 3 checks one slot (chunk 10).
+- Chaos: lose the WebGL context during the atlas font wait.
+
+Pyramid: mostly unit (pure layout, allocator, routes, signals, atlas rules), a few e2e per chunk, two Mac-only baselines. Flakiness risks: time (frozen scene time), fonts (W-RW29), baselines (Mac-only, same PR updates). No load test needed: nothing scales with data in Phase 3.
+
+Decision gate: all tests follow from approved requirements; W-RW38 keeps the chunk 05 tests honest after C25. No new verification scope was added beyond them, so no question.
+
+### Section 7: Performance (Phase 3)
+
+- P-1 [P2] Shadow resolution at maximum zoom: one 2048 map fitted to a campus of about 60 x 45 units [estimated] gives about 0.03 units per texel, about 7 CSS px per texel at `ORTHO_ZOOM.max` 240 (`camera.ts:15`) [estimated]. Shadows soften when zoomed close. A view-fitted shadow camera would fix it; it is not required by any approved contract and is offered as a TODO below.
+- P-2 [P3] Atlas memory: a 2048 x 2048 RGBA atlas costs 16 MB plus mipmaps. Guidance: the smallest atlas that keeps the W-RW26 measure sharp; 2048 x 1024 [estimated] fits 12 slots and the monument.
+- P-3 [P3] Per-frame work: LED colours for a full campus are 12 x 16 x 8 = 1,536 instances x 3 floats, about 18 KB uploaded per frame [estimated]; the vapour sort runs only on camera change. `SceneSignals` reads must not allocate per frame (guidance from eng P-E1).
+- P-4 [note] Phase 3 adds ambient motion (pulse, fans, vapour, packets), so the scene never stops drawing; C16 calm mode still drops it to 30 fps after 5 s idle, as approved.
+- Slowest new paths: (1) the one-time merge of up to 12 hall bodies at startup; (2) fibre rebuild on a hall-set change; (3) the vapour sort on camera moves. All are event-driven, not per frame. p99 [estimated]: a few ms each on an M1.
+- No database, cache, job or connection concerns.
+
+Decision gate: P-1 goes to the TODO choice; P-2 and P-3 are guidance; P-4 is approved behaviour.
+
+### Section 8: Observability (Phase 3)
+
+- Logging: every failure path in Section 2 logs one line (C23 boundary, W-RW29 font warning, W-RW30 shader line, W-RW31 setter warning, W-RW32 extent warning). O-1 [P2]: roof toggles and placed-hall changes are scene state transitions with no log line, unlike the S-RW40 rule for other scene state. Fixed by W-RW36.
+- Metrics: the perf HUD already shows scene and post-processing draw calls (S-RW4) and frame errors; Phase 3 bars read them (W-RW2), and shader failures count there (W-RW30).
+- Tracing, alerting, dashboards: not applicable (local app, no services).
+- Debuggability three weeks later: "Copy error details" (DR14) carries the last 20 `[scene]` lines, which now include build errors, the font fallback, shader failures and the last transitions.
+- Runbook: README "Known limits" gains no new card; the scene-error card text already says to reload and report the `[scene]` line (S-RW40).
+- Joy to operate: the dev menu sections (W-RW12) are the operator console for every Phase 3 moving part, each scriptable through `__sceneDev`.
+
+Decision gate: O-1 applied as W-RW36 under the approved S-RW40 rule.
+
+### Section 9: Deployment and rollout (Phase 3)
+
+- No migrations, feature flags or servers. Each chunk is one squash-merged `feat:` PR, so each cuts a minor release (D19) once merged.
+- Order: 06, 07, 08, then 09 and 10 in parallel with 18 (C26). Rollback: revert the chunk PR as `fix: revert <title>` (CONTRIBUTING runbook); images regenerate.
+- R-1 [P2] Binary merge conflicts: C26 lets chunk 18 run beside 09 and 10, and all three update the campus baseline and the `home` shots. Fixed by W-RW39 (chunk 08): the later PR rebases and regenerates; PNGs are never hand-merged.
+- R-2 [P2] User-visible change at chunk 08: the startup pose and `home()` change meaning (C25). Fixed by W-RW40: the README "Controls" line says `0` or Home frames the placed campus; W-RW38 keeps the camera e2e honest.
+- Post-merge checks: the release workflow (D19); `vp run e2e:local` and `vp run shots` on the Mac before ticking a chunk (D18). Environment parity: baselines run on the Mac's Chromium only (C17, C28).
+- Deploy infrastructure for routine shipping: already in place (02b release pipeline); nothing new needed.
+
+Decision gate: R-1 and R-2 keep C26 and C25 workable; applied as W-RW39 and W-RW40.
+
+### Section 10: Long-term trajectory (Phase 3)
+
+- Debt: (1) the floor sign's orientation (Section 11, UI-5); (2) soft shadows at maximum zoom (P-1); (3) two Mac-only baselines to keep current; (4) `fake.ts` stays as the dev and mock implementation of `SceneSignals` after chunks 18 and 22, so it must keep passing its tests; (5) the R3F 10 migration named in ADR 0001 is unchanged by this phase.
+- Path dependency: the 12-slot grid positions are permanent once halls are placed (D8 "never move"); changing the grid later moves every hall. The vertex-coloured shared body ties hall looks to attribute writes, which chunks 18, 20 and 22 now assume (W-RW22).
+- Reversibility: `SceneSignals` seam 5/5; per-hall colour attributes 4/5; clip-plane cutaway 4/5; campus layout grid 3/5; C25 home meaning 4/5.
+- Knowledge: the record, the layout module and the `[scene]` lines are enough for a new engineer; the 1-year question passes if the layout module carries a short comment on slot order and D8.
+- What comes next: Phase 5 rebinds `SceneSignals` to the store (18, 22), assigns slots (19), animates halls (20) and routes vehicles on the waypoints (21, 22). The architecture supports it without geometry changes.
+- Platform potential: the layout feeds chunk 25's area presets; the waypoint graph feeds trucks (20), carts and subagents (21, 22).
+- Retrospective on cherry-picks: all four offered additions were accepted (C25-C28); none was rejected, so nothing rejected turned out to be needed. C25 drove W-RW27 and W-RW38; C28 drove W-RW15, W-RW16, W-RW29 and W-RW39.
+
+No new findings.
+
+### Section 11: Design and UX (Phase 3)
+
+UI scope detected: Phase 3 sets the first glance, the hall signs, the site look and the scene's motion.
+
+```text
+  open app ──► loader (until first frame AND atlas ready, W-RW29)
+           ──► startup pose: placed halls + plant + gate (C25)
+                 │ zoom in past the sign measure ─► floor signs visible (W-RW24)
+                 │ zoom out / tilt low ─► signs fade (200 ms); chunk 18 billboards later (SEMANTIC_ZOOM)
+                 │ 0 / Home / double-click ground ─► home (placed campus) (C25, W-RW35)
+                 │ dev=1 ─► dev sections: racks, campus, cooling, network (W-RW12)
+                 └ error ─► C23 scene-error card (HallBuildError, SignAtlasError)
+```
+
+Interaction states for the scene in Phase 3:
+
+| Feature | Loading | Empty | Error | Success | Partial |
+|---|---|---|---|---|---|
+| Campus | loader until frame and atlas | halls A and B with seeded fake racks | C23 card for build errors | placed campus framed | low tier: no shadows or bloom |
+| Hall signs | none until atlas ready | letter only when the name is empty | fallback font after 3 s, one warning | visible above the measure | hidden at grazing poses |
+| Vapour and packets | none | duty 0 or rate 0 shows none | shader failure: effect missing, counted | animated | reduced motion: 30% and 25% |
+
+Information architecture: the first glance is the placed campus (C25), then the lit racks (W-RW7), then the plant and fibre glow. Storyboard step 2 ("delight") now has a defined frame and a guard (C28).
+
+AI slop risk: cyan stays reserved for fibre and packets (D17 "Cyan never means a status"); lamps and windows are warm; vapour stays under the bloom threshold (W-RW10). The look follows variant-B-2, compared in the chunk 08 PR (W-RW4).
+
+Accessibility: no new controls in the product UI; the canvas keeps chunk 05's label and keys; reduced motion is covered for vapour and packets (D20) and pending for the LED pulse and fans (UI-4). Desktop only (D1).
+
+Pending design decisions (owner `/plan-design-review`, not decided here):
+- UI-4 Reduced-motion behaviour for the chunk 07 LED pulse and the chunk 09 fans (D20 names packets, vapour, rain and lightning only).
+- UI-5 Floor sign orientation after rotation (it can read sideways or upside down).
+- UI-6 Empty hall-slot look (bare ground or reserved pads).
+- UI-7 The hall-label gap at low elevation with zoom above `SEMANTIC_ZOOM`, and the 200 ms fade below 12 px.
+
+What would make it feel inevitable: the campus opening on exactly the mockup frame, with your two halls lit, and growing outward slot by slot without anything moving. 30-minute touches already accepted: perimeter (C27), lamps (W-RW3), seeded lit racks in the hero (W-RW7).
+
+Recommendation: run `/plan-design-review` on Phase 3 before chunk 06 starts, to settle UI-4 to UI-7. After implementation, `/design-review` on the running campus.
+
+Decision gate: UI-4 to UI-7 are design choices left pending with their owner; nothing in the chunk text prescribes them.
+
+### Answered decision C29 (WQ8)
+
+Answer: A, "Add to TODOS.md (recommended)", 2026-10-14.
+
+Commitment comparison:
+
+| Commitment | Source/approval or pending | Current | A | B |
+|---|---|---|---|---|
+| Shadow camera in Phase 3 | W-RW1 (required) | fitted to the campus extent | unchanged | unchanged |
+| View-fitted shadows | none (Section 7 P-1) | none | TODOS.md P3: fit the shadow camera to the visible ground area each time the camera moves, snapped to texel steps to avoid shimmer; trigger: chunk 36 or visible blocky shadows at close zoom | none; recorded in NOT in scope |
+| Chunk 36 scope | chunk 36 (approved) | quality tiers | unchanged | unchanged |
+
+Question: D8 — C29: Should "shadows fitted to the visible area" go on the TODO list for later? Project: Synapse Horizon, branch phase-3-world-building, CEO review of Phase 3. ELI10: The campus uses one shadow picture stretched over the whole site. Zoomed out it looks fine; zoomed all the way in, each shadow pixel is about 7 screen pixels wide, so shadow edges look soft or blocky. Fitting the shadow picture to only what is on screen keeps them crisp, at some extra complexity (it must move without shimmering). Nothing approved needs it now. Stakes if we pick wrong: either a known look gap is forgotten, or the TODO list collects work nobody will do. Recommendation: A because it is a real, measurable look gap at close zoom with a natural owner (chunk 36 quality work), and writing it down costs nothing. Note: options differ in kind, not coverage — no completeness score. Net: A remembers it for chunk 36; B drops it.
+Header: Shadow TODO
+A) Add to TODOS.md (recommended)
+P3 item: view-fitted, texel-snapped shadow camera; trigger chunk 36 or visible blockiness at close zoom. Effort S, zero work now. ✅ The close-zoom shadow gap is written down with a trigger and a place to start. ✅ Chunk 36 sees it beside the other quality knobs. ❌ One more P3 item on a list that already has three.
+B) Skip
+Record it in NOT in scope as not worth doing; no TODO. Effort S, zero work. ✅ Keeps the TODO list to items with a clear payoff. ✅ Fixed campus-fit shadows stay simple and never shimmer. ❌ The gap is easy to forget if close-zoom shadows ever bother you.
+
+### Outside voice (Phase 3)
+
+`codex_reviews` is disabled in gstack config, so no outside review ran and no native replacement was dispatched; recorded as disabled coverage (`gstack-review-log`, 2026-10-14T11:03:53Z). The three spec-review refuter runs in 0H are native, not outside coverage.
+
+### TODOS.md (Phase 3)
+
+One item proposed and added: P3 view-fitted shadow camera (C29, WQ8).
+
+### Reality rows (Phase 3)
+
+The seven `REALITY:` rows are in 0B above. `PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=3 verdict=complete` (checked on this record alone).
+
+### NOT in scope (Phase 3)
+
+- Deferred: view-fitted shadow camera (C29, WQ8 "Add to TODOS.md"): a close-zoom look gap with a chunk 36 owner.
+- Rejected: none.
+- Owned elsewhere, unchanged: the shared cut plane during chunk 20's rise and sink (chunk 20); the full-campus draw-call CI budget (chunk 36); a 12-hall churn leak test (chunk 20); real project names on signs (chunk 18); the startup quality probe (C18, `TODOS.md`).
+- Pending design decisions, not scope: UI-4 to UI-7 (`/plan-design-review`).
+
+### What already exists (Phase 3)
+
+The 0B table above: the look-dev hall and rack layout, the shared material library and its dispose guard, the glow-above-threshold test, three's `mergeGeometries`, the ground, rig, camera bounds and home fit, `isEmptyGround`, the `dev=1` HUD menu and `__sceneDev`, the draw-call split, the parameter allowlist, the shots config and the look-dev baseline project. Every one is reused; nothing is rebuilt. No seeded RNG existed, so one is added for `fake.ts` and chunk 11 (W-RW37).
+
+### Dream state delta (Phase 3)
+
+After Phase 3 the campus exists, opens on the mockup's frame with two lit halls, grows outward without moving a hall, and exposes every moving part through one `SceneSignals` seam and a pure layout. Still between it and the 12-month ideal: live data in the scene (Phase 5), recognisable project identity on halls (chunk 18 with UI-5 and UI-7), crisp close-up shadows (C29) and the M1 Air-class performance check (chunk 36).
+
+### Error and rescue registry (Phase 3)
+
+The Section 2 tables are the registry: 14 codepaths, 9 rescue rows, 0 GAPS. Named classes: `HallBuildError`, `SignAtlasError`, `WaypointError`, `FibreRouteError`; non-throwing paths: font timeout, shader compile failure, 17th rack key, degenerate extent, dev setter input.
+
+### Failure modes registry (Phase 3)
+
+```text
+  CODEPATH                       | FAILURE MODE                          | RESCUED? | TEST? | USER SEES?                | LOGGED?
+  -------------------------------|---------------------------------------|----------|-------|---------------------------|--------
+  mergeHallParts (06)            | mismatched attributes, null merge     | Y (C23)  | Y     | scene-error card          | Y
+  buildHall params (06)          | bad slots or rows                     | Y (C23)  | Y     | scene-error card          | Y
+  sign atlas context (06)        | null 2D context                       | Y (C23)  | Y     | scene-error card          | Y
+  sign atlas font (06)           | Geist not loaded in 3 s               | Y        | Y     | signs in fallback font    | Y
+  setSign text (06)              | long, empty, bad slot                 | Y        | Y     | truncated, letter, card   | Y (slot)
+  clip setup (06)                | localClippingEnabled missing          | n/a      | Y     | roof never cuts (caught   | n/a
+                                 |                                       |          |       | before merge by test)     |
+  sign visibility (06)           | letter under 12 px at some pose       | Y        | Y     | sign hidden               | n/a
+  slot allocator (07)            | 17th key                              | Y        | Y     | nothing in Phase 3        | counted
+  rack instances (07)            | reallocation on count change          | prevented| Y     | n/a                       | n/a
+  shared materials (all)         | a library material disposed           | guard    | Y     | blank halls               | Y (dev)
+  rig.setCampus (08)             | zero or NaN extent                    | Y        | Y     | camera unchanged          | Y
+  home after placing a hall (08) | stale extent                          | Y        | Y     | wider home on next press  | Y (W-RW36)
+  waypoints (08)                 | no path                               | Y (C23)  | Y     | scene-error card          | Y
+  double-click on a road (08)    | not ground, home does nothing         | Y        | Y     | glides home               | n/a
+  campus baseline (08)           | fallback font or random motion        | prevented| Y     | n/a (test fails loudly)   | Y
+  vapour (09)                    | too bright, blooms                    | prevented| Y     | n/a                       | n/a
+  vapour (09)                    | sorting seams                         | prevented| Y+eye | n/a                       | n/a
+  custom shaders (09, 10)        | compile failure                       | Y        | Y     | that effect missing       | Y
+  fibre route (10)               | no route                              | Y (C23)  | Y     | scene-error card          | Y
+  fibre rebuild (10)             | line not disposed                     | n/a      | Y     | leak (caught by e2e)      | n/a
+  dev setters (07-10)            | NaN or out of range                   | Y        | Y     | clamped value             | Y
+  cut plane in chunk 20          | sinking hall shows its roof           | chunk 20 | -     | -                         | -
+```
+
+22 rows, 0 CRITICAL GAPS (no row is unrescued, untested and silent).
+
+### Scope expansion decisions (Phase 3)
+
+From the CEO plan (`~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-14-phase-3-world-building.md`):
+- Accepted: C25 first glance and home frame the placed campus; C26 chunk 18 after 08; C27 site perimeter; C28 campus baseline. (C24, the hall bar, was a limit change, not an addition.)
+- Deferred: none from the 0G menu (C29 is a Section 7 TODO).
+- Skipped: none.
+
+### Diagrams produced (Phase 3)
+
+9: dream state (0C), temporal sequence (0I), architecture (Section 1), state machines (Section 1), error map (Section 2), data flow with shadow paths (Section 4), async ordering (Section 4), test diagram (Section 6), user flow (Section 11).
+
+### Stale diagram audit (Phase 3)
+
+- Section 6 dependency summary: stale after C26; fixed (`08 + 13 → 18`, `18 + 19 + 10 → 20`, `21 + 09 → 22`).
+- Section 3 architecture picture: still accurate (Phase 3 adds no data path).
+- Section 4b screen layout: unaffected.
+
+## Implementation Tasks (CEO review, Phase 3)
+
+Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex; checkbox as you ship. Estimates assume features ~30x and tests ~50x human-to-CC ratios [estimated].
+
+- [ ] **T1 (P1, human: ~1d / CC: ~30min)** — design — Run `/plan-design-review` on Phase 3 to settle UI-4 to UI-7
+  - Surfaced by: Section 11 — UI-4 to UI-7 pending; chunk 07 and 09 acceptance check reduced motion against UI-4
+  - Files: `docs/PLAN.md`
+  - Verify: the design record answers UI-4 to UI-7 and chunks 07 and 09 name the reduced-motion behaviour
+- [ ] **T2 (P1, human: ~1d / CC: ~40min)** — chunk 06 — Build the merged vertex-coloured hall body with the clipped roof
+  - Surfaced by: C24; W-RW6, W-RW13, W-RW14, W-RW19, W-RW21, W-RW25
+  - Files: `src/scene/hall/buildHall.ts`, `src/scene/hall/buildHall.test.ts`, `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/render.ts`, `src/scene/render.test.ts`, `src/scene/LookDev.tsx`, `src/scene/lookdevLayout.ts`
+  - Verify: `vp test`; `?view=hall&dev=1` HUD shows at most 4 scene draw calls per hall; `vp run e2e:local` look-dev baseline updated in the PR
+- [ ] **T3 (P1, human: ~1d / CC: ~30min)** — chunk 06 — Sign atlas, letter measure, pose visibility and font wait
+  - Surfaced by: W-RW5, W-RW17, W-RW24, W-RW26, W-RW29, W-RW33; Section 1 A-3; Section 4 async ordering
+  - Files: `src/scene/hall/signAtlas.ts`, `src/scene/hall/signAtlas.test.ts`, `src/scene/camera.ts`, `src/scene/camera.test.ts`, `src/app/App.tsx`
+  - Verify: unit sweep over elevation and 45 degree azimuths in both projections; fake `document.fonts` order test; e2e at `view=hall`
+- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — chunks 06-10 — New `view` values and shots entries
+  - Surfaced by: W-F8; W-RW7
+  - Files: `src/app/params.ts`, `src/app/params.test.ts`, `scripts/shots.config.ts`, `src/scene/SceneCanvas.tsx`
+  - Verify: params unit tests; `vp run shots` writes `06-hall.png`, `07-racks.png`, `08-campus.png`, `09-cooling.png`, `10-power-network.png` under 200 KB
+- [ ] **T5 (P1, human: ~1d / CC: ~30min)** — chunk 07 — Rack instances, slot allocator, `SceneSignals`, `fake.ts` and the shared RNG
+  - Surfaced by: W-RW8, W-RW9, W-RW20, W-RW28, W-RW34, W-RW37
+  - Files: `src/scene/hall/slots.ts`, `src/scene/hall/slots.test.ts`, `src/scene/hall/RackInstances.tsx`, `src/scene/signals.ts`, `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/sim/rng.ts`, `src/sim/rng.test.ts`
+  - Verify: `vp test`; e2e geometries constant across 0, 16, 0 racks; two frozen `view=racks` captures match
+- [ ] **T6 (P2, human: ~3h / CC: ~15min)** — chunks 07-10 — Dev sections and clamped `__sceneDev` setters
+  - Surfaced by: W-RW12, W-RW20, W-RW31
+  - Files: `src/scene/PerfHud.tsx`, `src/scene/devHooks.ts`, `src/app/globals.d.ts`
+  - Verify: unit tests for NaN, negative, non-integer and too-large input; e2e drives each setter in the production build
+- [ ] **T7 (P1, human: ~1d / CC: ~40min)** — chunk 08 — Campus layout, `rig.setCampus`, derived bounds, ground and shadow, C25 home
+  - Surfaced by: W-F1, W-F3; C25; W-RW1, W-RW27, W-RW32, W-RW38
+  - Files: `src/scene/campus/layout.ts`, `src/scene/campus/layout.test.ts`, `src/scene/camera.ts`, `src/scene/camera.test.ts`, `src/scene/controls.test.ts`, `src/scene/Ground.tsx`, `src/scene/LightRig.tsx`, `e2e/camera.spec.ts`
+  - Verify: layout and rig unit tests; updated `e2e/camera.spec.ts:121`, `:185-187`, `:240` pass at 1280x720 and 1920x1080
+- [ ] **T8 (P1, human: ~1.5d / CC: ~45min)** — chunk 08 — Roads, parking, gate, dock, lamps, perimeter, ground flags and waypoints
+  - Surfaced by: W-F4; C27; W-RW3, W-RW9, W-RW35
+  - Files: `src/scene/campus/` (new components), `src/scene/campus/waypoints.ts`, `src/scene/campus/waypoints.test.ts`, `src/scene/materials.ts`, `src/scene/LookDev.tsx`
+  - Verify: waypoint unit tests; HUD under 40 scene draw calls; double-click on a road glides home (e2e)
+- [ ] **T9 (P1, human: ~3h / CC: ~15min)** — chunk 08 — Campus baseline, Playwright wiring, mockup compare and README controls
+  - Surfaced by: W-F5; C28; W-RW4, W-RW15, W-RW39, W-RW40
+  - Files: `e2e/campus.spec.ts`, `playwright.config.ts`, `e2e/__screenshots__/`, `README.md`, `docs/img/08-campus.png`
+  - Verify: `playwright test --list` shows `campus.spec.ts` only in the `lookdev` project; `vp run e2e:local` passes; the PR shows the image pair
+- [ ] **T10 (P1, human: ~1.5d / CC: ~45min)** — chunk 09 — Cooling plant, sorted normal-blended vapour, seeded fans, shader-error hook
+  - Surfaced by: W-F9, W-F11; W-RW8, W-RW10, W-RW16, W-RW18, W-RW30
+  - Files: `src/scene/plant/` (new components), `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/SceneCanvas.tsx`
+  - Verify: sort and luminance unit tests; two frozen `view=cooling` captures match; reduced-motion e2e; four-azimuth shots and a Safari note in the PR
+- [ ] **T11 (P1, human: ~1.5d / CC: ~45min)** — chunk 10 — Power yard, road-grid fibre routing and seeded packets
+  - Surfaced by: W-F12; W-RW11, D20
+  - Files: `src/scene/power/` (new components), `src/scene/fibre/route.ts`, `src/scene/fibre/route.test.ts`, `src/scene/fibre/Packets.tsx`
+  - Verify: route unit test; e2e removing a hall returns geometry and texture counts; reduced-motion e2e at 25% speed
+- [ ] **T12 (P2, human: ~1h / CC: ~5min)** — chunks 06-10 — `[scene]` transition lines for roof and placed halls
+  - Surfaced by: Section 8 O-1; W-RW36
+  - Files: `src/scene/sceneLog.ts`, `src/scene/sceneLog.test.ts`
+  - Verify: unit test asserts one line per transition
+
+### Completion summary (Phase 3)
+
+```text
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | no Phase 3 code; bounds, ground and shadow  |
+  |                      | sized for the test cube; shadow draws count |
+  |                      | in the HUD; Geist is font-display swap; no  |
+  |                      | seeded RNG; camera e2e encodes old home     |
+  | Step 0               | WQ1 mode; C24 hall bar 4; C25-C28 accepted  |
+  |                      | (4 of 4); spec review 3 runs, 6/8/9         |
+  | Section 1  (Arch)    | 3 issues found (A-1 to A-3, fixed)          |
+  | Section 2  (Errors)  | 14 error paths mapped, 0 GAPS               |
+  | Section 3  (Security)| 1 issue found, 0 High severity              |
+  | Section 4  (Data/UX) | 11 edge cases mapped, 0 unhandled           |
+  |                      | (1 owned by chunk 20)                       |
+  | Section 5  (Quality) | 3 issues found (1 fixed, 2 guidance)        |
+  | Section 6  (Tests)   | Diagram produced, 1 gap (W-RW38, fixed)     |
+  | Section 7  (Perf)    | 4 issues found (1 TODO, 2 guidance, 1 note) |
+  | Section 8  (Observ)  | 1 gap found (O-1, W-RW36)                   |
+  | Section 9  (Deploy)  | 2 risks flagged (R-1, R-2, fixed)           |
+  | Section 10 (Future)  | Reversibility: 3-5/5, debt items: 5         |
+  | Section 11 (Design)  | 4 issues, to /plan-design-review (UI-4..7)  |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (1 deferred, 5 owned elsewhere)     |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 14 rows, 0 CRITICAL GAPS                    |
+  | Failure modes        | 22 total, 0 CRITICAL GAPS                   |
+  | TODOS.md updates     | 1 item proposed (C29, added)                |
+  | Scope proposals      | 4 proposed, 4 accepted (SELECTIVE)          |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex disabled (config)                     |
+  | Lake Score           | N/A (no question was scored for coverage)   |
+  | Diagrams produced    | 9 (dream, temporal, arch, state, error,     |
+  |                      | data flow, async, tests, user flow)         |
+  | Stale diagrams found | 1 (section 6, fixed)                        |
+  | Unresolved decisions | 4 (UI-4 to UI-7, to /plan-design-review)    |
+  | Reality rows         | 7/7 rows (PLAN_REALITY complete), 3 unverif.|
+  +====================================================================+
+```
+
+Spec review: 3 refuter runs (scores 6, 8, 9); 20 issues found, 18 confirmed fixed by a later reviewer, the last 2 fixed by Claude and checked against the text (issues verified: 2 of 2), spec not re-verified by a reviewer after the third run. Required work: W-RW1 to W-RW40.
+
+### Unresolved decisions (Phase 3)
+
+All four were settled by the Phase 3 design review on 2026-10-14 (see "Design review record: Phase 3"); listed here as they stood when this CEO review ended.
+
+- UI-4 reduced-motion behaviour for the LED pulse and fans (owner `/plan-design-review`).
+- UI-5 floor sign orientation (owner `/plan-design-review`).
+- UI-6 empty hall-slot look (owner `/plan-design-review`).
+- UI-7 hall-label gap at low elevation and the fade below 12 px (owner `/plan-design-review`).
+
+Open verifications (not decisions): campus extent and home fit [estimated]; Safari vapour sorting (manual); chunk 08 draw-call total [estimated]; three's texture re-upload of the sign atlas after a context restore [inference].
+
+## Design review record: Phase 3 (/plan-design-review, 2026-10-14)
+
+Target: `docs/PLAN.md` Phase 3 (chunks 06-10), branch `phase-3-world-building`, after the Phase 3 CEO review. Reviewer: Claude (in-host), plus one independent Claude subagent (Codex disabled). Question numbers D1, D2... are this review's own sequence; findings are numbered WD1, WD2... (world design).
+
+System audit: no DESIGN.md (tokens live in section 4b and `src/styles/tokens.css`; a full DESIGN.md was deferred by the 2026-10-12 design review). Phase 3 UI scope: the static campus (hall body, windows, sign, racks and LEDs, roads, parking, gate, dock, lamps, perimeter, monument, cooling plant, vapour, power yard, fibre, packets), the C25 first glance, and four new dev-menu sections. Prior design reviews: main 4/10 to 7/10, Phase 2 5/10 to 7/10; both held Pass 4 at 7 for the accepted dark neon-glass look.
+
+Step 0: initial rating 5/10 (parts named and a mockup reference, but sign, composition, effect values, reduced motion for pulse and fans, empty slots and label coverage unspecified). Focus: all 7 passes with mockups (D2).
+
+Correction to a statement made in this review's D4 confirmation: section 4b D17 says "Cyan never means a status"; it does not reserve cyan for fibre. Fibre and packets (D10) and the overflow conduit (D8) are cyan. Keeping the sign panel's glow out of cyan still holds, so that cyan stays the colour of network lines.
+
+### Approved Mockups
+
+| Screen/Section | Mockup Path | Direction | Notes |
+|----------------|-------------|-----------|-------|
+| Hall identity (UI-5) | /Users/nathanael/.gstack/projects/bjorkgard-ai-center/designs/hall-identity-20261014/variant-B.png | backlit sign panel on top of each hall's front wall, above the door: hall letter larger than the project name | not adopted: the panel's cyan-white edge glow, rack rows other than 2 x 8 (D8); panel values are WD5 |
+| Empty hall slot (UI-6) | /Users/nathanael/.gstack/projects/bjorkgard-ai-center/designs/empty-slot-20261014/variant-B.png | flat concrete pad a step lighter than the ground, thin light outline, painted slot letter at the front edge | not adopted: fibre into the empty slot (W-RW11 placed halls only), painted letters on hall walls, and the painted "C" (pads show slot numbers, WD11b); pad values are WD11 |
+
+Mockup generation: 6 images requested, 6 saved; the vision check passed 1 (rack counts and 1536x864 or 3:2 framing off-brief), which the user was told before choosing (D3). Board submissions: hall identity B (ratings A 3, B 4, C 4), empty slot B (A 2, B 5, C 4); confirmed in D4.
+
+### Outside voice (design, Phase 3)
+
+CLAUDE SUBAGENT (design completeness) [single-model], 12 findings (2 critical, 6 high, 4 medium), folded into the passes below; report at `.claude/scratch/phase-3-world-building/reports/design-voice-04.md`. Codex disabled (`codex_reviews`), recorded `outside_status: disabled`. Its triangle-budget finding is engineering scope and goes to `/plan-eng-review`.
+
+### Pending findings (each needs its own decision)
+
+- WD1 [critical] Campus composition: where zones sit and how big halls, slots and towers are (chunk 08 `layout.ts` has invariants only). Pass 1.
+- WD2 [critical] Brightness ladder: emissive order of beacon, packets, fibre, windows, lamps, sign and LEDs; D6 says the waiting beacon is the strongest scene signal. Pass 1.
+- WD3 [high] UI-7 label coverage: a front-wall panel cannot be read from behind or at grazing angles, and chunk 18's billboards show only below `SEMANTIC_ZOOM`. Pass 2.
+- WD4 [high] The look with bloom off (medium and low tiers): fibre, packets and windows lose their glow. Pass 2.
+- WD5 [high] Sign panel anatomy (UI-5 values) and chunk 06's floor-sign text. Pass 5.
+- WD6 [high] LEDs per rack, pulse shape and the fake status mix (capacity is fixed once, W-RW8). Pass 5.
+- WD7 [high] UI-4 reduced motion for the LED pulse and the fans. Pass 5.
+- WD8 [high] Fibre and packet values. Pass 5.
+- WD9 [high] Vapour and fan values. Pass 5.
+- WD10 [high] Site furniture colours against the status palette. Pass 5.
+- WD11 [medium] Empty-slot pad values (UI-6 values). Pass 5.
+- WD12 [medium] Gate monument copy: variant-B-2 says "SYNAPSE AI DATA CENTRE", the app is "Synapse Horizon". Pass 5.
+- WD13 [medium] Rack LEDs carry status by colour only. Pass 6.
+- WD14 [medium] Dev-menu sections: order, collapse state, and the roof toggle's missing control and hook. Pass 7.
+
+### Pass 1: Information architecture (Phase 3) — 5/10 → 9/10
+
+```text
+  WHAT THE EYE FINDS FIRST AT THE STARTUP VIEW (C25 frame, WD2 ladder)
+  1  chunk 18: a waiting beacon (4.0), the strongest signal (D6)
+  2  moving packets on fibre (3.2), then the fibre network itself (2.6)
+  3  the halls: warm windows (2.0) framing racks and LEDs (1.0); sign panels (0.5) when close enough
+  4  the plant: towers with vapour top-left, power yard left (WD1 composition)
+  5  site: roads and lamps (1.6), parking, gate and monument, perimeter trees and fence
+```
+
+- WD1 resolved: D6 "1A Follow the mockup (recommended)", applied to chunk 08's Campus layout item (composition, sizes, plan sketch).
+- WD2 resolved: D7 "2A Ladder, mockup hues (recommended)", applied to the Phase 3 heading and chunk 18's beacon.
+- Re-rated 9: the frame, the arrangement and the attention order are now written; the remaining gap is what labels the halls at every camera pose (Pass 2, WD3).
+
+### Pass 2: Interaction state coverage (Phase 3) — 6/10 → 9/10
+
+```text
+  FEATURE          | LOADING                     | EMPTY                          | ERROR                         | SUCCESS                    | PARTIAL
+  Campus           | loader until frame + atlas  | A and B with seeded fake racks | C23 card for build errors     | placed campus, WD2 ladder  | bloom off: glow x1.5 (WD4)
+  Hall label       | none until atlas ready      | letter only (empty name)       | fallback font after 3 s       | panel when readable;       | Phase 3: no label while the
+                   |                             |                                |                               | billboard otherwise (WD3)  | panel is hidden (until 18)
+  Empty hall slot  | -                           | marked pad, slot letter (UI-6) | -                             | -                          | -
+  Vapour / packets | none                        | duty 0 / rate 0: none          | shader failure: effect gone   | animated                   | reduced motion (D20, WD7)
+```
+
+- WD3 resolved: D8 "3A Panel, else billboard (recommended)", applied to chunk 06 (Tasks, Acceptance, Sign item), chunk 18 and section 4b D7 and D9 (annotations). UI-5's approved direction (sign panel) applied to the same places.
+- WD4 resolved: D9 "4A Brighter glow (recommended)", applied to the Phase 3 heading.
+- Re-rated 9: every Phase 3 visual has its states; the remaining gap is the Phase 3-only window before chunk 18 where a hidden panel leaves a hall unlabelled, accepted as part of WD3.
+
+### Pass 3: User journey and emotional arc (Phase 3) — 7/10 → 9/10
+
+```text
+  STEP | USER DOES                                   | USER FEELS              | PLAN SPECIFIES
+  -----|---------------------------------------------|-------------------------|-------------------------------------------------
+  1    | Opens the app                               | curious                 | loader until frame and atlas (W-RW29); C25 frame
+  2    | Sees the campus arrive                      | recognition: the mockup | WD1 composition; WD2 ladder; seeded lit racks (W-RW7)
+  3    | Zooms toward a hall                         | oriented                | sign panel "A · alpha" appears at 12 px (WD5)
+  4    | Orbits behind the hall                      | never lost              | chunk 18 billboard takes over (WD3)
+  5    | Pans to cooling and power                   | "it's a real place"     | soft plumes, idling fans (WD9); fibre and packets (WD8)
+  6    | Leaves the tab open for days                | calm, ambient trust     | 30 fps calm mode (C16); packets capped at 12 per line (WD8)
+  7    | Has reduced motion on                       | comfortable             | steady LEDs, fans 25%, vapour 30%, packets 25% (WD7, D20)
+  8    | Notices an empty pad marked "03"            | "room to grow"          | marked pads (WD11) with true slot numbers (WD11b)
+```
+Time horizons: 5 s visceral (steps 1-2), 5 min behavioural (steps 3-5), long-term reflective (steps 6-8).
+
+- No separate issue: the gaps this storyboard exposed (reduced motion, ambient caps, labels from behind) were asked as WD3, WD7, WD8 and WD9. Re-rated 9: the remaining gap is live data on day one, which is Phase 5.
+
+### Pass 4: AI slop risk (Phase 3) — 7/10 → 7/10
+
+Classifier: EXPERIENCE for the 3D campus (the work fills the viewport; Phase 3 adds no panel UI). Hard rejections: none (no cards, no hero copy, no carousel). Litmus, from the approved mockups and plan text: brand in first screen YES (top-bar wordmark and the "SYNAPSE HORIZON" monument, WD12); one visual anchor YES (the campus); scannable YES (hall sign panels and, from chunk 18, billboards); one job per element YES (colour only where it means something, WD10); cards necessary n/a (none); motion helps YES (ambient, capped, ladder-ranked, WD2, WD8, WD9); premium without decorative shadows YES (real directional shadows give depth; the mockup panel's cyan edge glow was not adopted). Calibration: this is look (2), near-black with one neon accent and glowing edges, which the brief asked for and the user approved (design D14); not a fallback. Score stays 7 for that accepted tradeoff, as in the earlier design reviews. No new issue.
+
+### Pass 5: Design system alignment (Phase 3) — 4/10 → 8/10
+
+- WD5 resolved: D10 "5A Token-based panel (recommended)", applied to chunk 06's sign item.
+- WD6 resolved: D11 "6A Strip + 12 blades (recommended)", applied to chunks 07 (Tasks, Instances, Fake load) and 18.
+- WD7 resolved (UI-4): D12 "7A Steady LEDs, fans 25% (recommended)", applied to chunks 07 and 09 and section 4b D20.
+- WD8 resolved: D13 "8A Thin lines, capped spheres (recommended)", applied to chunk 10.
+- WD9 resolved: D14 "9A Soft plumes, idling fans (recommended)", applied to chunk 09.
+- WD10 resolved: D15 "10A Neutral site (recommended)", applied to the Phase 3 heading.
+- WD11 resolved (UI-6): D16 "11A Pad + letter, 12 px rule (recommended)", then D17 "11bA Slot number (recommended)" on new evidence (chunk 19 assigns letters by project order, overflow halls take the lowest free slot); applied to chunk 08's Empty slots item.
+- WD12 resolved: D18 "12A SYNAPSE HORIZON (recommended)", applied to chunk 08's Site perimeter item.
+- DESIGN.md: still absent (deferred by the 2026-10-12 design review; tokens in section 4b). Re-rated 8: every Phase 3 visual now has values from tokens or the material library [most sizes estimated, tuned against the look-dev baseline]; the remaining gap is the missing DESIGN.md itself.
+
+### Pass 6: Responsive and accessibility (Phase 3) — 7/10 → 9/10
+
+- Responsive: desktop only from 1280x720 (D1); the sign and slot-number 12 px rule measures CSS px at the current pose, so it holds at 1280x720 and 1920x1080 alike. No new issue.
+- Reduced motion: every Phase 3 animation now has a rule (D20 plus WD7).
+- WD13 resolved: D19 "13A Document cues (recommended)", applied to chunk 07 (Instances) and chunk 37 (colour-blindness simulation). Prior learning applied: speaker-origin-icon-accessibility, "never color-only meaning" (confidence 10/10, from 2026-09-19).
+- Keyboard and screen readers: Phase 3 adds no focusable control; the canvas keeps chunk 05's label and keys (DR15). No new issue.
+Re-rated 9: the remaining gap is the Phase 3-only window before chunks 18 and 22, where an error LED is colour-only in the scene (accepted in WD13).
+
+### Pass 7: Unresolved design decisions (Phase 3)
+
+```text
+  DECISION NEEDED                                   | RESOLUTION
+  --------------------------------------------------|------------------------------------------------------------
+  UI-4 reduced motion for LED pulse and fans (CEO)  | D12 (WD7): steady LEDs at 0.8, fans at 25%
+  UI-5 hall sign orientation (CEO)                  | D3/D4 board: wall panel (upright, never upside down); D10 (WD5) values
+  UI-6 empty hall-slot look (CEO)                   | D3/D4 board: marked pad; D16 (WD11) values; D17 (WD11b) slot numbers
+  UI-7 hall-label gap and fade (CEO)                | D8 (WD3): panel when readable, else billboard; fade accepted as D7's
+  WD14 dev-menu sections and roof toggle            | D20 "14A Section per chunk (recommended)"
+  Triangle budgets per part (outside voice 12)      | engineering scope: handed to /plan-eng-review, not decided here
+```
+
+WD14 resolved and applied to the Phase 3 heading and chunk 06. 5 resolved, 0 deferred.
+
+### Approval reconciliation (design, Phase 3)
+
+Every applied fix has its own answer: UI-5 and UI-6 directions (D3 board submissions, D4 confirmation), WD1 (D6), WD2 (D7), WD3 and UI-7 (D8, amending D7 on new evidence: free rotation leaves a wall panel unreadable from behind), WD4 (D9), WD5 (D10), WD6 (D11), WD7 and UI-4 (D12), WD8 (D13), WD9 (D14), WD10 (D15), WD11 (D16), WD11b (D17, reopening D16's letter on new evidence: chunk 19 assigns letters by project order), WD12 (D18), WD13 (D19), WD14 (D20). Pass 3 and Pass 4 made no change. Setup and navigation answers (D1, D2, D5, D21) approved no fix. The correction about cyan in the record header is factual, not a design change.
+
+### NOT in scope (design, Phase 3)
+
+- A full DESIGN.md: deferred by the 2026-10-12 design review (tokens live in section 4b); `/design-consultation` can create one later.
+- Regenerated mockups after the passes: declined (D21); the plan text governs.
+- Triangle budgets per part: engineering scope, handed to `/plan-eng-review`.
+- Chunk 22's heat wash runs amber to red on hot aisles, near the error red; chunk 22's own review owns that hue.
+- D8's cyan overflow conduit: unchanged (D17 forbids cyan only as a status).
+- Revisiting the dark neon-glass look: an accepted tradeoff (design D14, D18).
+
+### What already exists (design, Phase 3)
+
+Section 4b (D6, D7, D9, D14, D16, D17, D20, D22), `src/styles/tokens.css` (`--color-text-2`, `--color-text-3`, Geist), the material library (`src/scene/materials.ts`: slate, concrete, roof, window glow, fibre glow, status LEDs, vendor trim), the look-dev view and baseline, the approved variant-B-2 and the two Phase 3 mockups. Every Phase 3 value reuses these; the new values are the emissive ladder, the site palette greys, and the vapour, packet and pad colours.
+
+### TODOS.md (design, Phase 3)
+
+No TODO proposals: no decision was deferred.
+
+## Implementation Tasks (design review, Phase 3)
+
+Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T1, run this review, is done). Effort ratios assumed: features ~30x, tests ~50x.
+
+- [ ] **T1 (P1, human: ~3h / CC: ~15min)** — chunk 06 sign — Wall sign panel with token values, pose visibility rule and dormant text
+  - Surfaced by: Pass 2 — WD3 (UI-7); Pass 5 — WD5 (UI-5)
+  - Files: `src/scene/hall/signAtlas.ts`, `src/scene/hall/SignPanel.tsx`, `src/scene/hall/signAtlas.test.ts`, `src/scene/camera.ts`
+  - Verify: unit sweep shows the panel only when it faces the camera and the name measures 12 CSS px or more; atlas test draws "A · alpha" and "A · No sessions" in the token colours
+- [ ] **T2 (P1, human: ~2h / CC: ~10min)** — materials — Emissive ladder, bloom-off factor and `setQuality` hook
+  - Surfaced by: Pass 1 — WD2; Pass 2 — WD4
+  - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/render.ts`, `src/scene/devHooks.ts`
+  - Verify: unit test asserts sign < LEDs < lamps < windows < fibre < packets (< beacon in chunk 18) and the 1.5 factor keeps the order; chunk 08 PR shows a frozen `home` with bloom forced off
+- [ ] **T3 (P1, human: ~3h / CC: ~15min)** — chunk 08 layout — Variant-B-2 composition and sizes in `layout.ts`
+  - Surfaced by: Pass 1 — WD1
+  - Files: `src/scene/campus/layout.ts`, `src/scene/campus/layout.test.ts`
+  - Verify: unit test checks zone order at the startup azimuth (cooling top-left, power left, halls centre, gate bottom-centre, parking bottom-right, dock right) and a 16-rack hall of about 8 x 6 units
+- [ ] **T4 (P1, human: ~3h / CC: ~15min)** — chunk 07 LEDs — Status strip plus 12 blades, pulse range, seeded hero mix, steady under reduced motion
+  - Surfaced by: Pass 5 — WD6, WD7 (UI-4)
+  - Files: `src/scene/hall/RackInstances.tsx`, `src/scene/fake.ts`, `src/scene/fake.test.ts`
+  - Verify: unit tests: 208 LED instances per hall; pulse stays in 0.6-1.0; hero mix 60/25/10/5 for seed 1; reduced motion holds 0.8
+- [ ] **T5 (P2, human: ~3h / CC: ~15min)** — chunk 10 network — Fibre look, junction boxes, capped packet spheres
+  - Surfaced by: Pass 5 — WD8
+  - Files: `src/scene/fibre/route.ts`, `src/scene/fibre/Fibre.tsx`, `src/scene/fibre/Packets.tsx`, `src/scene/fibre/route.test.ts`
+  - Verify: unit test caps 12 packets per line and spacing of 1.2 units or more; frozen `view=power` shot in the PR
+- [ ] **T6 (P2, human: ~3h / CC: ~15min)** — chunk 09 plant — Vapour and fan values, idle fans at duty 0
+  - Surfaced by: Pass 5 — WD9, WD7
+  - Files: `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/plant/Towers.tsx`
+  - Verify: unit tests: no particles at duty 0, 60 per tower at duty 1, fans at 10% at duty 0 and 25% under reduced motion
+- [ ] **T7 (P2, human: ~2h / CC: ~10min)** — chunk 08 palette — Neutral site colours and the hue test
+  - Surfaced by: Pass 5 — WD10
+  - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`
+  - Verify: unit test keeps every furniture colour's hue and saturation away from the D17 status and vendor colours
+- [ ] **T8 (P2, human: ~2h / CC: ~10min)** — chunk 08 slots — Empty-slot pads with slot numbers under the 12 px rule
+  - Surfaced by: Pass 5 — WD11, WD11b (UI-6)
+  - Files: `src/scene/campus/SlotPads.tsx`, `src/scene/hall/signAtlas.ts`
+  - Verify: e2e at `view=home`: pads show `03`-`12` only when zoomed in; no pad shows a hall letter
+- [ ] **T9 (P3, human: ~30min / CC: ~5min)** — chunk 08 monument — "SYNAPSE HORIZON" wordmark from the atlas
+  - Surfaced by: Pass 5 — WD12
+  - Files: `src/scene/campus/Monument.tsx`
+  - Verify: campus baseline (C28) shows the wordmark; no "AI DATA CENTRE" string in `src/`
+- [ ] **T10 (P2, human: ~1h / CC: ~5min)** — dev menu — Sections in build order and `setRoofCut`
+  - Surfaced by: Pass 7 — WD14
+  - Files: `src/scene/PerfHud.tsx`, `src/scene/devHooks.ts`
+  - Verify: e2e with `dev=1`: sections Camera (open), Hall, Racks, Campus, Cooling, Network (collapsed); `setRoofCut(false)` restores the roof
+- [ ] **T11 (P2, human: ~1h / CC: ~5min)** — chunk 18 labels — Billboard also shows while a hall's panel is hidden
+  - Surfaced by: Pass 2 — WD3
+  - Files: to be determined in chunk 18
+  - Verify: unit test: at every sampled pose each hall has exactly one visible label
+- [ ] **T12 (P3, human: ~1h / CC: ~10min)** — chunk 37 audit — Colour-blindness simulation of the error cart and waiting beacon
+  - Surfaced by: Pass 6 — WD13
+  - Files: to be determined in chunk 37
+  - Verify: protanopia and deuteranopia simulated screenshots show the cart and beacon
+
+_No new tasks from Pass 3 (journey) or Pass 4 (AI slop)._
+
+### Completion summary (design, Phase 3)
+
+```text
+  +====================================================================+
+  |         DESIGN PLAN REVIEW — COMPLETION SUMMARY                    |
+  +====================================================================+
+  | System Audit         | no DESIGN.md (deferred earlier); Phase 3 UI: |
+  |                      | static campus, signs, slots, effects, first |
+  |                      | glance, dev-menu sections                   |
+  | Step 0               | 5/10; all 7 passes with mockups (D2)        |
+  | Pass 1  (Info Arch)  | 5/10 → 9/10 after fixes                     |
+  | Pass 2  (States)     | 6/10 → 9/10 after fixes                     |
+  | Pass 3  (Journey)    | 7/10 → 9/10 after fixes                     |
+  | Pass 4  (AI Slop)    | 7/10 → 7/10 after fixes                     |
+  | Pass 5  (Design Sys) | 4/10 → 8/10 after fixes                     |
+  | Pass 6  (Responsive) | 7/10 → 9/10 after fixes                     |
+  | Pass 7  (Decisions)  | 5 resolved, 0 deferred                      |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (6 items)                           |
+  | What already exists  | written                                     |
+  | TODOS.md updates     | 0 items proposed                            |
+  | Approved Mockups     | 6 generated (6 requested), 2 approved       |
+  | Decisions made       | 17 added to plan                            |
+  | Decisions deferred   | 0                                           |
+  | Overall design score | 4/10 → 7/10                                 |
+  +====================================================================+
+```
+
+Overall score basis: the lowest rated pass, before (Pass 5 at 4) and after (Pass 4 at 7). Pass 4 stays at 7 because of the accepted dark neon-glass look (design D14, D18), not an open finding; every other pass is 8 or more. Decisions made: UI-5 and UI-6 directions (board), WD1 to WD14 and WD11b.
+
+### Unresolved decisions (design, Phase 3)
+
+None.
+
+## Eng review record: Phase 3 (/plan-eng-review, 2026-10-14)
+
+Target: `docs/PLAN.md` Phase 3 (chunks 06-10) as amended by the Phase 3 CEO review (C24-C29, W-RW1-W-RW40) and design review (WD1-WD14, WD11b), branch `phase-3-world-building`, base `main` at `5cc28e9`. Report file: this plan. Reviewer: Claude (in-host). Questions in this record are numbered D1, D2... (this review's own sequence); ledger rows continue the eng series at E26. Design doc: `docs/designs/phase-3-world-building.md` (the Phase 3 CEO summary).
+
+### Scope record (eng, Phase 3)
+
+feature answers: none proposed (no cut or deferral was offered; the CEO and design reviews settled scope); structure: B "Smaller arrangement (recommended)", D1, 2026-10-14; accepted scope: pure modules as planned (`hall/buildHall.ts`, `hall/signAtlas.ts`, `hall/slots.ts`, `scene/signals.ts`, `scene/fake.ts`, `sim/rng.ts`, `campus/layout.ts`, `campus/waypoints.ts`, `plant/vapour.ts`, `fibre/route.ts`), and one view file per chunk (`hall/Hall.tsx`, `campus/Campus.tsx`, `plant/Plant.tsx`, `network/Network.tsx`), each split by part only past about 300 lines; about 18 source files [estimated]; pending remedies: E26, E27, E28.
+
+### Scope Challenge findings (eng, Phase 3)
+
+- SC-1 [P2] (confidence: 9/10) docs/PLAN.md:501-575 — about 30 new source files and 20+ new modules across chunks 06-10 [estimated]. Resolved by D1 (smaller arrangement).
+- No other Scope Challenge findings: reuse is mapped in the CEO record's 0B; no work is deferrable without breaking a later chunk (CEO 0G); `TODOS.md` holds nothing that blocks Phase 3 (C29 shadow fit is P3 for chunk 36).
+- Search check: per-instance opacity on an InstancedMesh needs an attribute and a shader patch, with a CPU distance sort at modest counts [Layer 1]; canvas text must await `document.fonts.load` before `fillText` [Layer 1]. Both match the plan (W-RW18, W-RW29).
+- Result: scope accepted as-is (the smaller arrangement keeps every feature and contract).
+
+### 1. Architecture review (eng, Phase 3)
+
+```text
+  scene time t (driver.ts, 0 under freeze) + seed
+        │
+        ▼
+  SceneSignals ── fake.ts (closed form, E26) ── later: store-backed (chunks 18, 22)
+        │ rackCount(hall) ledLoad(hall, rack) duty() vapourPhase(i) fanAngle(i) packetPhase(line, j)
+        ▼
+  view files ── Hall.tsx: body (merged, vertex colours, clip plane) │ windows │ sign panels │ rack + LED instances
+             ── Campus.tsx: roads, parking, gate, dock, lamps, perimeter, monument, slot pads
+             ── Plant.tsx: towers, chillers, fans, vapour instances (sorted on camera change)
+             ── Network.tsx: power yard, vault, fibre tubes, junction boxes, packet instances
+        │ instance matrices / colours / opacity written in place, no allocation per frame
+        ▼
+  renderer (shadow pass + main pass) ── HUD counts (S-RW4)
+
+  layout.ts ──► rig.setCampus(bounds, home) ──► camera clamp, home fit, startup pose (C25)
+           ──► Ground / LightRig extent;  waypoints.ts;  route.ts (fibre on the road grid)
+  signAtlas ──(document.fonts.load, 3 s)──► ready = first frame AND atlas (W-RW29); WebGL-unavailable path unchanged (S-RW19)
+```
+
+Findings, most severe first:
+- E-A1 [P1] (confidence: 9/10) `src/scene/loop/driver.ts:101-104` — `if (hasRendered && !freeze) { sceneSeconds += ... }`: scene time stays 0 in every frozen shot, so emission-based vapour and packets would be empty or clumped in the C28 baseline. Resolved by E26 (D2).
+- E-A2 [P3] (confidence: 7/10) `src/app/App.tsx:38` — `window.__sceneReady = value;`: W-RW29 makes ready wait for the atlas as well as the first frame; the WebGL-unavailable path still ends the loader on `unavailable` (S-RW19), so the card never waits on fonts. Recorded; no change needed.
+- Production failure per new path: atlas font load fails (fallback, W-RW29); `mergeGeometries` null (W-RW13); shader patch or custom shader fails (W-RW30); route or waypoint missing (static, C23). All handled in the CEO Section 2 map.
+- Distribution: no new artifact; the SEA build embeds `dist/` as before (02b).
+
+Dispositions: E-A1 accepted (D2, E26); E-A2 no change.
+
+### 2. Code quality review (eng, Phase 3)
+
+Findings, most severe first:
+- E-Q1 [P2] (confidence: 8/10) docs/PLAN.md:490 — "shared instances only (no per-mesh materials)", against docs/PLAN.md:514 (sign panel "fades over 200 ms when it crosses"), docs/PLAN.md:553 (slot number "shows only while it measures ...") and E26's closed-form vapour, whose particles are reborn in place and would pop without a fade. Three callers need a per-instance fade that a shared material cannot give. Shared-code rubric: the callers are proposed (chunks 06, 08, 09), not existing source; the reuse ladder finds no existing helper (`src/scene/materials.ts` has none); three's built-in materials have no per-instance opacity [Layer 1, search above]. Resolved by E27 (D3).
+- E-Q2 [P3] (confidence: 7/10) docs/PLAN.md:512 — `setHallTint` and `setAisleTint` write colour ranges inside one merged body; `mergeGeometries` concatenates parts in input order, so `buildHall` records each part's vertex range as it merges. Covered by W-RW21's tests; guidance only.
+- E-Q3 [P3] (confidence: 6/10) Medium confidence, verify this is actually an issue: `campus/Campus.tsx` holds eight parts under D1; the 300-line split rule covers it.
+- Diagrams in touched sections are current (section 6 updated by C26; chunk 08's plan sketch by WD1).
+
+Dispositions: E-Q1 accepted (D3, E27); E-Q2 and E-Q3 no change.
+
+### 3. Test review (eng, Phase 3)
+
+Framework: Vitest through `vp test` (configured in `vite.config.ts`) and Playwright (`playwright.config.ts`); 44 test files today [measured: `git ls-files`]. CLAUDE.md has no Testing section.
+
+```text
+CODE PATHS (proposed)                                          USER FLOWS
+[+] hall/buildHall.ts                                          [+] Open app, campus arrives (C25)
+  ├── mergeHallParts: ok / mismatched -> HallBuildError          ├── [PLANNED ★★★] loader until frame + atlas; startup frame — camera.spec (W-RW38)
+  │     [PLANNED ★★★ unit] (W-RW13, W-RW21)                       └── [PLANNED ★★ e2e] campus baseline (C28) [→E2E]
+  ├── per-hall colour ranges, setHallTint/setAisleTint         [+] Zoom toward a hall
+  │     [PLANNED ★★★ unit] shared materials (W-RW6)              ├── [PLANNED ★★★] panel appears at 12 px, fades within ~200 ms (W-RW24, E27) [→E2E]
+  ├── clip plane cut/uncut [PLANNED ★★★ unit + e2e] (W-RW14)     └── [PLANNED ★★★ unit] pose sweep 12-85 deg, 45 deg azimuths, both projections
+  └── draw budget <= 4 [PLANNED ★★ unit + e2e] (C24)          [+] Rotate behind a hall
+[+] hall/signAtlas.ts                                            └── [PLANNED ★★ unit] panel hidden when facing away (W-RW24; billboard in chunk 18)
+  ├── font wait: before / after first frame / timeout          [+] Double-click a road
+  │     [PLANNED ★★★ unit, fake document.fonts] (W-RW29)         └── [PLANNED ★★ e2e] glides home (W-RW35)
+  ├── setSign: long / empty / bad slot [PLANNED ★★★] (W-RW33)  [+] Dev menu (dev=1)
+  └── null 2D context -> SignAtlasError [PLANNED ★★ unit]        ├── [PLANNED ★★★] each setter clamps bad input (W-RW31)
+[+] materials.ts helpers                                         └── [PLANNED ★★ e2e] sections and setRoofCut (WD14)
+  ├── instance fade patch [PLANNED ★★ unit + e2e] (E27)        [+] Reduced motion on
+  ├── emissive ladder + bloom-off x1.5 [PLANNED ★★★] (WD2, WD4)  └── [PLANNED ★★★] LEDs steady 0.8, fans 25%, vapour 30%, packets 25% [→E2E]
+  └── site palette hue test [PLANNED ★★] (WD10)                [+] Error states
+[+] hall/slots.ts [PLANNED ★★★ unit] (W-RW9)                     ├── [PLANNED ★★ unit] build errors reach the C23 card
+[+] scene/fake.ts + signals.ts + sim/rng.ts                      ├── [PLANNED ★★ unit] shader failure logged and counted (W-RW30)
+  ├── same seed same values [PLANNED ★★★]                        └── [PLANNED ★★ unit] font timeout warns once
+  ├── closed form full at t = 0 [PLANNED ★★★] (E26)
+  └── pulse 0.6-1.0, hero mix, reduced motion [PLANNED ★★★] (WD6, WD7)
+[+] campus/layout.ts + waypoints.ts [PLANNED ★★★ unit] (W-RW1, W-RW9, WD1)
+[+] camera rig setCampus + C25 home [PLANNED ★★★ unit] (W-RW27, W-RW32)
+[+] plant/vapour.ts: sort, luminance, life fade [PLANNED ★★★ unit] (W-RW18, E27)
+[+] fibre/route.ts: door side, no footprint, dispose [PLANNED ★★★ unit + e2e] (W-RW11)
+
+EXISTING TESTS THAT CHANGE (regression contract, approved by W-RW38 and C17)
+  src/scene/camera.test.ts, src/scene/controls.test.ts  — bounds from a fixture instead of the constant
+  e2e/camera.spec.ts:121, :185-187, :240              — home and startup move to the C25 contract
+  e2e/lookdev.spec.ts baseline                          — updated in each chunk PR (C17)
+  src/scene/materials.test.ts                           — glow-above-threshold stays; ladder and palette added
+  src/app/params.test.ts                                — new view values
+
+COVERAGE (planned): 27/27 proposed paths have a planned test; 0 gaps after the three proofs added below.
+QUALITY (planned): ★★★: 18  ★★: 9  ★: 0  |  E2E-marked: 4  |  EVAL: none (no LLM scope)
+```
+
+Findings:
+- T-1 [P2] (confidence: 8/10) docs/PLAN.md:509 — "Static hall costs 4 or fewer scene draw calls" had no method. Required proof of approved C24, added without a question: unit count of meshes and shadow casters, plus a `view=hall` HUD e2e.
+- T-2 [P2] (confidence: 8/10) E26 (D2) — the closed form must be full at scene time 0. Required proof, added: unit tests on vapour counts at duty 0 and 1 and on packet spacing at t = 0.
+- T-3 [P3] (confidence: 7/10) docs/PLAN.md chunk 08 Acceptance — "Total scene draw calls under 40" had no reader. Added: an e2e reads `__sceneDev.stats()` at frozen `home`.
+- Regression rule: camera bounds, home and startup behaviour are at risk; W-RW38 already approved the contract (update the three assertions to C25, never delete). Carried, no new question.
+- Value cards are in the test plan artifact; tests made obsolete: none (the three camera e2e assertions are rewritten, not retired).
+
+Dispositions: T-1, T-2, T-3 accepted as required proof of approved behaviour (C24, E26, W-RW2); no new choice.
+
+Test plan artifact: written to `~/.gstack/projects/bjorkgard-ai-center/` (path in the completion summary).
+
+### 4. Performance review (eng, Phase 3)
+
+Findings, most severe first:
+- E-P1 [P2] (confidence: 8/10) docs/PLAN.md:509 — "Low poly, merged geometry for static parts" with no number, and :789 chunk 36's budget test without values. Resolved by E28 (D4).
+- E-P2 [P3] (confidence: 7/10) `node_modules/three/src/renderers/webgl/WebGLShadowMap.js:86` — `this.autoUpdate = true;`: the shadow map re-renders every frame, also in 30 fps calm mode, although most casters never move in Phase 3 (fans and later vehicles do). Offered as a TODO below; chunk 36 owns quality and cost knobs.
+- E-P3 [P3] (confidence: 6/10) Medium confidence, verify this is actually an issue: CI's headless Chromium and Firefox render on software WebGL (CEO S-RW30); the campus in `view=home` makes every CI spec that opens `home` heavier. The chunk 08 PR records the CI job durations before and after; no change now.
+- Memory: fixed instance capacities (16 racks, 208 LEDs per hall, 60 vapour per tower, 12 packets per line) and one atlas (at most 2048 x 1024, CEO P-2) bound every buffer; no per-frame allocation (E26 closed form). Slow paths stay event-driven (startup merge, fibre rebuild, vapour sort on camera change).
+
+Dispositions: E-P1 accepted (D4, E28); E-P2 to the TODO choice; E-P3 no change (verification note).
+
+### Decision ledger (eng, Phase 3)
+
+#### E26: Particle and packet state model
+Finding: E-A1, [P1], confidence 9/10, `src/scene/loop/driver.ts:101-104` (`if (hasRendered && !freeze) { sceneSeconds += ... }`, so scene time stays 0 under `freeze=1`) with docs/PLAN.md:565 (vapour "grow from 1.2 to 2.4 units over a 6 s life") and C28; reviewer Claude.
+Plan baseline: W-RW7 and W-RW16 (approved): every moving value comes from `fake.ts` as a function of scene time and `seed`, frozen under `freeze=1`; WD9 (design D14) vapour values; WD8 (design D13) packet values. The state model is unspecified.
+Runtime evidence: scene time is 0 for every frozen shot and baseline (driver code above). A particle system that starts emitting at scene time 0 has no vapour at 0, and packets launched at 0 sit bunched at line starts, so the C28 hero baseline and the `view=cooling` and `view=power` shots would show neither. No Phase 3 code exists yet.
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E26 particle and packet state | unspecified; emission from scene time 0 leaves frozen shots empty | closed form of time and seed: vapour particle i has age (t + offset_i) mod 6 s and shows when i < 60 x duty; packet j has phase (2.5 t + 1.2 j) mod line length for j below the rate cap | simulated per frame, pre-rolled one 6 s lifetime at start and before every frozen render | unchanged |
+| Duty or rate ramp | unspecified | an index switches on or off at its next birth, so a ramp lags up to one 6 s life | new particles follow the new rate at once | unspecified |
+| Determinism (W-RW7, W-RW16, approved) | required | met by construction | met with a fixed pre-roll step | not met for hero content at scene time 0 |
+| WD8, WD9 values (approved) | approved | unchanged | unchanged | unchanged |
+| E27 opacity mechanism | pending | pending | pending | pending |
+| E28 triangle budgets | pending | pending | pending | pending |
+
+Question D2:
+D2 — E26: How should vapour particles and packets keep their state, so frozen shots show them? Project: Synapse Horizon, branch phase-3-world-building, eng review of Phase 3. ELI10: Every screenshot and the campus baseline are taken with scene time frozen at 0 (driver.ts:101-104). A normal particle system starts empty and emits over time, so at time 0 the towers have no vapour and packets are bunched at the start of each line. The approved plan wants the hero to look like the mockup, with plumes and flowing packets, and every value to be a pure function of time and seed. Stakes if we pick wrong: the README hero and baselines show dead towers and clumped packets, or the simulation is harder to make repeatable. Recommendation: A because a closed-form state is full at any time, repeatable by construction and allocates nothing per frame, which matches the engineering preference for explicit over clever. Completeness: A=9/10, B=8/10, C=3/10. Net: A is simplest and always full; B allows richer motion at the cost of a pre-roll; C leaves the hero empty.
+Header: Particle state
+Options:
+A) Closed form in time (recommended)
+Vapour particle i has age (t + offset_i) mod 6 s and shows when i < 60 x duty; packet j has phase (2.5 t + 1.2 j) mod line length; seeded offsets. Effort S (human ~2h / CC ~10 min), risk low, nothing to maintain per frame. ✅ Full plumes and spread packets at scene time 0, so frozen shots and the baseline match the mockup. ✅ Repeatable by construction and no per-frame allocation. ❌ A duty or rate change takes effect as particles are reborn, lagging up to one 6 s life.
+B) Simulate with pre-roll
+A per-frame particle and packet simulation, pre-rolled one 6 s lifetime at start and before each frozen render with a fixed step. Effort M (human ~4h / CC ~20 min), risk medium, maintenance medium. ✅ Ramps react at once, and richer motion such as gusts is possible later. ✅ Familiar particle-system model. ❌ Pre-roll steps at start and on every frozen render, and repeatability depends on the fixed step.
+C) Leave unspecified
+Implementer picks a model; frozen shots may show empty towers. Effort S, zero now, risk high. ✅ No design work in this review. ✅ Leaves room for any library later. ❌ The C28 hero baseline and README shots would show no vapour and clumped packets.
+
+State: approved
+Actual answer: A "Closed form in time (recommended)", D2, 2026-10-14
+Accepted scope: vapour particles and packets are closed-form functions of scene time and seed (vapour particle i: age (t + offset_i) mod 6 s, shown when i < 60 x duty; packet j: phase (2.5 t + 1.2 j) mod line length, below the rate cap); a duty or rate change takes effect as indices are reborn (lag up to one 6 s life); applied to chunks 09 and 10; E27 and E28 stay pending
+History: none
+
+#### E27: Per-instance fade mechanism (sign panels, slot numbers, vapour)
+Finding: E-Q1, [P2], confidence 8/10, docs/PLAN.md:490 ("shared instances only (no per-mesh materials)"), :514 (panel 200 ms fade), :553 (slot number visibility), E26 (vapour rebirth); reviewer Claude.
+Plan baseline: 04c shared-material rule (approved, CEO C22 split); D7 200 ms fade (approved) applied to panels by W-RW24 and design D8; WD9 vapour opacity 0.35 (design D14); E26 closed-form vapour (D2). C24 counts one sign draw per hall. No fade mechanism is specified.
+Runtime evidence: `src/scene/materials.ts` builds shared `MeshStandardMaterial` instances only and has no per-instance opacity; three's built-in materials cannot fade one instance of an InstancedMesh [Layer 1, search above]. No Phase 3 code exists yet.
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E27 fade mechanism | none | one shared helper in `materials.ts` adds a per-instance `instanceOpacity` attribute (and, for atlas text, a per-instance UV rectangle) to library materials through `onBeforeCompile`, with a fixed `customProgramCacheKey` | a material clone per sign panel and pad number, plus a custom `ShaderMaterial` for vapour | no fades |
+| Sign panels and pad numbers | one mesh per hall (C24) | one InstancedMesh for all panels and one for all pad numbers, atlas region per instance | one mesh and one material per panel or number | one mesh per hall, switched instantly |
+| 04c shared-material rule (approved) | required | kept | broken for signs and numbers | kept |
+| D7 200 ms fade (approved) | required | kept | kept | broken |
+| Vapour life fade | unspecified | in over 0.5 s, out over the last 1.5 s of each 6 s life [estimated] | in the custom shader | size only; particles pop at rebirth |
+| C24 per-hall bar (approved) | at most 4 | met (panels share one instanced draw) | met | met |
+| E26 (approved) | closed form | unchanged | unchanged | unchanged |
+| E28 triangle budgets | pending | pending | pending | pending |
+
+Question D3:
+D3 — E27: How do sign panels, slot numbers and vapour particles fade one at a time while sharing materials? Project: Synapse Horizon, branch phase-3-world-building, eng review of Phase 3. ELI10: Approved rules say signs fade over 200 ms when they become too small or turn away (D7), every mesh uses shared library materials (04c), and vapour particles restart in place (D2), so they need to fade in and out or they pop. A shared material has one opacity for everything that uses it, and three's built-in materials can't fade a single instance. Three callers need the same small trick. Stakes if we pick wrong: signs and particles pop, or the shared-material rule breaks and the dispose guard stops covering sign materials. Recommendation: A because one tested helper serves all three callers, keeps the shared-material rule, and even merges every sign panel into a single draw, which fits the engineering preference for shared code with real callers. Completeness: A=9/10, B=7/10, C=4/10. Net: A adds one shader patch; B adds many materials and a custom shader; C drops the fades.
+Header: Fade method
+Options:
+A) Shared instance-opacity patch (recommended)
+One helper in materials.ts adds per-instance opacity (and an atlas UV rect for text) to library materials via onBeforeCompile; panels and pad numbers become one InstancedMesh each; vapour fades in 0.5 s, out 1.5 s. Effort M (human ~4h / CC ~20 min), risk medium (tied to three's shader chunk names), maintenance low. ✅ Keeps the 04c shared-material rule and D7's 200 ms fade for every caller. ✅ All sign panels draw in one call, under C24's per-hall budget. ❌ The patch depends on three's shader chunk names, so a three upgrade must rerun the e2e fade checks.
+B) Clones plus vapour shader
+A material clone per sign panel and pad number; a custom ShaderMaterial for vapour. Effort M (human ~4h / CC ~20 min), risk low, maintenance medium. ✅ Plain material.opacity fades with no shader patching for signs. ✅ Full control of the vapour look in its own shader. ❌ Breaks the 04c shared-material rule for signs, and the dispose guard must track every clone.
+C) No fades
+Signs and numbers switch instantly; vapour fades by size only. Effort S, zero extra, risk medium. ✅ Nothing to build beyond visibility toggles. ✅ No shader code anywhere. ❌ Breaks D7's 200 ms fade, and vapour particles visibly pop as they restart.
+
+State: approved
+Actual answer: A "Shared instance-opacity patch (recommended)", D3, 2026-10-14
+Accepted scope: one helper in `src/scene/materials.ts` adds a per-instance `instanceOpacity` attribute and, for atlas text, a per-instance UV rectangle to library materials through `onBeforeCompile` with a fixed `customProgramCacheKey`; sign panels (all halls) and slot-pad numbers each become one InstancedMesh using it; vapour fades in over 0.5 s and out over the last 1.5 s of each 6 s life [estimated]; tests: a unit test feeds the helper a stand-in shader and asserts the injected attribute and opacity multiply, and e2e checks a panel's opacity goes from 1 to 0 within about 200 ms after zooming out; applied to the Phase 3 heading and chunks 06, 08 and 09; E28 stays pending
+History: none
+
+#### E28: Triangle budgets
+Finding: E-P1, [P2], confidence 8/10, docs/PLAN.md:509 ("Low poly, merged geometry for static parts", no number) and :789 (chunk 36 "Draw-call and triangle budgets enforced by a test", no values); handed over by the Phase 3 design review's outside voice (finding 12); reviewer Claude.
+Plan baseline: Phase 3 sets draw-call bars (C24, chunk 08 under 40) but no triangle numbers; chunk 36 (approved) enforces "draw-call and triangle budgets" in CI without values.
+Runtime evidence: the perf HUD already shows triangles (`src/scene/hud.ts:21`); no Phase 3 geometry exists. Estimated full 12-hall campus at the WD values: about 110k triangles (halls 24k, LEDs 30k, fibre tubes 23k, trees 9k, packets 7k, cars 5k, rest under 12k) [estimated].
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E28 per-part caps | none | unit tests count each builder's triangles: hall body <= 2,000; rack <= 12; LED <= 12; tower <= 600; chiller <= 200; fan <= 64; tree <= 60; car <= 120; lamp <= 60; fence bay <= 24; gate <= 400; dock <= 600; monument <= 100; vapour quad 2; packet <= 48; fibre tube <= 12 per 0.25 units [estimated] | none | none |
+| E28 campus total | none | e2e reads HUD triangles at 12 placed halls, frozen: <= 150k [estimated] | same e2e total, <= 150k | none until chunk 36 |
+| Chunk 36 CI budget (approved) | values unset | starts from these numbers | starts from the total | sets its own |
+| E26, E27 (approved) | approved | unchanged | unchanged | unchanged |
+
+Question D4:
+D4 — E28: Should Phase 3 set triangle budgets now? Project: Synapse Horizon, branch phase-3-world-building, eng review of Phase 3. ELI10: Every mesh is made of triangles, and the GPU pays for each one. The plan says "low poly" but gives no numbers; chunk 36 will add a CI test with triangle budgets later, also without numbers. The campus is built now, so now is when a 2,000-triangle tree copied 150 times would slip in. Estimated, the full 12-hall campus needs about 110k triangles. Stakes if we pick wrong: a heavy part lands unnoticed and chunk 36 finds it on the M1 Air, or we add tests that pin numbers too early. Recommendation: A because per-part caps catch the one heavy part at the chunk that adds it, cost one count per builder test, and hand chunk 36 its numbers. Completeness: A=9/10, B=7/10, C=4/10. Net: A guards each part now; B guards only the total; C waits for chunk 36.
+Header: Triangle budget
+Options:
+A) Per-part caps and a total (recommended)
+Unit tests count each builder's triangles against caps (hall body 2,000, tower 600, tree 60, car 120 and so on), plus an e2e total of 150k or less at 12 placed halls [estimated]. Effort S (human ~2h / CC ~10 min), risk low, maintenance low. ✅ A heavy part fails the test in the chunk PR that adds it. ✅ Chunk 36 starts from written, measured numbers. ❌ Caps are estimates now and may need one raise when a part's look is tuned.
+B) Campus total only
+One e2e reads HUD triangles at 12 placed halls, 150k or less [estimated]. Effort S (human ~1h / CC ~5 min), risk medium, maintenance low. ✅ One number to maintain, no per-part tuning. ✅ Still catches a large regression across the whole campus. ❌ A heavy part hides inside the total until it is large, and the failure does not say which part.
+C) Leave to chunk 36
+No triangle checks in Phase 3; chunk 36 sets budgets later. Effort S, zero now, risk medium. ✅ No numbers to guess before the look is final. ✅ Nothing to update while parts are tuned. ❌ Heavy parts can land in chunks 06-10 and surface only on the M1 Air in chunk 36.
+
+State: approved
+Actual answer: A "Per-part caps and a total (recommended)", D4, 2026-10-14
+Accepted scope: unit tests count each builder's triangles against per-part caps (hall body 2,000; rack 12; LED 12; tower 600; chiller 200; fan 64; tree 60; car 120; lamp 60; fence bay 24; gate 400; dock 600; monument 100; vapour quad 2; packet 48; fibre tube 12 per 0.25 units) [estimated], each part's test landing in the chunk that adds it; an e2e reads HUD triangles at 12 placed halls, frozen, 150k or less [estimated]; chunk 36's CI budget starts from these numbers; applied to the Phase 3 heading and chunk 36
+History: none
+
+#### E29: TODO, static shadow caching
+Finding: E-P2, [P3], confidence 7/10, `node_modules/three/src/renderers/webgl/WebGLShadowMap.js:86` (`this.autoUpdate = true;`); reviewer Claude.
+Plan baseline: no Phase 3 or chunk 36 item covers shadow-map update frequency; C16 calm mode (approved) caps an idle tab at 30 fps; C29 (deferred) fits the shadow camera to the view.
+Runtime evidence: three re-renders the shadow map on every rendered frame by default; in Phase 3 most casters never move (halls, racks, plant bodies, trees), while fans rotate and later chunks add vehicles. GPU cost on the M1 Air is unmeasured [unknown until chunk 36].
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| E29 shadow update frequency | every frame | unchanged now; P3 TODO: render the shadow map only when a caster moves or the light changes (`autoUpdate = false`, `needsUpdate` on change), with moving parts excluded from casting or flagging updates; trigger chunk 36 or a GPU-bound calm mode | unchanged; recorded in NOT in scope | built in Phase 3 (chunk 08) |
+| C16 calm mode, C29 (approved, deferred) | as approved | unchanged | unchanged | unchanged |
+| E26, E27, E28 (approved) | approved | unchanged | unchanged | unchanged |
+
+Question D5:
+D5 — E29: Should "render shadows only when something moves" go on the TODO list? Project: Synapse Horizon, branch phase-3-world-building, eng review of Phase 3. ELI10: The sun-shadow picture is redrawn every frame, even in the calm 30 fps mode, although almost nothing that casts a shadow moves on the campus. Drawing it only when a hall, fan or vehicle moves would save GPU work on a tab left open all day. It needs care: anything that moves must say so, or its shadow freezes in place. Nobody has measured whether it matters on the target laptop yet. Stakes if we pick wrong: wasted GPU on all-day tabs, or stale shadows from a missed update. Recommendation: A because the saving is real but unmeasured, and chunk 36's M1 Air runs are where it can be proven; writing it down costs nothing now. Note: options differ in kind, not coverage — no completeness score. Net: A remembers it for chunk 36; B drops it; C builds it before anyone measures.
+Header: Shadow TODO
+Options:
+A) Add to TODOS.md (recommended)
+P3 item: render the shadow map only when a caster moves or the light changes; moving parts excluded or flagging updates; trigger chunk 36 or a GPU-bound calm mode. Effort S now (human ~3h / CC ~15 min later), risk low now. ✅ The saving is written down next to the measurements that can prove it. ✅ No stale-shadow risk enters Phase 3. ❌ An idle tab keeps redrawing shadows until chunk 36 or later.
+B) Skip
+Record it in NOT in scope; no TODO. Effort S, zero. ✅ Keeps the TODO list to items with a measured need. ✅ Shadows always stay correct by construction. ❌ The idea is easy to lose if calm-mode GPU use turns out high.
+C) Build it now in Phase 3
+Add shadow caching in chunk 08 with update flags on moving parts. Effort M (human ~3h / CC ~15 min), risk medium. ✅ Saves GPU from the first campus build. ✅ Forces every moving part to declare itself early. ❌ Unmeasured gain, and a missed flag freezes a shadow in a scene still being built.
+
+State: approved
+Actual answer: A "Add to TODOS.md (recommended)", D5, 2026-10-14
+Accepted scope: P3 TODO added to `TODOS.md` (static shadow caching; trigger chunk 36 or a GPU-bound calm mode); no Phase 3 chunk text changed
+History: none
+
+Approval readiness: PASS. Checked rows and answers: E26 (D2, A), E27 (D3, A), E28 (D4, A), E29 (D5, A, TODO only); structure D1 (B) is the scope record, not a remedy. Required proofs added in Section 3 (T-1 to T-3) follow approved C24, E26 and W-RW2 without new choices. No pending rows.
+
+### Reality rows (eng, Phase 3)
+
+- REALITY: premise-table finding unverified=2 (M1 Air GPU cost of the per-frame shadow pass; triangle caps and the 110k campus estimate) docs/PLAN.md:509
+- REALITY: already-done pass `git log origin/main -- src/scene/hall src/scene/campus src/scene/plant src/scene/network src/scene/fibre src/scene/fake.ts src/scene/signals.ts src/sim` shows only `f72dee8` (scaffold `.gitkeep`) docs/PLAN.md:501
+- REALITY: surface-check pass `renderer.debug.onShaderError` exists (`node_modules/three/src/renderers/WebGLRenderer.js:169-195`); `mergeGeometries` exists (`BufferGeometryUtils.js:133`); scene time handling verified (`src/scene/loop/driver.ts:101-104`); `vp test` and Playwright projects exist (`package.json:16-18`, `playwright.config.ts:19-49`) docs/PLAN.md:472
+- REALITY: binding-decisions pass C16, C24-C29, W-RW1-W-RW40, design D3-D20 (WD1-WD14, WD11b), E19, E20 honoured; `gstack-decision-search --scope branch --recent 50` lists the Phase 3 CEO and design decisions only docs/PLAN.md:503
+- REALITY: numbers finding triangle caps and the 150k total are [estimated]; 44 test files [measured: `git ls-files`]; file counts [estimated] docs/PLAN.md:509
+- REALITY: deferred-asks pass two TODOs recorded (C29 view-fitted shadows, E29 static shadow caching); no linked issue TODOS.md:1
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; five chunk PRs (06-10) plus one review docs PR (D18) docs/PLAN.md:31
+
+`PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=2 verdict=complete` (checked on this record alone).
+
+### NOT in scope (eng, Phase 3)
+
+- Static shadow caching: deferred to `TODOS.md` (E29, D5); unmeasured until chunk 36.
+- View-fitted shadow camera: deferred by the CEO review (C29).
+- A 12-hall churn leak test: chunk 20 owns it; Phase 3 checks one slot (chunk 10).
+- The shared cut plane during chunk 20's rise and sink: chunk 20.
+- CI time limits for software WebGL: recorded per PR (E-P3), no new budget.
+
+### What already exists (eng, Phase 3)
+
+The CEO record's 0B table holds the reuse map (look-dev hall and racks, material library and dispose guard, `mergeGeometries`, ground, rig, camera bounds and home fit, `isEmptyGround`, dev HUD and `__sceneDev`, draw-call split, parameter allowlist, shots config, look-dev baseline project). This review adds one shared helper (E27 instance fade, three proposed callers: sign panels, pad numbers, vapour); nothing existing is rebuilt.
+
+### Failure modes (eng, Phase 3)
+
+| New path | Realistic failure | Test or handling | User sees |
+|---|---|---|---|
+| Closed-form vapour and packets (E26) | state empty or clumped at scene time 0 | unit tests at t = 0 (T-2); baseline | full plumes and spread packets |
+| Instance fade patch (E27) | a three upgrade renames shader chunks, patch stops applying | e2e fade check; W-RW30 logs compile failures | signs pop instead of fading, logged |
+| Triangle caps (E28) | a part ships far heavier than planned | unit cap per builder, 150k e2e | nothing; the PR fails |
+| Ready signal with atlas (W-RW29) | font never loads | 3 s timeout, warning, unit test | signs in a fallback font |
+| HUD draw-call e2e (T-1, T-3) | an extra mesh or unplanned caster | e2e counts | nothing; the PR fails |
+
+0 critical gaps (no path is untested, unhandled and silent).
+
+### Worktree parallelization strategy (eng, Phase 3)
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| 06 hall | `src/scene/hall`, `src/scene/materials.ts`, `src/scene/render.ts`, `src/scene/LookDev.tsx`, `src/app` | — |
+| 07 racks | `src/scene/hall`, `src/scene/signals.ts`, `src/scene/fake.ts`, `src/sim`, `src/scene/PerfHud.tsx` | 06 |
+| 08 campus | `src/scene/campus`, `src/scene/camera.ts`, `src/scene/Ground.tsx`, `src/scene/LightRig.tsx`, `e2e`, `playwright.config.ts` | 07 |
+| 09 plant | `src/scene/plant`, `src/scene/materials.ts`, `src/scene/fake.ts`, `src/scene/PerfHud.tsx` | 08 |
+| 10 network | `src/scene/network`, `src/scene/fibre`, `src/scene/materials.ts`, `src/scene/fake.ts`, `src/scene/PerfHud.tsx` | 08 |
+
+Parallel lanes: Lane A: 06 → 07 → 08 (shared `hall/` and `fake.ts`, sequential). Then Lane B: 09 and Lane C: 10 in parallel worktrees (chunk 18 may join after 08 + 13, C26).
+Execution order: run A to merge; launch B and C; merge whichever finishes first; the second rebases (W-RW39).
+Conflict flags: `materials.ts`, `PerfHud.tsx`, `fake.ts`, `scripts/shots.config.ts`, `src/scene/LookDev.tsx` and the campus and look-dev baseline PNGs are shared by B and C; the later PR regenerates baselines and shots, never hand-merging images.
+
+## Implementation Tasks (eng review, Phase 3)
+
+Synthesized from this review's findings; they extend the CEO tasks T1-T12 and the design tasks T1-T12. Effort ratios assumed: features ~30x, tests ~50x.
+
+- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — fake signals — Closed-form vapour and packet state, full at scene time 0
+  - Surfaced by: Architecture — E-A1, E26 (D2)
+  - Files: `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/scene/plant/vapour.ts`, `src/scene/fibre/route.ts`
+  - Verify: unit tests: 60 visible particles per tower at duty 1 and t = 0, none at duty 0; packets spread at the cap at t = 0; same seed same values
+- [ ] **T2 (P1, human: ~4h / CC: ~20min)** — materials — Shared instance-fade helper; instanced sign panels and pad numbers; vapour life fade
+  - Surfaced by: Code quality — E-Q1, E27 (D3)
+  - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/hall/Hall.tsx`, `src/scene/campus/Campus.tsx`, `src/scene/plant/Plant.tsx`
+  - Verify: unit test on a stand-in shader (attribute injected, opacity multiplied, fixed program cache key); e2e: a panel fades from 1 to 0 within about 200 ms after zooming out
+- [ ] **T3 (P2, human: ~2h / CC: ~10min)** — budgets — Per-part triangle caps and a 150k campus total
+  - Surfaced by: Performance — E-P1, E28 (D4)
+  - Files: builder test files per chunk, one e2e spec at 12 placed halls
+  - Verify: `vp test` fails if a builder exceeds its cap; e2e reads 150k triangles or less at 12 placed halls, frozen
+- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — tests — Draw-call proofs for C24 and chunk 08
+  - Surfaced by: Test review — T-1, T-3
+  - Files: `src/scene/hall/buildHall.test.ts`, an e2e spec reading `__sceneDev.stats()`
+  - Verify: unit count of meshes and casters per hall at most 4; e2e under 40 at frozen `home`
+- [ ] **T5 (P3, human: ~15min / CC: ~5min)** — CI — Record CI job durations before and after chunk 08
+  - Surfaced by: Performance — E-P3
+  - Files: chunk 08 PR description
+  - Verify: the PR lists both durations for the Chromium and Firefox jobs
+
+### Unresolved decisions (eng, Phase 3)
+
+None.
+
+### Completion summary (eng, Phase 3)
+
+- Step 0: Scope Challenge — scope accepted as-is (D1: smaller arrangement, same features)
+- Reality rows: 7/7 applicable rows emitted (`PLAN_REALITY: phase=eng rows=7/7`), 2 unverified premises
+- Architecture Review: 2 issues found (E-A1 resolved by E26; E-A2 no change)
+- Code Quality Review: 3 issues found (E-Q1 resolved by E27; E-Q2, E-Q3 guidance)
+- Test Review: diagram produced, 3 gaps identified (T-1 to T-3, closed as required proof)
+- Performance Review: 3 issues found (E-P1 resolved by E28; E-P2 TODO; E-P3 note)
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 1 item proposed to user (E29, added)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (`codex_reviews` config); no native replacement
+- Parallelization: 3 lanes, 2 parallel / 1 sequential
+- Lake Score: 0/3 (D2, D3 and D4 were scored for completeness; none offered a 10/10 option)
+- Test plan artifact: `~/.gstack/projects/bjorkgard-ai-center/nathanael-phase-3-world-building-eng-review-test-plan-20261014-135602.md`
+
+### Suppressed findings (appendix, eng, Phase 3)
+
+- (confidence: 4/10) Per-frame `SceneSignals` getter calls for about 2,500 LEDs could cost CPU; at this count a plain function call per instance is negligible [unverified], so not reported.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 3 | ISSUES OPEN | 5 proposals, 4 accepted, 1 deferred; 0 critical gaps (Phase 2, logged 2026-10-13T15:26:46Z) |
-| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` | Independent 2nd opinion | 6 | disabled | `codex_reviews` disabled; no completed external review |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 5 | ISSUES OPEN | 6 issues, 0 critical gaps (Phase 2, logged 2026-10-13T15:44:44Z) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 2 | ISSUES OPEN | score: 5/10 → 7/10, 18 decisions (this run: Phase 2, logged) |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | ISSUES OPEN | 4 proposals, 4 accepted, 0 deferred (Phase 3, logged 2026-10-14T11:06:55Z; its UI-4 to UI-7 were settled by the design review) |
+| Outside Review | codex via `/plan-ceo-review` and `/plan-eng-review`; Claude subagent via `/plan-design-review` | Independent 2nd opinion | 3 | disabled | `codex_reviews` disabled for the CEO and eng reviews; design phase: native Claude subagent completed (12 findings; native, not outside coverage) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES OPEN | 11 issues, 0 critical gaps (this run: Phase 3, logged after this report) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 4/10 → 7/10, 17 decisions (Phase 3, logged 2026-10-14T11:48:17Z) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled for the Phase 2 CEO and eng reviews; design phase: codex disabled, one native Claude subagent completed (13 findings, all folded into DR1-DR15; native, not outside coverage).
-- **VERDICT:** No review is CLEAR. Design Review ISSUES OPEN reflects the 7/10 AI-slop pass held by the accepted dark neon-glass look, with 0 unresolved decisions; eng review required per dashboard rules (Eng ISSUES OPEN means mapped tasks, 0 unresolved).
+- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled for the Phase 3 CEO review (2026-10-14T11:03:53Z) and eng review (this run); design phase: codex disabled, native Claude subagent completed with 12 findings (2026-10-14T11:19:21Z, `source: in-host`), not outside coverage.
+- **VERDICT:** No review is CLEAR. Eng Review ISSUES OPEN means 11 mapped findings with 0 unresolved decisions and 0 critical gaps (all resolved by D1-D5 or recorded as guidance); Design Review ISSUES OPEN reflects its 7/10 AI-slop pass held by the accepted neon-glass look.
 
 **UNRESOLVED DECISIONS:**
-- + 3 unresolved from prior reviews (the CEO log row's UI-1 to UI-3, settled by this design review after that row was written)
+- + 4 unresolved from prior reviews (the CEO log row's UI-4 to UI-7, settled by the design review after that row was written)
