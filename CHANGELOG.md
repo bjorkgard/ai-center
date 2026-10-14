@@ -26,6 +26,13 @@
 
 * add glass UI shell with loader, toasts and safe area ([#14](https://github.com/bjorkgard/ai-center/issues/14)) ([ae34502](https://github.com/bjorkgard/ai-center/commit/ae345028d130a4cbaff3f9e1960a5b4549ade24f))
 
+# [0.3.0](https://github.com/bjorkgard/ai-center/compare/v0.2.1...v0.3.0) (2026-10-14)
+
+
+### Features
+
+* add scene core with capped render loop, failure cards and HUD ([#13](https://github.com/bjorkgard/ai-center/issues/13)) ([c29110e](https://github.com/bjorkgard/ai-center/commit/c29110e3d1ab7230343baba874e042b0fa9d0fe0))
+
 ## [0.2.1](https://github.com/bjorkgard/ai-center/compare/v0.2.0...v0.2.1) (2026-10-12)
 
 
