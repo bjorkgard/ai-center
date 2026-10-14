@@ -111,5 +111,8 @@ export function withDevOverrides(base: SceneSignals): SceneSignals {
     duty: () => base.duty(),
     vapourPhase: (i) => base.vapourPhase(i),
     fanAngle: (i, reducedMotion) => base.fanAngle(i, reducedMotion),
+    packetRate: () => base.packetRate(),
+    packetPhase: (line, i, length, count, reducedMotion) =>
+      base.packetPhase(line, i, length, count, reducedMotion),
   };
 }

@@ -87,6 +87,8 @@ const base: SceneSignals = {
   duty: () => 0.5,
   vapourPhase: () => 1,
   fanAngle: () => 0,
+  packetRate: () => 1,
+  packetPhase: () => 0,
 };
 
 test("dev overrides win over the base signals; fake load off shows idle racks", () => {
@@ -120,4 +122,16 @@ test("the dev overrides pass reduced motion on to the base fan angle", () => {
   const signals = withDevOverrides({ ...base, fanAngle: (_, reduced) => (reduced ? 1 : 2) });
   expect(signals.fanAngle(0, true)).toBe(1);
   expect(signals.fanAngle(0, false)).toBe(2);
+});
+
+test("the dev overrides pass the packet rate and phase, reduced motion included, to the base", () => {
+  const signals = withDevOverrides({
+    ...base,
+    packetRate: () => 3,
+    packetPhase: (line, i, length, count, reduced) =>
+      line * 100 + i * 10 + length + count / 10 + (reduced ? 0.5 : 0),
+  });
+  expect(signals.packetRate()).toBe(3);
+  expect(signals.packetPhase(2, 3, 4, 5)).toBeCloseTo(234.5, 9);
+  expect(signals.packetPhase(2, 3, 4, 5, true)).toBeCloseTo(235, 9);
 });

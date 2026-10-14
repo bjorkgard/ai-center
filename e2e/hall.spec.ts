@@ -266,7 +266,14 @@ test("the Hall dev section starts collapsed, after Camera, and toggles the roof"
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => s.dataset.testid));
-  expect(sections).toEqual(["dev-camera", "dev-hall", "dev-racks", "dev-campus", "dev-cooling"]);
+  expect(sections).toEqual([
+    "dev-camera",
+    "dev-hall",
+    "dev-racks",
+    "dev-campus",
+    "dev-cooling",
+    "dev-network",
+  ]);
   const header = hud.getByRole("button", { name: /^Hall/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

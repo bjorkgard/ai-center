@@ -43,6 +43,13 @@ test("view=cooling is accepted", () => {
   });
 });
 
+test("view=power is accepted", () => {
+  expect(parseParams("?view=power")).toMatchObject({
+    params: { view: "power" },
+    warnings: [],
+  });
+});
+
 test("view=racks is accepted", () => {
   expect(parseParams("?view=racks")).toMatchObject({ params: { view: "racks" }, warnings: [] });
 });

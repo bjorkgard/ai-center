@@ -18,7 +18,7 @@ export interface HallSign {
 
 // The one seam between the scene and its data (CEO W-RW28): components read these values only
 // through it, at scene time. fake.ts is the first implementation; chunks 18 and 22 add a
-// store-backed one, and chunk 10 adds `packetPhase`.
+// store-backed one.
 // Reads allocate nothing, since the frame loop calls them.
 export interface SceneSignals {
   rackCount(hall: number): number;
@@ -33,6 +33,18 @@ export interface SceneSignals {
   // Angle in radians of cooling fan i now. It turns at the duty's speed, a quarter of it under
   // reduced motion, and carries on from where it was when the duty changes.
   fanAngle(i: number, reducedMotion?: boolean): number;
+  // Packets a second on each fibre line now (chunk 10).
+  packetRate(): number;
+  // Where packet `i` of fibre line `line` (length `length`, holding `count` packets) is now, as a
+  // distance along the line wrapped to 0..length: 2.5 t units plus i x length / count, a quarter
+  // of the 2.5 under reduced motion, carried on without a jump when reduced motion toggles.
+  packetPhase(
+    line: number,
+    i: number,
+    length: number,
+    count: number,
+    reducedMotion?: boolean,
+  ): number;
 }
 
 export const SignalsContext = createContext<SceneSignals | null>(null);

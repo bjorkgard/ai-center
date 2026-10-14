@@ -103,7 +103,7 @@ test("vapour costs the same draw calls at duty 0 and duty 1: one for the tower g
   expect((await stats(page)).sceneCalls).toBe(full);
 });
 
-test("the Cooling section is collapsed, last, and its slider and hook drive the duty", async ({
+test("the Cooling section is collapsed, before Network, and its slider and hook drive the duty", async ({
   page,
 }) => {
   const warnings: string[] = [];
@@ -117,7 +117,7 @@ test("the Cooling section is collapsed, last, and its slider and hook drive the 
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => (s as HTMLElement).dataset.testid));
-  expect(sections.at(-1)).toBe("dev-cooling");
+  expect(sections.at(-2)).toBe("dev-cooling");
   const header = hud.getByRole("button", { name: /^Cooling/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

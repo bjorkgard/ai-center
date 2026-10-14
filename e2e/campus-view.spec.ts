@@ -138,8 +138,8 @@ test("the Campus dev section starts collapsed after Racks, and its controls driv
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => (s as HTMLElement).dataset.testid));
-  // Cooling (chunk 09) follows Campus.
-  expect(sections.slice(-2)).toEqual(["dev-campus", "dev-cooling"]);
+  // Cooling (chunk 09) and Network (chunk 10) follow Campus.
+  expect(sections.slice(-3)).toEqual(["dev-campus", "dev-cooling", "dev-network"]);
   const header = hud.getByRole("button", { name: /^Campus/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

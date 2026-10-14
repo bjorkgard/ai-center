@@ -565,7 +565,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Vapour and fan look (design-review Phase 3 D14, WD9) [estimated]:** vapour `#8090A8` (linear luminance about 0.27, under the 0.6 bloom threshold) at opacity 0.35; billboards grow from 1.2 to 2.4 units over a 6 s life, rise 0.6 units/s with seeded drift; up to 60 per tower at duty 1, emission linear in duty, none at duty 0. Fans turn 0.5 times a second at duty 1 and at 10% of that at duty 0, so the plant never looks stopped; reduced motion: vapour 30% (D20), fans 25% (WD7). Each particle fades in over 0.5 s and out over the last 1.5 s of its 6 s life through the E27 helper, so closed-form rebirth (E26) never pops (eng-review Phase 3 D3) [estimated].
 - **Duty and dev controls (CEO W-RW7, W-RW12, W-RW16):** duty, each vapour particle's phase and each fan's angle come from `src/scene/fake.ts` (seeded, frozen under `freeze=1`), so the campus baseline stays stable from this chunk on. Vapour is a closed form of scene time and seed, not a simulation: particle i has age (t + offset_i) mod 6 s and shows when i < 60 x duty, so plumes are full at scene time 0 (every frozen shot) and a duty change takes effect as particles are reborn, within one 6 s life (eng-review Phase 3 D2, E26); a "Cooling" section holds the duty slider, with `__sceneDev.setDuty(value)`.
 
-#### [ ] 10. Power and network infrastructure
+#### [x] 10. Power and network infrastructure
 - **Goal:** Substation, generators, fuel tanks, fibre vault, fibre lines.
 - **Depends on:** 08.
 - **Tasks:** Substation (transformers, fence), generators with exhaust stacks, fuel tanks. Fibre entry vault. Fibre lines from the vault to each placed hall, routed on the road grid (rebuilt when the hall set changes, geometry disposed; CEO W-RW11). Packet layer stub: instanced glowing spheres moving along a line at a dev-set rate.
@@ -5479,7 +5479,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-RW5, W-RW17, W-RW24, W-RW26, W-RW29, W-RW33; Section 1 A-3; Section 4 async ordering
   - Files: `src/scene/hall/signAtlas.ts`, `src/scene/hall/signAtlas.test.ts`, `src/scene/camera.ts`, `src/scene/camera.test.ts`, `src/app/App.tsx`
   - Verify: unit sweep over elevation and 45 degree azimuths in both projections; fake `document.fonts` order test; e2e at `view=hall`
-- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — chunks 06-10 — New `view` values and shots entries
+- [x] **T4 (P2, human: ~2h / CC: ~10min)** — chunks 06-10 — New `view` values and shots entries
   - Surfaced by: W-F8; W-RW7
   - Files: `src/app/params.ts`, `src/app/params.test.ts`, `scripts/shots.config.ts`, `src/scene/SceneCanvas.tsx`
   - Verify: params unit tests; `vp run shots` writes `06-hall.png`, `07-racks.png`, `08-campus.png`, `09-cooling.png`, `10-power-network.png` under 200 KB
@@ -5487,7 +5487,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-RW8, W-RW9, W-RW20, W-RW28, W-RW34, W-RW37
   - Files: `src/scene/hall/slots.ts`, `src/scene/hall/slots.test.ts`, `src/scene/hall/RackInstances.tsx`, `src/scene/signals.ts`, `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/sim/rng.ts`, `src/sim/rng.test.ts`
   - Verify: `vp test`; e2e geometries constant across 0, 16, 0 racks; two frozen `view=racks` captures match
-- [ ] **T6 (P2, human: ~3h / CC: ~15min)** — chunks 07-10 — Dev sections and clamped `__sceneDev` setters
+- [x] **T6 (P2, human: ~3h / CC: ~15min)** — chunks 07-10 — Dev sections and clamped `__sceneDev` setters
   - Surfaced by: W-RW12, W-RW20, W-RW31
   - Files: `src/scene/PerfHud.tsx`, `src/scene/devHooks.ts`, `src/app/globals.d.ts`
   - Verify: unit tests for NaN, negative, non-integer and too-large input; e2e drives each setter in the production build
@@ -5507,7 +5507,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: W-F9, W-F11; W-RW8, W-RW10, W-RW16, W-RW18, W-RW30
   - Files: `src/scene/plant/` (new components), `src/scene/plant/vapour.ts`, `src/scene/plant/vapour.test.ts`, `src/scene/SceneCanvas.tsx`
   - Verify: sort and luminance unit tests; two frozen `view=cooling` captures match; reduced-motion e2e; four-azimuth shots and a Safari note in the PR
-- [ ] **T11 (P1, human: ~1.5d / CC: ~45min)** — chunk 10 — Power yard, road-grid fibre routing and seeded packets
+- [x] **T11 (P1, human: ~1.5d / CC: ~45min)** — chunk 10 — Power yard, road-grid fibre routing and seeded packets
   - Surfaced by: W-F12; W-RW11, D20
   - Files: `src/scene/power/` (new components), `src/scene/fibre/route.ts`, `src/scene/fibre/route.test.ts`, `src/scene/fibre/Packets.tsx`
   - Verify: route unit test; e2e removing a hall returns geometry and texture counts; reduced-motion e2e at 25% speed
@@ -5741,7 +5741,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 5 — WD6, WD7 (UI-4)
   - Files: `src/scene/hall/RackInstances.tsx`, `src/scene/fake.ts`, `src/scene/fake.test.ts`
   - Verify: unit tests: 208 LED instances per hall; pulse stays in 0.6-1.0; hero mix 60/25/10/5 for seed 1; reduced motion holds 0.8
-- [ ] **T5 (P2, human: ~3h / CC: ~15min)** — chunk 10 network — Fibre look, junction boxes, capped packet spheres
+- [x] **T5 (P2, human: ~3h / CC: ~15min)** — chunk 10 network — Fibre look, junction boxes, capped packet spheres
   - Surfaced by: Pass 5 — WD8
   - Files: `src/scene/fibre/route.ts`, `src/scene/fibre/Fibre.tsx`, `src/scene/fibre/Packets.tsx`, `src/scene/fibre/route.test.ts`
   - Verify: unit test caps 12 packets per line and spacing of 1.2 units or more; frozen `view=power` shot in the PR
@@ -5761,7 +5761,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 (CEO T
   - Surfaced by: Pass 5 — WD12
   - Files: `src/scene/campus/Monument.tsx`
   - Verify: campus baseline (C28) shows the wordmark; no "AI DATA CENTRE" string in `src/`
-- [ ] **T10 (P2, human: ~1h / CC: ~5min)** — dev menu — Sections in build order and `setRoofCut`
+- [x] **T10 (P2, human: ~1h / CC: ~5min)** — dev menu — Sections in build order and `setRoofCut`
   - Surfaced by: Pass 7 — WD14
   - Files: `src/scene/PerfHud.tsx`, `src/scene/devHooks.ts`
   - Verify: e2e with `dev=1`: sections Camera (open), Hall, Racks, Campus, Cooling, Network (collapsed); `setRoofCut(false)` restores the roof
@@ -6108,7 +6108,7 @@ Conflict flags: `materials.ts`, `PerfHud.tsx`, `fake.ts`, `scripts/shots.config.
 
 Synthesized from this review's findings; they extend the CEO tasks T1-T12 and the design tasks T1-T12. Effort ratios assumed: features ~30x, tests ~50x.
 
-- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — fake signals — Closed-form vapour and packet state, full at scene time 0
+- [x] **T1 (P1, human: ~2h / CC: ~10min)** — fake signals — Closed-form vapour and packet state, full at scene time 0
   - Surfaced by: Architecture — E-A1, E26 (D2)
   - Files: `src/scene/fake.ts`, `src/scene/fake.test.ts`, `src/scene/plant/vapour.ts`, `src/scene/fibre/route.ts`
   - Verify: unit tests: 60 visible particles per tower at duty 1 and t = 0, none at duty 0; packets spread at the cap at t = 0; same seed same values
@@ -6116,7 +6116,7 @@ Synthesized from this review's findings; they extend the CEO tasks T1-T12 and th
   - Surfaced by: Code quality — E-Q1, E27 (D3)
   - Files: `src/scene/materials.ts`, `src/scene/materials.test.ts`, `src/scene/hall/Hall.tsx`, `src/scene/campus/Campus.tsx`, `src/scene/plant/Plant.tsx`
   - Verify: unit test on a stand-in shader (attribute injected, opacity multiplied, fixed program cache key); e2e: a panel fades from 1 to 0 within about 200 ms after zooming out
-- [ ] **T3 (P2, human: ~2h / CC: ~10min)** — budgets — Per-part triangle caps and a 150k campus total
+- [x] **T3 (P2, human: ~2h / CC: ~10min)** — budgets — Per-part triangle caps and a 150k campus total
   - Surfaced by: Performance — E-P1, E28 (D4)
   - Files: builder test files per chunk, one e2e spec at 12 placed halls
   - Verify: `vp test` fails if a builder exceeds its cap; e2e reads 150k triangles or less at 12 placed halls, frozen

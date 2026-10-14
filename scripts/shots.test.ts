@@ -101,6 +101,17 @@ describe("shots config", () => {
     );
   });
 
+  test("the power entry is a plain frozen view=power shot of the network, under 200 KB", () => {
+    const entry = views.find((v) => v.file === "docs/img/10-power-network.png");
+    expect(entry).toMatchObject({ name: "power" });
+    expect(entry?.query).toBeUndefined();
+    expect(entry?.setup).toBeUndefined();
+    expect(viewUrl("http://x", "power")).toBe(
+      "http://x/?source=mock&scenario=steady&seed=1&freeze=1&view=power",
+    );
+    expect(maxBytes).toBe(200 * 1024);
+  });
+
   test("the spike entry is gone", () => {
     expect(views.some((v) => v.name.startsWith("spike"))).toBe(false);
   });
