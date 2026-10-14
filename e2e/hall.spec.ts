@@ -146,6 +146,7 @@ test("a panel's opacity goes from 1 to 0 within about 200 ms after zooming out",
   // letter drops below 12 px and takes 200 ms, whatever the zoom speed. On a busy machine frames
   // can be further apart than the fade, so an attempt with fewer than two samples between 1 and 0
   // is repeated (one is enough in the end; two are what let the end bracket catch a slower fade).
+  // The last attempt stays zoomed out, so the fader-clock checks below read the fade it ran.
   // CI's software-rendered Chromium can draw frames more than 200 ms apart on every attempt, so
   // no sample may land inside the fade at all. Then only the sample checks are skipped (and the
   // run is annotated): the fader-clock checks at the end still prove the 200 ms duration, and a
@@ -169,7 +170,7 @@ test("a panel's opacity goes from 1 to 0 within about 200 ms after zooming out",
     );
     await zoomOut(page);
     samples = await run;
-    if (samples.filter(([, o]) => o > 0 && o < 1).length >= 2) break;
+    if (samples.filter(([, o]) => o > 0 && o < 1).length >= 2 || attempt === 3) break;
     await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2);
     for (let i = 0; i < 14; i++) await page.mouse.wheel(0, -400);
     await expect.poll(() => opacity(page), { timeout: 10_000 }).toBe(1);
