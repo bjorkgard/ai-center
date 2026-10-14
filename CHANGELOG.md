@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/bjorkgard/ai-center/compare/v0.5.1...v0.6.0) (2026-10-14)
+
+
+### Features
+
+* add map camera controls, glide rig and camera keys ([#17](https://github.com/bjorkgard/ai-center/issues/17)) ([8dbc66c](https://github.com/bjorkgard/ai-center/commit/8dbc66ca2587040acfd5ea251da8346e40fb1b6c))
+
 ## [0.5.1](https://github.com/bjorkgard/ai-center/compare/v0.5.0...v0.5.1) (2026-10-14)
 
 
