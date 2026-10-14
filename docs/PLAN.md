@@ -438,7 +438,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 
 ### Phase 1: Rendering spike (gate)
 
-#### [~] 03. R3F vs direct Three.js spike
+#### [x] 03. R3F vs direct Three.js spike
 - **Goal:** Pick the integration with numbers, not opinion.
 - **Depends on:** 02.
 - **Tasks:** Two throwaway views, `?view=spike-r3f` and `?view=spike-vanilla` (the shots URL contract; the app has no router, CEO RW4), each rendering the same thing: 12 hall boxes, 192 instanced racks (12 halls x 16, D8) and 3,072 instanced LEDs (16 per rack) with per-frame colour updates driven by a fake store at 10 updates/s, MeshStandardMaterial flat-shaded, one shadow-casting light, bloom on/off toggle (CEO RW5). Both views use identical renderer settings: pixel ratio `min(devicePixelRatio, 2)`, antialias on, ACES Filmic tone mapping, sRGB output, `PCFShadowMap` at 2048 (three 0.186 removed `PCFSoftShadowMap`), and the same bloom library, pmndrs `postprocessing` (R3F through `@react-three/postprocessing`); the ADR lists them (CEO RW1). Composer options are pinned in that shared constant and passed explicitly in both views, because the two entry points default differently (`@react-three/postprocessing` 3.2.0 uses multisampling 4 and `HalfFloatType`; `postprocessing` uses multisampling 0 and `UnsignedByteType`): `multisampling: 4`, `frameBufferType: HalfFloatType`, and the bloom effect's intensity, luminance threshold and mipmap blur [values estimated; identical values in both views are the requirement] (eng E8). A churn button adds and removes 6 halls 50 times. Record per browser: CPU frame time (update + render, `performance.now()`) median, p95 and p99; the longest frame during churn, measured as the longest wall-clock interval between `requestAnimationFrame` callbacks, so React work that runs between frames counts (eng E15); GPU time where `EXT_disjoint_timer_query_webgl2` exists; fps for reference only, because on a ProMotion display Chrome and Firefox run `requestAnimationFrame` at up to 120 Hz while Safari stays near 60 by default (CEO RW2). Record `renderer.info.memory.geometries/textures` and `renderer.info.programs.length` before churn and after disposal settles (1 s after the last removal; R3F disposes unmounted objects on idle) (CEO RW3), and JS heap where available (Chromium). Measure in Chrome, Safari and Firefox on the dev Mac (M1 Max); the ADR names the machine, treats the CPU-time pick as valid (same CPU core design as the M1 Air), and labels the 1x 60 fps check "M1 Max, overstates M1 Air GPU" (CEO C11). Measuring runs use `vp build` then `vp preview --host 127.0.0.1`, never `vp run serve`: `preview.headers` in `vite.config.ts` sends COOP `same-origin` and COEP `require-corp`, so the page is cross-origin isolated and `performance.now()` steps 0.005-0.02 ms instead of 0.1-1 ms; each result records `crossOriginIsolated` and the measured timer step, and a pass whose step is coarser than 0.1 ms is `valid:false` with reason `coarse-timer`, covered by a unit test (eng E6). Each view takes `&load=1` or `&load=4` (4x instance counts: 768 racks and 12,288 LEDs at the same draw-call count) and `&bench=1`, which runs one scripted pass (warm-up, steady, churn, settle) and prints a single JSON result; the ADR's results table is built from those JSON files (CEO C10).
@@ -455,7 +455,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 
 ### Phase 2: Scene foundation
 
-#### [ ] 04a. Scene core: canvas, render loop, store, camera, failure handling
+#### [x] 04a. Scene core: canvas, render loop, store, camera, failure handling
 - **Goal:** One persistent 3D canvas with its render loop, store, parameters and failure handling, shown on a test cube (split from 04, eng re-review D1; split again into 04a and 04c, CEO C22).
 - **Depends on:** 03 (decision).
 - **Tasks:** Full-viewport canvas behind a DOM overlay layer, showing a test cube on a plain ground plane with a temporary neutral material and one light (04c brings the final rig and materials). Orthographic isometric camera (true iso angles), perspective toggle that keeps framing: a perf HUD button under `dev=1` triggers it here and the `P` camera key in chunk 05; on a toggle the controls rebind to the new camera and any glide in flight is cancelled with the current framing kept (CEO S-RW39), and in perspective the camera distance is clamped to the range that matches the ortho zoom range; 04a defines both ranges in `src/scene/camera.ts` and chunk 05's controls clamp to them (CEO S-RW26). Dev perf HUD (fps, draw calls, triangles, `renderer.info`), placed at the top-right of the `safeArea` with an 8 px inset, Geist Mono 12 px with tabular numerals, a solid fill with no blur, and not counted in the `safeArea` (design-review DR11). Quality tier (high/medium/low) controlling shadows, bloom, pixel ratio: the tier lives in the store `ui` slice and `qualitySettings(tier)` is a table in `src/scene/render.ts` (eng D1). Motion tokens and a `reducedMotion` store flag from `prefers-reduced-motion` (section 4b, design D20). WebGL-unavailable card, plain in 04a with the D11 text (04b gives it the glass look, CEO C15), laid out like the scene-error card and centred in the `safeArea` with the body "Turn on hardware acceleration, then reload.", an outlined Reload button and a "How to turn on hardware acceleration" link to the detected browser's help page (design-review DR3); Safari has no hardware-acceleration setting [unverified], so Safari and unknown browsers get "Update your browser and system, then reload." with a link to that browser's WebGL help, the browser picked from its user-agent name with a unit test per branch (design-review DR16), and context-lost auto-restore that sets the store `webgl` state to `restoring`, then `ok` (section 4b, design D11); the "Restoring 3D view" toast comes with 04b's toast host (CEO C15).
@@ -473,7 +473,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **Transition logs (CEO S-RW40):** each state transition (`webgl`, quality tier, composer failure, `sceneError`) logs one console line with a `[scene]` prefix, the transition, its reason and, for quality changes, the mean frame interval. The README "Known limits" section names the WebGL card and the scene-error card and what to do (check hardware acceleration; reload and report the `[scene]` console line).
 - **CI WebGL (CEO S-RW30):** before the new smoke merges, confirm that headless Chromium and Firefox on the ubuntu runners create a WebGL2 context [unverified: chunk 03's spike spec was skipped in CI]. If not, add software-rendering launch options in `playwright.config.ts` (for Chromium, `--use-angle=swiftshader` and `--enable-unsafe-swiftshader` [unverified which recent Chromium needs]; for Firefox, its WebGL force-enable pref). If a browser still has no WebGL2, its CI smoke asserts the WebGL card path instead, `e2e/repeat.spec.ts` is skipped in CI for that browser, and the canvas smoke and repeat check for it run only in `vp run e2e:local` (CEO S-RW35).
 
-#### [ ] 04b. UI shell: tokens, glass panel, layout, loader
+#### [x] 04b. UI shell: tokens, glass panel, layout, loader
 - **Goal:** The empty dashboard frame every later panel lives in (split from 04, eng re-review D1).
 - **Depends on:** 04a.
 - **Tasks:** Section 4b tokens wired in (type, spacing, radius, status palette from chunk 01) and themed focus ring, selection, scrollbars and caret, plus adaptive glass fill driven by day/night phase and weather, no GPU readback (section 4b, design D21, eng re-review D2). `GlassPanel` component per section 4b "Glass panel" (design D18): backdrop blur 16 px with 140% saturation (design-review DR7), 8% white tint over the C21 dark underlay, 1px 12% border, fps-aware fallback to a solid 85% dark layer under 45 fps that keeps the tint and border and crossfades over `--dur-ui`. Empty layout shell with the section 4b slots (top bar, KPI row, right panel, job tracker, tab strip) that updates the store `safeArea` on panel open/close (opened and closed through a `dev=1` toggle in the HUD's dev section until real panels exist, design-review DR11) and on window resize via ResizeObserver (eng re-review E6), writing at most once per animation frame and only when the rect changed, so the browser never reports a ResizeObserver loop error (CEO S-RW36); pointer events blocked by panels and passed through gaps (design D18, D5). Each empty slot shows its placeholder title in 13 px label type and `--color-text-2` (for example "Claude sessions", "Job tracker"), so the contrast helper has text to sample (CEO S-RW28, design-review DR8). Slot sizes per section 4b (design-review DR10): KPI tiles 168x120 px with a 12 px gap, job tracker 536x112 px 16 px above the tab strip. Scene loader (wordmark plus thin cyan progress line) until the first frame, or until the store `webgl` state is `unavailable` (design D10, CEO S-RW19). Loader look (design-review DR2, settles UI-3): an indeterminate 2x160 px cyan bar sweeps every 1.2 s, 16 px below a 20 px Geist Sans semibold wordmark; it appears only after 300 ms, so fast starts show nothing; it fades out over `--dur-ui` with the D20 easing; under reduced motion it does not sweep and cuts instantly [values estimated]. Message precedence (design-review DR5): only one card shows at a time; WebGL unavailable (either wording) beats scene error, which beats restoring; the restore toast is hidden while any card shows; a unit test covers each pair. Layering (design-review DR1): the loader covers only the 3D area, and the top bar, slots and tab strip render above it from the first paint; while loading, restoring or unavailable the 3D area shows `--color-bg`; after a scene error the last frame stays under a 60% `--color-bg` overlay [estimated]; cards and toasts sit on top. The 04a WebGL card and scene-error card (C23) are restyled with `GlassPanel`, and a minimal toast host (bottom-right above the tab strip, newest on top; normal toasts auto-dismiss after 6 s, design D12; anatomy per section 4b, design-review DR9) shows "Restoring 3D view" for as long as the store `webgl` state is `restoring` and dismisses it on `ok` (CEO S-RW13), inside an `aria-live="polite"` region so screen readers announce it (design D22, eng E21); when `webgl` returns to `ok` from `restoring`, or a late restore hides the WebGL card, a normal toast "3D view restored" shows for 6 s in the same region (design-review DR6); chunk 32 extends this host with the 3-toast cap, overflow, error toasts and mode tags (CEO C15).
@@ -483,7 +483,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **Quiet text tokens (design-review DR8):** `--color-text-2: #A3ACBD` for secondary text (slot titles, labels, card body lines) and `--color-text-3: #8A93A6` for tertiary text (captions, hints; the D19 derived-badge grey). On night glass (8% white over `--color-bg`, composite `#1B1E25`) they measure 7.3:1 and 5.4:1 [measured: WCAG formula]; the D21 contrast helper checks them at the day levels in chunks 34 and 35.
 - **Adaptive glass now, inputs later (CEO S-RW9):** `glassFill(phase, weather)` is a pure lookup that returns the dark underlay alpha beneath design D18's constant 8% white tint (CEO C21): night 0, dusk 0.30, day 0.60, day + heatwave 0.72 (the R13 levels). Only day + heatwave changes the level; every other weather uses the clear level for its phase, so the unit test covers all 3 phases x 4 weathers (CEO S-RW15). Until chunks 34 and 35 put phase and weather in the store, it reads night and clear. The D21 contrast helper (text sampled against the rendered backdrop) is built here and run at the night level; chunk 34 runs it in forced day, dusk and night, chunk 35 in day + heatwave.
 
-#### [ ] 04c. Look: lights, materials, look-dev view
+#### [x] 04c. Look: lights, materials, look-dev view
 - **Goal:** The final look language, tuned against the mockup and guarded by a screenshot (split from 04a, CEO C22).
 - **Depends on:** 04a.
 - **Tasks:** Lighting rig: hemisphere + one directional with soft shadow plus low night fill, tuned to match the approved mockup (design D14). Material library `scene/materials.ts`: dark concrete/slate building greys, warm window and rack-LED emissives, accent cyan emissive for fibre lines (bloom), vendor colours, shared instances only (no per-mesh materials), built on the shared-material guard promoted in 04a. Ground plane with subtle grid. The 04a test cube and ground switch to the library and rig.
@@ -491,7 +491,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 - **README:** Images `04c-scene.png` and `04c-lookdev.png` (CEO C17, C22). One line on the art direction.
 - **Look-dev view (CEO C17):** `?view=lookdev` draws a fixed vignette under the rig with the ortho camera and bloom on, at the 1280x720 shots viewport with the shell and HUD hidden and one fixed camera preset (design-review DR11): a hall slab and wall with a window strip, one 8-rack row with LEDs in all six D17 status colours, a cyan fibre segment, Claude and Codex trim swatches and the ground grid. `vp run shots` captures it as `docs/img/04c-lookdev.png`. `vp run e2e:local` guards it with a `toHaveScreenshot` baseline (`maxDiffPixelRatio: 0.005`, as in `e2e/repeat.spec.ts`), opened with the section 4 URL (`freeze=1`) after the ready signal, so a deliberate look change updates the baseline in the same PR. The baseline is committed under `e2e/__screenshots__/` through its own Playwright project (Chromium only, its own `snapshotPathTemplate`), because `test-results/` is gitignored (`playwright.config.ts:10`); the chromium, firefox and webkit projects ignore this spec with `testIgnore`, and it is skipped when `CI` is set, since CI renders on ubuntu against a Mac baseline (CEO S-RW17, S-RW24). A compressed copy of the approved mockup goes to `docs/designs/variant-B-2.png`. Chunks 06-10 add their new materials to this view.
 
-#### [ ] 05. Camera controls and camera rig
+#### [x] 05. Camera controls and camera rig
 - **Goal:** Map-style navigation and a programmatic glide API.
 - **Depends on:** 04b.
 - **Tasks:** Left-drag pan, right-drag free rotate, scroll zoom (ortho zoom, not dolly), clamped to campus bounds and zoom range. Controls are three's `MapControls` (`three/examples/jsm/controls/MapControls.js`, installed with three; left-drag pan and right-drag rotate are its defaults, and it has `zoomToCursor` and damping), with a custom clamp of target and zoom to the campus bounds, and the perspective distance clamp from 04a; the C16 driver calls `controls.update()` each frame, and a `change` event or damping that is still settling counts as camera motion, so calm mode waits for the camera to stop (CEO S-RW16). Map feel (CEO C20): scroll zoom aims at the point under the cursor, still clamped; pan and rotate ease to a stop over about 250 ms [estimated], off under `reducedMotion`, and a new drag or glide stops the damping; a double-click on empty ground glides to `cameraRig.home()`. Empty ground means the nearest raycast hit is the ground mesh; chunk 24's double-click on an entity zooms close and cancels any home glide (CEO S-RW25). `cameraRig.glideTo(target, zoom, ms=600)` using the D20 easing (instant cut when `reducedMotion`), interruptible by user input, framing the target inside the store `safeArea` rect (section 4b, design D5). If `safeArea` changes during a glide, the glide retargets so the target ends inside the new rect (CEO S-RW37). A `safeArea` with no width or height (a window below the supported 1280x720) falls back to the full canvas with one console warning (CEO S-RW38). Expose in a dev menu for manual testing: a collapsible section under the perf HUD (glide test, projection toggle, right-panel toggle) (design-review DR11). Keyboard focus on the canvas shows as four small cyan corner brackets framing the visible canvas area (the `safeArea`), on `:focus-visible` only, not the D21 ring around the whole viewport (approved mockup, design-review D2/D3). Keyboard camera controls (CEO C19): the canvas is focusable (`tabIndex=0`, `role="application"`, a static `aria-label` until chunk 24 adds the live summary) and sits right after the top bar in the Tab order (design-review DR12); its `aria-label` is "3D campus view" and `aria-describedby` points to visually hidden text "Arrow keys pan, plus and minus zoom, Q and E rotate, 0 returns home, P switches perspective." (design-review DR15); while it has focus, arrows pan, `+` (or `=`) and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or Home glides to `cameraRig.home()` (the whole campus framed in the `safeArea`), and `P` toggles ortho and perspective (D9, CEO S-RW26, S-RW30). Keys never fire while typing in inputs, steps use the D20 easing over `--dur-ui` (instant under `reducedMotion`), and a key press counts as input for calm mode (C16). Step sizes (design-review DR13): one arrow press pans 10% of the `safeArea`'s shorter side; one `+`/`=` or `-` press zooms by x1.25; a held key keeps stepping at the key-repeat rate, each step starting from the current animated position, so movement stays smooth and nothing queues [values estimated].
@@ -1322,11 +1322,11 @@ Nothing in the repo yet. The approved mockup `variant-B-2.png` is the only visua
 ## Design Implementation Tasks
 Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratio assumed: features ~30x human/CC.
 
-- [ ] **DT1 (P2, human: ~3h / CC: ~10min)** — tokens — Type, spacing, radius, status, motion and focus tokens
+- [x] **DT1 (P2, human: ~3h / CC: ~10min)** — tokens — Type, spacing, radius, status, motion and focus tokens
   - Surfaced by: Pass 5 — D16, D17, D20, D21
   - Files: src/styles/tokens.css, tailwind config
   - Verify: `vp check`; token values match section 4b
-- [ ] **DT2 (P2, human: ~4h / CC: ~15min)** — layout — GlassPanel, layout shell, safeArea, loader, WebGL failure card
+- [x] **DT2 (P2, human: ~4h / CC: ~15min)** — layout — GlassPanel, layout shell, safeArea, loader, WebGL failure card
   - Surfaced by: Pass 1, 2, 5 — D5, D10, D11, D18
   - Files: src/app/, src/dashboard/GlassPanel
   - Verify: chunk 04 acceptance; WebGL-off flag shows the card
@@ -2851,31 +2851,31 @@ PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=3 verdict=complete
 
 Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratios assumed: features ~30x, tests ~50x, docs ~30x; operator measuring runs are human time with no CC share.
 
-- [ ] **T1 (P1, human: ~1 day / CC: ~40min)** — spike — Shared scene, fake store and renderer settings; vanilla and R3F views with per-hall instancing, shared materials and identical per-frame work
+- [x] **T1 (P1, human: ~1 day / CC: ~40min)** — spike — Shared scene, fake store and renderer settings; vanilla and R3F views with per-hall instancing, shared materials and identical per-frame work
   - Surfaced by: C10 (PQ1); RW1, RW4, RW5, RW6, RW8, RW9
   - Files: package.json, pnpm-lock.yaml, src/spike/shared/scene.ts, src/spike/shared/fakeStore.ts, src/spike/shared/render.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx, src/app/App.tsx
   - Verify: `/?view=spike-r3f&load=4` and `/?view=spike-vanilla&load=4` render 18-hall churn with shared materials intact; `vp check`
-- [ ] **T2 (P1, human: ~4h / CC: ~20min)** — spike bench — Driver, sampler, settle, churn cycles, JSON records with metadata, failure registry and fake-clock tests
+- [x] **T2 (P1, human: ~4h / CC: ~20min)** — spike bench — Driver, sampler, settle, churn cycles, JSON records with metadata, failure registry and fake-clock tests
   - Surfaced by: C10 (PQ1), C12 (PQ4); RW2, RW3, RW8, RW10
   - Files: src/spike/shared/bench.ts, src/spike/shared/params.ts, src/spike/shared/bench.test.ts, src/spike/shared/params.test.ts
   - Verify: `vp test` covers all 12 registry rows and one rendered frame per churn cycle
-- [ ] **T3 (P2, human: ~2h / CC: ~10min)** — spike tests — Stats, scene and store unit tests; local three-engine smoke skipped in CI
+- [x] **T3 (P2, human: ~2h / CC: ~10min)** — spike tests — Stats, scene and store unit tests; local three-engine smoke skipped in CI
   - Surfaced by: C13 (PQ5)
   - Files: src/spike/shared/stats.ts, src/spike/shared/stats.test.ts, src/spike/shared/scene.test.ts, src/spike/shared/fakeStore.test.ts, e2e/spike.spec.ts
   - Verify: `vp test`; `vp run e2e:local` opens both views at load 1 and 4 in all three engines with no console errors; CI log shows the spike spec skipped
-- [ ] **T4 (P1, human: ~30min / CC: ~5min)** — docs — ADR 0001 with settings, method, decision rule and pass protocol, committed before any run
+- [x] **T4 (P1, human: ~30min / CC: ~5min)** — docs — ADR 0001 with settings, method, decision rule and pass protocol, committed before any run
   - Surfaced by: C10 (PQ1), C14 (PQ6); RW1, RW11
   - Files: docs/adr/0001-render-integration.md
   - Verify: the rule commit's SHA is named in the ADR and precedes every result's start time
-- [ ] **T5 (P1, human: ~1.5h / CC: none)** — measurement — 48 passes on the M1 Max production build in Chrome, Safari and Firefox; raw JSON, results table, decision, consequences
+- [x] **T5 (P1, human: ~1.5h / CC: none)** — measurement — 48 passes on the M1 Max production build in Chrome, Safari and Firefox; raw JSON, results table, decision, consequences
   - Surfaced by: C10, C11 (PQ3), C14 (PQ6); RW10, RW12
   - Files: docs/adr/0001-results/*.json, docs/adr/0001-render-integration.md
   - Verify: table built only from `valid:true` files; rule applied as written; 1x rows labelled "M1 Max, overstates M1 Air GPU"
-- [ ] **T6 (P2, human: ~30min / CC: ~5min)** — docs — README "Architecture" stub linking the ADR; `spike-r3f` shots view and `03-spike.png`
+- [x] **T6 (P2, human: ~30min / CC: ~5min)** — docs — README "Architecture" stub linking the ADR; `spike-r3f` shots view and `03-spike.png`
   - Surfaced by: RW4; section 4 protocol
   - Files: README.md, scripts/shots.config.ts, docs/img/03-spike.png
   - Verify: `vp run shots` writes `03-spike.png` under 200 KB
-- [ ] **T7 (P3, human: ~30min / CC: ~5min)** — chunk 04a cleanup — Delete spike views, App branch, spike shots entry and the rejected dependency
+- [x] **T7 (P3, human: ~30min / CC: ~5min)** — chunk 04a cleanup — Delete spike views, App branch, spike shots entry and the rejected dependency
   - Surfaced by: Section 1 — A-2, RW7
   - Files: src/spike/, src/app/App.tsx, scripts/shots.config.ts, package.json, pnpm-lock.yaml
   - Verify: `vp run shots` and `vp test` pass after deletion; `03-spike.png` unchanged
@@ -3245,31 +3245,31 @@ Lane A: shared core → views → bench and tests (`src/spike/` shared, sequenti
 
 Synthesized from this review's findings; they extend the CEO Phase 1 tasks T1-T6 rather than replace them. Effort ratios assumed: features ~30x, tests ~50x, config ~30x.
 
-- [ ] **T1 (P1, human: ~1h / CC: ~5min)** — tooling, bench — Cross-origin isolated measuring server and timer-step check
+- [x] **T1 (P1, human: ~1h / CC: ~5min)** — tooling, bench — Cross-origin isolated measuring server and timer-step check
   - Surfaced by: Scope Challenge — E6 (eng D2)
   - Files: vite.config.ts, src/spike/shared/bench.ts, src/spike/shared/bench.test.ts, docs/adr/0001-render-integration.md
   - Verify: `vp test`; on `vp build` then `vp preview --host 127.0.0.1`, `crossOriginIsolated === true`; `smoke.spec.ts` and `repeat.spec.ts` still green
-- [ ] **T2 (P2, human: ~15min / CC: ~2min)** — deps — Dependabot ignore rules for three, @types/three and postprocessing with peer-range comment
+- [x] **T2 (P2, human: ~15min / CC: ~2min)** — deps — Dependabot ignore rules for three, @types/three and postprocessing with peer-range comment
   - Surfaced by: Scope Challenge — E7 (eng D3)
   - Files: .github/dependabot.yml
   - Verify: Dependabot config check shows no error; the three rules are present
-- [ ] **T3 (P1, human: ~1h / CC: ~5min)** — spike render — Pin composer options in the shared constant and pass them in both views
+- [x] **T3 (P1, human: ~1h / CC: ~5min)** — spike render — Pin composer options in the shared constant and pass them in both views
   - Surfaced by: Scope Challenge — E8
   - Files: src/spike/shared/render.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx
   - Verify: both views' snapshots report the same multisampling and frame buffer type; E17 smoke passes
-- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — spike bench — SpikeView seam, wall-clock churn hitch, awaited addHalls, dispose-event count, draw calls with autoReset off, preallocated samples, fake-view unit tests
+- [x] **T4 (P2, human: ~2h / CC: ~10min)** — spike bench — SpikeView seam, wall-clock churn hitch, awaited addHalls, dispose-event count, draw calls with autoReset off, preallocated samples, fake-view unit tests
   - Surfaced by: Scope Challenge — E9, E10; Architecture — E15, E16; Performance — P-E1
   - Files: src/spike/shared/bench.ts, src/spike/shared/bench.test.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx
   - Verify: `vp test` covers each rule against a fake SpikeView
-- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — spike params — Accept shots contract params, seed the store, freeze one frame, refuse bench with freeze
+- [x] **T5 (P2, human: ~30min / CC: ~5min)** — spike params — Accept shots contract params, seed the store, freeze one frame, refuse bench with freeze
   - Surfaced by: Scope Challenge — E11
   - Files: src/spike/shared/params.ts, src/spike/shared/params.test.ts, src/spike/shared/fakeStore.ts
   - Verify: `vp test`; `vp run shots` captures the spike view with no console warning
-- [ ] **T6 (P2, human: ~1h / CC: ~5min)** — e2e — Equal-scene assertion across views in the local spike smoke
+- [x] **T6 (P2, human: ~1h / CC: ~5min)** — e2e — Equal-scene assertion across views in the local spike smoke
   - Surfaced by: Test review — E17 (eng D4)
   - Files: e2e/spike.spec.ts, src/spike/vanilla/view.ts, src/spike/r3f/View.tsx
   - Verify: `vp run e2e:local` green in three engines; CI log shows the spec skipped
-- [ ] **T7 (P3, human: ~5min / CC: ~1min)** — verify — Run `vp check` immediately after adding R3F to prove its JSX types under TypeScript 7
+- [x] **T7 (P3, human: ~5min / CC: ~1min)** — verify — Run `vp check` immediately after adding R3F to prove its JSX types under TypeScript 7
   - Surfaced by: Scope Challenge — E13
   - Files: package.json, pnpm-lock.yaml
   - Verify: `vp check` green with one R3F element in a spike file
@@ -4138,35 +4138,35 @@ PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=3 verdict=complete
 
 Synthesized from this review's findings. Each task derives from a specific finding above. Effort ratios assumed: features ~30x, tests ~50x, scaffolding ~100x; 04c look tuning is mostly human review time.
 
-- [ ] **T1 (P1, human: ~4h / CC: ~15min)** — 04a foundations — Add the store and parameter module; promote spike code to `src/scene/`; delete the rest of the spike
+- [x] **T1 (P1, human: ~4h / CC: ~15min)** — 04a foundations — Add the store and parameter module; promote spike code to `src/scene/`; delete the rest of the spike
   - Surfaced by: Step 0 — S-F2, S-F5, S-F6; S-RW1, S-RW2, S-RW3, S-RW31
   - Files: package.json, pnpm-lock.yaml, src/app/store/index.ts, src/app/store/ui.ts, src/app/params.ts, src/app/params.test.ts, src/scene/render.ts, src/app/App.tsx, scripts/shots.config.ts, src/spike/ (deleted), e2e/spike.spec.ts (deleted)
   - Verify: `vp check`, `vp test`; `vp run shots` passes; `docs/img/03-spike.png` unchanged
-- [ ] **T2 (P1, human: ~6h / CC: ~25min)** — 04a render loop — rAF driver with deadline pacing, calm mode, freeze, hidden tab and frame-error handling
+- [x] **T2 (P1, human: ~6h / CC: ~25min)** — 04a render loop — rAF driver with deadline pacing, calm mode, freeze, hidden tab and frame-error handling
   - Surfaced by: C16 (SQ3), C23 (SQ11); S-RW12, S-RW29; Section 1 — A-1
   - Files: src/scene/loop/driver.ts, src/scene/loop/driver.test.ts, src/scene/SceneCanvas.tsx
   - Verify: fake-clock tests at 60, 75, 90, 120 and 144 Hz; calm e2e (31 or fewer fps after 5 s); a throwing frame keeps the loop alive
-- [ ] **T3 (P1, human: ~3h / CC: ~15min)** — 04a quality — Frame monitor with windowed mean and hysteresis, simulate hook, quality tier
+- [x] **T3 (P1, human: ~3h / CC: ~15min)** — 04a quality — Frame monitor with windowed mean and hysteresis, simulate hook, quality tier
   - Surfaced by: S-RW5, S-RW11, S-RW27, S-RW29, S-RW34
   - Files: src/scene/loop/monitor.ts, src/scene/loop/monitor.test.ts, src/scene/render.ts (`qualitySettings`), src/app/store/ui.ts (tier) (eng D1)
   - Verify: fake-clock tests (drop at 2 s, recover at 10 s, paused under freeze); `simulateFrameInterval` drives bloom off and on in e2e
-- [ ] **T4 (P1, human: ~5h / CC: ~20min)** — 04a failure handling — WebGL pre-check, outer boundary with error kinds, composer inner boundary, restore, 10 s timeout, late restore, plain WebGL and scene-error cards
+- [x] **T4 (P1, human: ~5h / CC: ~20min)** — 04a failure handling — WebGL pre-check, outer boundary with error kinds, composer inner boundary, restore, 10 s timeout, late restore, plain WebGL and scene-error cards
   - Surfaced by: C15 (SQ2), C23 (SQ11); S-RW6, S-RW10, S-RW19, S-RW31, S-RW33; Section 2 — E-1
   - Files: src/scene/webgl.ts, src/scene/webgl.test.ts, src/scene/SceneBoundary.tsx, src/scene/SceneBoundary.test.ts, src/app/App.tsx (eng D1)
   - Verify: unit tests for restore, rebuild failure, timeout and late restore; e2e `?webgl=0` card; `WEBGL_lose_context` with and without restore; throwing component shows the scene-error card
-- [ ] **T5 (P2, human: ~5h / CC: ~20min)** — 04a camera, HUD and test seams — Camera module with ortho and perspective ranges and toggle, HUD draw-call split, ready signal, transition logs, CI WebGL check
+- [x] **T5 (P2, human: ~5h / CC: ~20min)** — 04a camera, HUD and test seams — Camera module with ortho and perspective ranges and toggle, HUD draw-call split, ready signal, transition logs, CI WebGL check
   - Surfaced by: S-RW4, S-RW7, S-RW20, S-RW26, S-RW30, S-RW32, S-RW35, S-RW39, S-RW40
   - Files: src/scene/camera.ts, src/scene/PerfHud.tsx, e2e/smoke.spec.ts, e2e/repeat.spec.ts, playwright.config.ts, scripts/shots.config.ts, README.md, docs/img/04a-core.png
   - Verify: HUD shows under 10 scene draw calls; CI Chromium and Firefox smoke green (WebGL2 or the S-RW30 fallback); `vp run e2e:local` green in three engines
-- [ ] **T6 (P1, human: ~1 day / CC: ~40min)** — 04b shell — Tokens, two-layer GlassPanel, `glassFill`, layout slots with placeholder titles, coalesced `safeArea`, loader, toast host, glass cards, night contrast helper
+- [x] **T6 (P1, human: ~1 day / CC: ~40min)** — 04b shell — Tokens, two-layer GlassPanel, `glassFill`, layout slots with placeholder titles, coalesced `safeArea`, loader, toast host, glass cards, night contrast helper
   - Surfaced by: C15 (SQ2), C21 (SQ8), C23 (SQ11); S-RW8, S-RW9, S-RW13, S-RW15, S-RW19, S-RW28, S-RW36
   - Files: src/styles/tokens.css, src/dashboard/GlassPanel.tsx, src/dashboard/glassFill.ts, src/dashboard/glassFill.test.ts, src/dashboard/shell/, src/dashboard/ToastHost.tsx, src/app/store/ui.ts, e2e/shell.spec.ts, e2e/contrast.ts, README.md, docs/img/04b-shell.png
   - Verify: shell matches section 4b at 1280x720 and 1920x1080; contrast helper passes at night; Firefox fallback triggers and recovers; toast shows and clears
-- [ ] **T7 (P2, human: ~1 day / CC: ~30min)** — 04c look — Lighting rig, material library, look-dev view, committed baseline project, mockup copy
+- [x] **T7 (P2, human: ~1 day / CC: ~30min)** — 04c look — Lighting rig, material library, look-dev view, committed baseline project, mockup copy
   - Surfaced by: C17 (SQ4), C22 (SQ9); S-RW17, S-RW24; Step 0 — S-F8
   - Files: src/scene/lights.tsx, src/scene/materials.ts, src/scene/LookDev.tsx, e2e/lookdev.spec.ts, e2e/__screenshots__/, playwright.config.ts, scripts/shots.config.ts, docs/designs/variant-B-2.png, docs/img/04c-scene.png, docs/img/04c-lookdev.png, README.md
   - Verify: baseline matches in `vp run e2e:local`; spec skipped in CI; shared materials get 0 dispose events on remount; PR shows the shot beside the mockup
-- [ ] **T8 (P1, human: ~1 day / CC: ~45min)** — 05 camera — MapControls with clamps, glide with retarget and home, keys, map feel, reduced motion, dev menu
+- [x] **T8 (P1, human: ~1 day / CC: ~45min)** — 05 camera — MapControls with clamps, glide with retarget and home, keys, map feel, reduced motion, dev menu
   - Surfaced by: C19 (SQ6), C20 (SQ7); S-RW16, S-RW21, S-RW25, S-RW26, S-RW37, S-RW38; Section 1 — A-3
   - Files: src/scene/controls.tsx, src/scene/cameraRig.ts, src/scene/cameraRig.test.ts, src/scene/keys.ts, src/scene/keys.test.ts, src/dashboard/DevMenu.tsx, e2e/camera.spec.ts, README.md
   - Verify: e2e in three engines (pan, rotate, zoom, keys, bounds, corner scroll, double-click home, reduced motion); rig unit tests (glide timing, retarget, empty `safeArea`); Safari trackpad pinch checked by hand and noted in the PR
@@ -4460,31 +4460,31 @@ Lane A: 04a (shared foundations, sequential first). Lane B: 04b → 05 (`src/das
 
 Synthesized from this review's findings; they extend the CEO Phase 2 tasks T1-T8 rather than replace them. Effort ratios assumed: features ~30x, tests ~50x, config ~30x.
 
-- [ ] **T1 (P1, human: ~1h / CC: ~5min)** — 04a render loop — Pass scene time in seconds; start at 0; cap each step at 0.1 s; still under freeze
+- [x] **T1 (P1, human: ~1h / CC: ~5min)** — 04a render loop — Pass scene time in seconds; start at 0; cap each step at 0.1 s; still under freeze
   - Surfaced by: Scope Challenge — E19; eng D2 (E20)
   - Files: src/scene/loop/driver.ts, src/scene/loop/driver.test.ts
   - Verify: `vp test` (first delta 0, 60 s hidden gap gives at most 0.1 s, freeze gives 0, `advance()` receives seconds)
-- [ ] **T2 (P2, human: ~1h / CC: ~5min)** — 04a WebGL — Create the renderer through the `gl` factory and rethrow `WebGLUnavailableError`
+- [x] **T2 (P2, human: ~1h / CC: ~5min)** — 04a WebGL — Create the renderer through the `gl` factory and rethrow `WebGLUnavailableError`
   - Surfaced by: Architecture — E24
   - Files: src/scene/webgl.ts, src/scene/webgl.test.ts, src/scene/SceneCanvas.tsx, src/scene/SceneBoundary.tsx
   - Verify: `vp test` stubbed-constructor test; e2e `?webgl=0` still shows the D11 card
-- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — 04a lifecycle — Stop functions for the driver and every listener; StrictMode remount test
+- [x] **T3 (P2, human: ~1h / CC: ~5min)** — 04a lifecycle — Stop functions for the driver and every listener; StrictMode remount test
   - Surfaced by: Architecture — E25
   - Files: src/scene/loop/driver.ts, src/scene/loop/monitor.ts, src/scene/webgl.ts, src/app/store/ui.ts, src/scene/loop/driver.test.ts
   - Verify: `vp test` (mount, unmount, remount: one scheduled callback, baseline listener counts)
-- [ ] **T4 (P2, human: ~30min / CC: ~3min)** — 04a structure — Apply the smaller arrangement (quality tier in the store and `render.ts`; `webgl.ts` plus `SceneBoundary.tsx`)
+- [x] **T4 (P2, human: ~30min / CC: ~3min)** — 04a structure — Apply the smaller arrangement (quality tier in the store and `render.ts`; `webgl.ts` plus `SceneBoundary.tsx`)
   - Surfaced by: Scope Challenge — eng D1
   - Files: src/scene/render.ts, src/app/store/ui.ts, src/scene/webgl.ts, src/scene/SceneBoundary.tsx
   - Verify: `vp check`; no `src/scene/quality.ts` or `src/scene/webgl/` directory exists
-- [ ] **T5 (P2, human: ~30min / CC: ~3min)** — 04b shell — Restore toast in an `aria-live="polite"` region, asserted in e2e
+- [x] **T5 (P2, human: ~30min / CC: ~3min)** — 04b shell — Restore toast in an `aria-live="polite"` region, asserted in e2e
   - Surfaced by: Scope Challenge — E21; Test review gap
   - Files: src/dashboard/ToastHost.tsx, e2e/shell.spec.ts
   - Verify: `vp run e2e:local` toast spec checks the live region
-- [ ] **T6 (P3, human: ~15min / CC: ~2min)** — 04a cleanup — Remove the spike-only version defines, reword the preview-headers comment, add one globals declaration
+- [x] **T6 (P3, human: ~15min / CC: ~2min)** — 04a cleanup — Remove the spike-only version defines, reword the preview-headers comment, add one globals declaration
   - Surfaced by: Scope Challenge — E22; Code quality — Q-E3
   - Files: vite.config.ts, src/app/globals.d.ts, src/spike/spike-globals.d.ts (deleted)
   - Verify: `vp check`; `grep -n "__THREE_VERSION__\|__R3F_VERSION__" -r src vite.config.ts` finds nothing
-- [ ] **T7 (P3, human: ~15min / CC: ~2min)** — 04c tests — Check the browser projects do not list the look-dev spec
+- [x] **T7 (P3, human: ~15min / CC: ~2min)** — 04c tests — Check the browser projects do not list the look-dev spec
   - Surfaced by: Test review — S-RW24 gap
   - Files: playwright.config.ts
   - Verify: `playwright test --list --project=chromium --project=firefox --project=webkit` output has no look-dev spec
@@ -4680,27 +4680,27 @@ No TODO proposals: no decision was deferred.
 
 Synthesized from this review's findings; they extend the CEO tasks T1-T8 and the eng tasks T1-T7. Effort ratios assumed: features ~30x, tests ~50x.
 
-- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — 04b loader — Indeterminate sweep line, 300 ms delay, fade over --dur-ui; loader over the 3D area only; non-drawing backgrounds and the dimmed last frame
+- [x] **T1 (P1, human: ~2h / CC: ~10min)** — 04b loader — Indeterminate sweep line, 300 ms delay, fade over --dur-ui; loader over the 3D area only; non-drawing backgrounds and the dimmed last frame
   - Surfaced by: Pass 1 — DR1; Pass 2 — DR2 (UI-3)
   - Files: src/dashboard/shell/Loader.tsx, src/dashboard/shell/Shell.tsx, src/scene/SceneBoundary.tsx, e2e/shell.spec.ts
   - Verify: e2e: shell visible before the first frame; no loader on a start under 300 ms (fake timer); reduced motion cuts instantly
-- [ ] **T2 (P1, human: ~3h / CC: ~15min)** — 04a/04b cards — One card component for WebGL and scene errors: approved layout, safe-area placement, start / lost / Safari wording, precedence, role="alert", Copy error details payload
+- [x] **T2 (P1, human: ~3h / CC: ~15min)** — 04a/04b cards — One card component for WebGL and scene errors: approved layout, safe-area placement, start / lost / Safari wording, precedence, role="alert", Copy error details payload
   - Surfaced by: Pass 2 — UI-1, DR3, DR4, DR5; Pass 6 — DR14; Pass 7 — DR16
   - Files: src/scene/SceneBoundary.tsx, src/dashboard/ErrorCard.tsx, src/dashboard/ErrorCard.test.ts, src/scene/webgl.ts
   - Verify: unit tests per wording branch (start, lost, Safari/unknown) and per precedence pair; e2e `?webgl=0` card centred in the safe area with panels usable; clipboard contains message, `[scene]` lines, version, user agent
-- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — 04b toasts — 320 px token-based toast anatomy and the "3D view restored" toast
+- [x] **T3 (P2, human: ~1h / CC: ~5min)** — 04b toasts — 320 px token-based toast anatomy and the "3D view restored" toast
   - Surfaced by: Pass 3 — DR6; Pass 5 — DR9
   - Files: src/dashboard/ToastHost.tsx, e2e/shell.spec.ts
   - Verify: e2e: after `restoreContext()` the restored toast shows for 6 s in the polite live region; stacked toasts share one left edge
-- [ ] **T4 (P1, human: ~2h / CC: ~10min)** — 04b design system — Glass blur and fallback crossfade, quiet text tokens, slot sizes, placeholder titles
+- [x] **T4 (P1, human: ~2h / CC: ~10min)** — 04b design system — Glass blur and fallback crossfade, quiet text tokens, slot sizes, placeholder titles
   - Surfaced by: Pass 5 — DR7, DR8, DR10
   - Files: src/styles/tokens.css, src/styles/tokens.test.ts, src/dashboard/GlassPanel.tsx, src/dashboard/shell/Shell.tsx
   - Verify: tokens test asserts `--color-text-2`, `--color-text-3` and the glass values; e2e slot sizes at 1280x720 and 1920x1080; Firefox fallback crossfades with tint and border kept
-- [ ] **T5 (P1, human: ~2h / CC: ~10min)** — 05 keyboard camera — Corner brackets on `:focus-visible`, Tab position after the top bar, label and key-help description, DR13 step sizes
+- [x] **T5 (P1, human: ~2h / CC: ~10min)** — 05 keyboard camera — Corner brackets on `:focus-visible`, Tab position after the top bar, label and key-help description, DR13 step sizes
   - Surfaced by: Pass 6 — UI-2, DR12, DR13, DR15
   - Files: src/scene/controls.tsx, src/scene/keys.ts, src/scene/keys.test.ts, src/dashboard/shell/FocusBrackets.tsx, e2e/camera.spec.ts
   - Verify: e2e: one Tab from the top bar focuses the canvas and shows brackets; mouse click shows none; one arrow press pans 10% of the short side
-- [ ] **T6 (P3, human: ~1h / CC: ~5min)** — dev surfaces — HUD position and style, dev menu under it, right-panel toggle, look-dev framing
+- [x] **T6 (P3, human: ~1h / CC: ~5min)** — dev surfaces — HUD position and style, dev menu under it, right-panel toggle, look-dev framing
   - Surfaced by: Pass 7 — DR11
   - Files: src/scene/PerfHud.tsx, src/dashboard/DevMenu.tsx, src/scene/LookDev.tsx
   - Verify: `04a-core.png` shows the HUD top-right without covering a slot; look-dev baseline stable across two runs
