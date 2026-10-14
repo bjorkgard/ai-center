@@ -138,6 +138,21 @@ test("packets move at 2.5 units a second, and at 25% of that under reduced motio
   fresh.dispose();
 });
 
+test("toggling reduced motion between two updates at the same scene time moves no packet", () => {
+  const fibre = buildFibre(4);
+  const t = 9.7;
+  const signals = signalsAt(t);
+  fibre.update(signals, t, false);
+  const before = fibre.network.lines.map((_, i) => drawn(fibre.packets, i));
+  fibre.update(signals, t, true);
+  const after = fibre.network.lines.map((_, i) => drawn(fibre.packets, i));
+  after.forEach((shown, i) => {
+    expect(shown).toHaveLength(before[i].length);
+    shown.forEach((p, j) => expect(p.distanceTo(before[i][j])).toBeLessThan(1e-6));
+  });
+  fibre.dispose();
+});
+
 test("disposing frees every geometry and the instance buffers, so a rebuild leaks nothing", () => {
   const fibre = buildFibre(5);
   const geometries = (fibre.group.children as Mesh[]).map((m) => m.geometry);

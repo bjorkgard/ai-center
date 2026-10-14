@@ -242,8 +242,27 @@ test("packet i is at 2.5 t + i L / n wrapped to L, a quarter of the 2.5 under re
   t = 4;
   expect(signals.packetPhase(0, 0, 20, 4)).toBeCloseTo(10, 9);
   expect(signals.packetPhase(0, 3, 20, 4)).toBeCloseTo(5, 9);
-  expect(signals.packetPhase(0, 0, 20, 4, true)).toBeCloseTo(2.5, 9);
   t = 4.5;
   expect(signals.packetPhase(0, 1, 20, 4)).toBeCloseTo(16.25, 9);
   expect(signals.packetPhase(0, 0, 20, 0)).toBeCloseTo(11.25, 9);
+  // A run that is reduced from its first read is the closed form at a quarter of the speed.
+  const calm = createFakeSignals({ seed: 1, now: () => t });
+  t = 4;
+  expect(calm.packetPhase(0, 0, 20, 4, true)).toBeCloseTo(2.5, 9);
+});
+
+test("toggling reduced motion mid-run keeps the packets where they are and changes only the speed", () => {
+  let t = 10;
+  const signals = createFakeSignals({ seed: 1, now: () => t });
+  const at = (reduced: boolean) => signals.packetPhase(0, 1, 100, 4, reduced);
+  const before = at(false);
+  expect(before).toBeCloseTo(50, 9);
+  // Switching at the same scene time does not move the packet.
+  expect(at(true)).toBeCloseTo(before, 9);
+  t = 11;
+  expect(at(true)).toBeCloseTo(before + 0.625, 9);
+  // Switching back is continuous too, and the speed returns to 2.5.
+  expect(at(false)).toBeCloseTo(before + 0.625, 9);
+  t = 12;
+  expect(at(false)).toBeCloseTo(before + 0.625 + 2.5, 9);
 });

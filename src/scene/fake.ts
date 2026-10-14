@@ -102,6 +102,10 @@ export function createFakeSignals({
     if (forced !== null) return clampDuty(forced);
     return clampDuty(FAKE_DUTY.mean + FAKE_DUTY.swing * Math.sin((TAU * now()) / FAKE_DUTY.period));
   };
+  // Packet travel is speed x t plus an offset, so a reduced-motion change keeps every packet where
+  // it is and only changes the speed from then on (the fans do the same by integrating).
+  let packetReduced: boolean | null = null;
+  let packetOffset = 0;
   const offsets = Array.from({ length: SIGN_SLOTS }, (_, hall) => hash01(seed, hall, 99) * TAU);
 
   return {
@@ -138,7 +142,16 @@ export function createFakeSignals({
     },
     // Every line reads the same closed form: the line only decides where the distance wraps.
     packetPhase(_line, i, length, count, reducedMotion = false) {
-      return wrapPhase(packetTravel(now(), reducedMotion) + packetGap(length, count) * i, length);
+      const t = now();
+      if (packetReduced === null) packetReduced = reducedMotion;
+      else if (packetReduced !== reducedMotion) {
+        packetOffset += packetTravel(t, packetReduced) - packetTravel(t, reducedMotion);
+        packetReduced = reducedMotion;
+      }
+      return wrapPhase(
+        packetTravel(t, reducedMotion) + packetOffset + packetGap(length, count) * i,
+        length,
+      );
     },
   };
 }

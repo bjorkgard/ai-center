@@ -37,7 +37,7 @@ export interface SceneSignals {
   packetRate(): number;
   // Where packet `i` of fibre line `line` (length `length`, holding `count` packets) is now, as a
   // distance along the line wrapped to 0..length: 2.5 t units plus i x length / count, a quarter
-  // of the 2.5 under reduced motion.
+  // of the 2.5 under reduced motion, carried on without a jump when reduced motion toggles.
   packetPhase(
     line: number,
     i: number,
