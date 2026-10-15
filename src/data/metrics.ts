@@ -65,8 +65,7 @@ export function formatMetric(m: Metric): string {
 export const LIVE_WINDOW = "last 24 h, backfill window";
 
 type Series = Pick<DataState, "sessions" | "subagents" | "rates">;
-export type MetricsState = Series &
-  Pick<DataState, "tokens" | "evictedTokens" | "evictedKnown" | "evictedUnknown">;
+export type MetricsState = Series & Pick<DataState, "tokens" | "modelTokens" | "unknownSessions">;
 
 const withWindow = (basis: string, window?: string): string =>
   window ? `${basis}, ${window}` : basis;
@@ -249,41 +248,47 @@ export function hottestHall(state: Series, nowMs: number): string | undefined {
 // Sessions with an unknown model are left out and counted in the basis; null when all are.
 export function cost(state: MetricsState, window?: string): Metric {
   let usd = 0;
-  const models = new Set<string>();
-  const price = (model: string, t: Tokens) => {
-    const p = priceOf(model)!;
-    models.add(model);
+  let knownTokens = 0;
+  let unknownTokens = 0;
+  const models: string[] = [];
+  const sum = (t: Tokens) => t.in + t.out + t.cacheRead + t.cacheWrite;
+  for (const [model, t] of state.modelTokens) {
+    const p = priceOf(model);
+    if (!p) {
+      unknownTokens += sum(t);
+      continue;
+    }
+    models.push(model);
+    knownTokens += sum(t);
     usd +=
       (t.in * p.in + t.out * p.out + t.cacheRead * p.cacheRead + t.cacheWrite * p.cacheWrite) /
       1_000_000;
-  };
-  for (const [model, t] of state.evictedTokens) price(model, t);
-  // Evicted sessions are all counted: a known one stays known after it leaves the store.
-  let known = state.evictedKnown;
-  let unknown = state.evictedUnknown;
-  for (const map of [state.sessions, state.subagents]) {
+  }
+  // Sessions still waiting for a model have unknown tokens for now.
+  const unknown = new Set(state.unknownSessions);
+  for (const [kind, map] of [
+    ["main", state.sessions],
+    ["sub", state.subagents],
+  ] as const) {
     for (const s of map.values()) {
-      const t = s.tokens;
-      if (t.in + t.out + t.cacheRead + t.cacheWrite === 0) continue;
-      if (s.model !== undefined && priceOf(s.model)) {
-        known++;
-        price(s.model, t);
-      } else unknown++;
+      if (!s.pending) continue;
+      unknownTokens += sum(s.pending);
+      unknown.add(rateKey(kind, s.sessionId));
     }
   }
   const unit = "USD";
-  if (known === 0 && unknown > 0)
+  if (knownTokens === 0 && unknownTokens > 0)
     return metric(
       null,
       unit,
       "estimated",
       withWindow(
-        `all ${unknown} sessions have an unknown model; prices as of ${PRICES_AS_OF}`,
+        `all ${unknown.size} sessions have an unknown model; prices as of ${PRICES_AS_OF}`,
         window,
       ),
     );
-  const priced = models.size > 0 ? [...models].sort().join(", ") : "no model";
-  const note = unknown > 0 ? `; excludes ${unknown} sessions with unknown model` : "";
+  const priced = models.length > 0 ? models.sort().join(", ") : "no model";
+  const note = unknown.size > 0 ? `; excludes ${unknown.size} sessions with unknown model` : "";
   return metric(
     usd,
     unit,

@@ -412,3 +412,138 @@ test("a reactivated unknown-model session counts once in excludes N", () => {
   expect(cost(s).basis).toContain("excludes 1 sessions");
   expect(cost(s).basis).not.toContain("excludes 2");
 });
+
+// Cost rule: tokens are priced at the model in effect when they arrive; unknown-model tokens
+// never price as 0 and each unknown session is counted once.
+const ONE_M = 1_000_000;
+const named = (model: string, at = 1) => ev({ model, at, type: "turn_start" });
+
+test("tokens are priced at the model in effect when they arrived, whatever it switches to", () => {
+  const s = applyBatch(emptyData(), [
+    ev({ model: "claude-opus-4", tokens: tok(ONE_M) }),
+    ev({ model: "claude-haiku-4", at: 1, tokens: tok(ONE_M) }),
+  ]);
+  expect(cost(s).value).toBeCloseTo(15 + 1, 9);
+  const switched = applyBatch(emptyData(), [
+    ev({ model: "claude-opus-4", tokens: tok(ONE_M) }),
+    named("claude-haiku-4"),
+  ]);
+  expect(cost(switched).value).toBeCloseTo(15, 9);
+});
+
+test("a known session that switches to an unknown model keeps its cost; the unknown tokens are excluded", () => {
+  const s = applyBatch(emptyData(), [
+    ev({ model: "claude-opus-4", tokens: tok(ONE_M) }),
+    ev({ model: "mystery", at: 1, tokens: tok(500) }),
+  ]);
+  const c = cost(s);
+  expect(c.value).toBeCloseTo(15, 9);
+  expect(c.basis).toContain("excludes 1 sessions with unknown model");
+});
+
+test("tokens before the first model are priced once it is named; unresolved they are unknown", () => {
+  const s = applyBatch(emptyData(), [
+    ev({ model: undefined, tokens: tok(ONE_M) }),
+    named("claude-sonnet-4"),
+  ]);
+  expect(cost(s).value).toBeCloseTo(3, 9);
+  expect(cost(s).basis).not.toContain("excludes");
+  // Evicted while still unnamed: unknown tokens, counted, never 0.
+  let u = emptyData(2);
+  u = applyBatch(u, [
+    ev({ sessionId: "u", model: undefined, tokens: tok(10) }),
+    ev({ sessionId: "u", model: undefined, type: "session_end", at: 1 }),
+    ev({ sessionId: "k", model: "claude-sonnet-4", tokens: tok(ONE_M), at: 2 }),
+  ]);
+  u = evict(u, "u", 10);
+  expect(u.sessions.has("u")).toBe(false);
+  expect(cost(u).value).toBeCloseTo(3, 9);
+  expect(cost(u).basis).toContain("excludes 1 sessions");
+});
+
+test("an all-unknown cost is null, also after eviction", () => {
+  let s = emptyData(2);
+  s = applyBatch(s, [
+    ev({ model: "mystery", tokens: tok(10) }),
+    ev({ type: "session_end", at: 1 }),
+  ]);
+  expect(cost(s).value).toBeNull();
+  s = evict(s, "s1", 10);
+  expect(s.sessions.has("s1")).toBe(false);
+  expect(cost(s).value).toBeNull();
+});
+
+test("an unknown session reactivated by a tokenless event stays excluded once, never 0", () => {
+  let s = emptyData(2);
+  s = applyBatch(s, [
+    ev({ sessionId: "k", model: "claude-opus-4", tokens: tok(ONE_M) }),
+    ev({ sessionId: "u", model: "mystery", at: 1, tokens: tok(1000) }),
+    ev({ sessionId: "u", type: "session_end", at: 2 }),
+  ]);
+  s = evict(s, "u", 10);
+  expect(cost(s).basis).toContain("excludes 1 sessions");
+  s = applyBatch(s, [ev({ sessionId: "u", type: "turn_start", at: 130_000 })], {
+    now: T0 + 130_000,
+    mark: T0 + 120_000,
+  });
+  expect(s.sessions.has("u")).toBe(true);
+  expect(cost(s).value).toBeCloseTo(15, 9);
+  expect(cost(s).basis).toContain("excludes 1 sessions");
+  // Alone, the same history stays null rather than reading 0.
+  let alone = emptyData(2);
+  alone = applyBatch(alone, [
+    ev({ sessionId: "u", model: "mystery", tokens: tok(1000) }),
+    ev({ sessionId: "u", type: "session_end", at: 1 }),
+  ]);
+  alone = evict(alone, "u", 10);
+  alone = applyBatch(alone, [ev({ sessionId: "u", type: "turn_start", at: 130_000 })], {
+    now: T0 + 130_000,
+    mark: T0 + 120_000,
+  });
+  expect(cost(alone).value).toBeNull();
+});
+
+test("an unknown session returning under a known model: its earlier tokens stay excluded", () => {
+  let s = emptyData(2);
+  s = applyBatch(s, [
+    ev({ sessionId: "u", model: "mystery", tokens: tok(1000) }),
+    ev({ sessionId: "u", type: "session_end", at: 1 }),
+  ]);
+  s = evict(s, "u", 10);
+  s = applyBatch(
+    s,
+    [ev({ sessionId: "u", model: "claude-opus-4", tokens: tok(ONE_M), at: 130_000 })],
+    {
+      now: T0 + 130_000,
+      mark: T0 + 120_000,
+    },
+  );
+  const c = cost(s);
+  expect(c.value).toBeCloseTo(15, 9);
+  expect(c.basis).toContain("excludes 1 sessions");
+});
+
+test("compacted (ring 2) and uncompacted (ring 1000) runs agree across a model switch with eviction", () => {
+  const run = (cap: number) => {
+    let s = emptyData(cap);
+    s = applyBatch(s, [
+      ev({ sessionId: "m", model: "claude-opus-4", tokens: tok(ONE_M) }),
+      ev({ sessionId: "m", type: "session_end", at: 1 }),
+    ]);
+    s = evict(s, "m", 10);
+    s = applyBatch(
+      s,
+      [ev({ sessionId: "m", model: "claude-haiku-4", tokens: tok(ONE_M), at: 130_000 })],
+      {
+        now: T0 + 130_000,
+        mark: T0 + 120_000,
+      },
+    );
+    return { evicted: s.sessions.size, c: cost(s) };
+  };
+  const small = run(2);
+  const big = run(1000);
+  expect(small.c.value).toBeCloseTo(16, 9);
+  expect(big.c.value).toBeCloseTo(16, 9);
+  expect(small.c.basis).toBe(big.c.basis);
+});
