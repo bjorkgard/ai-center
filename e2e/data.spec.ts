@@ -225,3 +225,36 @@ test("the source time advances while running with no batch, and holds while paus
   await page.waitForTimeout(2500);
   expect(await sourceTime(page)).toBe(held);
 });
+
+test("every [data-metric] carries a provenance badge of the right kind, with its basis on hover and focus", async ({
+  page,
+}) => {
+  await openData(page, "dev=1&source=mock&freeze=1&webgl=0");
+  await expect(health(page)).toContainText("live");
+  const metrics = page.locator("[data-metric]");
+  await expect(metrics).toHaveCount(8);
+  const bare = await metrics.evaluateAll((els) =>
+    els
+      .filter((el) => !el.querySelector("[data-provenance]"))
+      .map((el) => el.getAttribute("data-metric")),
+  );
+  expect(bare).toEqual([]);
+  const kind = (name: string) =>
+    page.locator(`[data-metric=${name}] [data-provenance]`).getAttribute("data-provenance");
+  expect(await kind("tokens")).toBe("real");
+  expect(await kind("active-sessions")).toBe("derived");
+  expect(await kind("tokens-per-min")).toBe("derived");
+  for (const name of ["cost", "hall-heat", "hall-inlet", "hot-aisle", "cooling-duty"])
+    expect(await kind(name), name).toBe("estimated");
+
+  const badge = page.locator("[data-metric=cost] [data-provenance]");
+  const tip = badge.locator("[role=tooltip]");
+  await expect(tip).toBeHidden();
+  await badge.hover();
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText("not a subscription bill");
+  await page.mouse.move(0, 0);
+  await expect(tip).toBeHidden();
+  await badge.focus();
+  await expect(tip).toBeVisible();
+});

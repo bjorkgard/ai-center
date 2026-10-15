@@ -3,6 +3,20 @@ import { useStore } from "../app/store/index.ts";
 import { SPEEDS } from "../data/clock.ts";
 import { ANCHOR_MS, createMockSource } from "../data/mock.ts";
 import {
+  LIVE_WINDOW,
+  activeSessions,
+  coolingDuty,
+  cost,
+  hallHeat,
+  hallInlet,
+  hotAisle,
+  hottestHall,
+  tokensPerMin,
+  tokensTotal,
+  type Metric,
+  type MetricsState,
+} from "../data/metrics.ts";
+import {
   NO_EVENTS,
   noSessionsText,
   peekEvents,
@@ -10,6 +24,7 @@ import {
   totalInvalid,
 } from "../data/reduce.ts";
 import { SCENARIOS } from "../data/scenarios.ts";
+import { MetricValue } from "../ui/MetricValue.tsx";
 import { countPanelRender } from "./dataPanelStats.ts";
 
 const SAMPLE_MS = 250;
@@ -25,6 +40,13 @@ function pick() {
     source: s.source,
     health: s.dataHealth,
     sessions: s.sessions,
+    subagents: s.subagents,
+    rates: s.rates,
+    tokens: s.tokens,
+    modelTokens: s.modelTokens,
+    evictedUnknown: s.evictedUnknown,
+    // The source clock's whole second: what the metrics are read at.
+    at: s.clock ? Math.floor(s.clock.now() / 1000) * 1000 : 0,
     ring: s.ring,
     version: s.ringVersion,
     time: now === undefined ? ANCHOR_MS : Math.floor(now / 1000) * 1000,
@@ -36,6 +58,12 @@ const same = (a: Snapshot, b: Snapshot) =>
   a.source === b.source &&
   a.health === b.health &&
   a.sessions === b.sessions &&
+  a.subagents === b.subagents &&
+  a.rates === b.rates &&
+  a.tokens === b.tokens &&
+  a.modelTokens === b.modelTokens &&
+  a.evictedUnknown === b.evictedUnknown &&
+  a.at === b.at &&
   a.version === b.version &&
   a.time === b.time &&
   a.clock.speed === b.clock.speed &&
@@ -80,6 +108,24 @@ function sinceAnchor(ms: number): string {
   return `+${part(Math.floor(total / 3600))}:${part(Math.floor(total / 60) % 60)}:${part(total % 60)}`;
 }
 
+// The metrics the section lists, each as [data-metric name, row label, Metric] (spec 3.6). Hall
+// rows read the hottest hall.
+function hudMetrics(snap: Snapshot, live: boolean): [string, string, Metric][] {
+  const state: MetricsState = snap;
+  const window = live ? LIVE_WINDOW : undefined;
+  const hall = hottestHall(state, snap.at) ?? "";
+  return [
+    ["tokens", "Tokens", tokensTotal(state, window)],
+    ["active-sessions", "Active sessions", activeSessions(state)],
+    ["tokens-per-min", "Tokens/min", tokensPerMin(state, snap.at)],
+    ["cost", "API-equivalent cost", cost(state, window)],
+    ["hall-heat", "Hall heat", hallHeat(state, hall, snap.at)],
+    ["hall-inlet", "Hall inlet", hallInlet(state, hall, snap.at)],
+    ["hot-aisle", "Hot aisle", hotAisle(state, hall, snap.at)],
+    ["cooling-duty", "Cooling duty", coolingDuty(state, snap.at)],
+  ];
+}
+
 interface Props {
   frozen: boolean;
   seed: number;
@@ -91,7 +137,8 @@ interface Props {
 // a clicked row its last 20 events from the ring buffer (C32).
 export const DataSection = memo(function DataSection({ frozen, seed, scenario }: Props) {
   countPanelRender();
-  const { source, health, sessions, ring, time, clock } = useThrottledData();
+  const snap = useThrottledData();
+  const { source, health, sessions, ring, time, clock } = snap;
   const [peekId, setPeekId] = useState<string | null>(null);
   const [chosen, setChosen] = useState(scenario);
   const list = sessionList(sessions);
@@ -178,6 +225,16 @@ export const DataSection = memo(function DataSection({ frozen, seed, scenario }:
         {on ? ` · ${clock.speed}x · ${clock.paused ? "paused" : "running"}` : ""}
         {health.failedBatches > 0 ? ` · failed ${health.failedBatches}` : ""}
       </p>
+      <dl className="m-0 mt-2 text-text-2" data-testid="data-metrics">
+        {hudMetrics(snap, source.name === "live").map(([name, label, metric]) => (
+          <div key={name} className="flex justify-between gap-2">
+            <dt>{label}</dt>
+            <dd className="m-0">
+              <MetricValue name={name} metric={metric} />
+            </dd>
+          </div>
+        ))}
+      </dl>
       {list.rows.length === 0 ? (
         <p className="mt-2 text-text-2" data-testid="data-empty">
           {noSessionsText(source.status)}

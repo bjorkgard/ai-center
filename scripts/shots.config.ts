@@ -49,6 +49,18 @@ export const views: ShotView[] = [
     settled:
       'document.querySelector("[data-testid=data-health]")?.textContent.includes("live") && document.querySelectorAll("[data-testid=data-session-row]").length > 0',
   },
+  // The metrics list in the open Data section, with the tokens badge focused so its tooltip (the
+  // provenance and the basis) shows.
+  {
+    name: "home",
+    file: "docs/img/13-provenance.png",
+    ready: readyExpression,
+    query: "dev=1",
+    setup:
+      '(async () => { document.querySelector("[data-testid=perf-hud] dl").style.display = "none"; document.querySelectorAll("[data-testid=perf-hud] section").forEach((s) => { if (s.dataset.testid !== "dev-data") s.style.display = "none"; }); document.querySelector("[data-testid=dev-data] button").click(); while (!document.querySelector("[data-metric=tokens] [data-provenance]")) await new Promise((r) => setTimeout(r, 50)); document.querySelector("[data-metric=tokens] [data-provenance]").focus(); })()',
+    settled:
+      'document.querySelector("[data-testid=data-health]")?.textContent.includes("live") && document.activeElement?.getAttribute("data-provenance") === "real"',
+  },
 ];
 
 export const viewport = { width: 1280, height: 720 };

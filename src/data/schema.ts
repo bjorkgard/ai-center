@@ -27,6 +27,12 @@ export const AgentEvent = z.object({
   status: z.optional(z.enum(["idle", "thinking", "tool", "waiting_user", "error", "done"])),
   currentTask: z.optional(z.string()),
   toolName: z.optional(z.string()),
+  // A TodoWrite item (its text goes through currentTask) and the class of a tool call, both set
+  // by the Node parsers so raw commands never reach the browser (D16).
+  todo: z.optional(
+    z.object({ id: z.string(), status: z.enum(["pending", "in_progress", "completed"]) }),
+  ),
+  toolClass: z.optional(z.enum(["edit", "git_commit", "test", "lint", "other"])),
   filesTouched: z.optional(z.array(z.string())),
   tokens: z.optional(
     z.object({ in: z.number(), out: z.number(), cacheRead: z.number(), cacheWrite: z.number() }),
