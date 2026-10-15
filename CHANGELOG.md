@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/bjorkgard/ai-center/compare/v0.14.0...v0.15.0) (2026-10-15)
+
+
+### Features
+
+* add derived and estimated metrics with provenance ([#34](https://github.com/bjorkgard/ai-center/issues/34)) ([51a5aef](https://github.com/bjorkgard/ai-center/commit/51a5aef06e973ede920fe46040c495505a684c74))
+
 # [0.14.0](https://github.com/bjorkgard/ai-center/compare/v0.13.0...v0.14.0) (2026-10-15)
 
 
