@@ -109,7 +109,7 @@ Constants in `src/config/estimation.ts`, one place:
 ```text
 ~/.claude/projects/**.jsonl  ~/.codex/sessions/**.jsonl
             │                          │
-            └── log server = Vite plugin in `vp dev` (Node: chokidar tail, parsers, redaction)
+            └── log server = Vite plugin in `vp dev` (Node: fs.watch tail, parsers, redaction)
  drag-drop file ── POST /api/import ──┘   │ WebSocket (same origin): AgentEvent[]
  mock generator ──► (same AgentEvent stream, in browser)
                           ▼
@@ -136,7 +136,7 @@ README skeleton, grown over time:
 1. Title, one-line pitch, hero image (latest full-campus shot).
 2. Status: which chunks are done, link to this plan.
 3. Download and run: pick the build for your OS from GitHub Releases, run it, and the browser opens at `http://127.0.0.1:7317` (CEO C2). Includes first-run notes for unsigned binaries (macOS Gatekeeper, Windows SmartScreen) and the `--port`, `--no-open` and `--version` flags.
-4. Development setup (`vp install`, `vp dev`; Node version pin; `vp run e2e:local` on a Mac; chunk 14 adds that the log server starts with the dev server).
+4. Development setup (`vp install`, `vp dev`; Node version pin; `vp run e2e:local` on a Mac; chunk 14c adds that the log server starts with the dev server).
 5. Contributing: link to CONTRIBUTING.md (branch and PR flow, Conventional Commit PR titles, what CI runs, chunk acceptance and screenshots, how releases happen).
 6. Data sources and privacy (where logs are read, what is redacted).
 7. Provenance legend (real / derived / estimated badges).
@@ -380,7 +380,7 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
 #### [x] 01. Scaffold
 - **Goal:** Empty app runs, lints, tests, builds.
 - **Depends on:** none.
-- **Tasks:** Create the Vite+ React-TS project with pnpm: `vp create vite --no-interactive --package-manager pnpm --no-agent --hooks --no-git --directory . -- --template react-ts` (in a temp dir and copied over if `.` is refused). No generated agent files; the pre-commit `vp check` hook stays and CONTRIBUTING mentions it (eng E4). Enable TS strict. Add Tailwind CSS v4 with tokens for dark background, glass panel, cyan `#22D3EE`, Claude amber, Codex neutral, error red, plus the section 4b type/spacing/radius tokens and Geist Sans/Mono fonts (design D16), and the status colour/shape tokens (design D17). Add Vitest with one sample test. Folder layout: `src/{app,scene,dashboard,data,sim,config}`, `sidecar/`, `scripts/`, `docs/`. Add `.editorconfig`. Pin an exact Node version (`24.x.y`) with `vp env pin --target node-version 24.x.y` (without `--target`, Vite+ may write `devEngines` instead of `.node-version`); exact, so `build:bin` can look it up in nodejs.org `SHASUMS256.txt`. Set the Vite dev server host to `127.0.0.1` so `vp dev` serves the same origin the Origin check accepts (CEO C2, eng A1). GitHub Actions: `voidzero-dev/setup-vp` (Vite+ CI guide: the `v1` tag no longer updates), then install, lint, typecheck, test, build. Every `uses:` in `.github/workflows/` is a full 40-character commit SHA with a `# vX.Y.Z` comment; Dependabot updates them; a CI step fails if any `uses:` is not a SHA (CEO C7). Add `.github/dependabot.yml`: weekly `github-actions` and `npm` updates, grouped into one PR per ecosystem, `react`, `react-dom`, `@types/react` and `@types/react-dom` ignored for versions `>=19.4.0` (eng S3), titles pass the PR-title check: npm `dependencies` use `commit-message.prefix: "fix(deps)"` so shipped-library fixes cut a patch release; `prefix-development: "chore(deps)"` for devDependencies and `chore(deps)` for GitHub Actions cut none (CEO X2, C8).
+- **Tasks:** Create the Vite+ React-TS project with pnpm: `vp create vite --no-interactive --package-manager pnpm --no-agent --hooks --no-git --directory . -- --template react-ts` (in a temp dir and copied over if `.` is refused). No generated agent files; the pre-commit `vp check` hook stays and CONTRIBUTING mentions it (eng E4). Enable TS strict. Add Tailwind CSS v4 with tokens for dark background, glass panel, cyan `#22D3EE`, Claude amber, Codex neutral, error red, plus the section 4b type/spacing/radius tokens and Geist Sans/Mono fonts (design D16), and the status colour/shape tokens (design D17). Add Vitest with one sample test. Folder layout: `src/{app,scene,dashboard,data,sim,config}`, `sidecar/`, `scripts/`, `docs/`. Add `.editorconfig`. Pin an exact Node version (`24.x.y`) with `vp env pin --target node-version 24.x.y` (without `--target`, Vite+ may write `devEngines` instead of `.node-version`); exact, so `build:bin` can look it up in nodejs.org `SHASUMS256.txt`. The Vite dev server host is `localhost` (merged PR #9); the chunk 14a plugin's Host and Origin gates accept the dev server's own origin under `vp dev` (CEO C73). GitHub Actions: `voidzero-dev/setup-vp` (Vite+ CI guide: the `v1` tag no longer updates), then install, lint, typecheck, test, build. Every `uses:` in `.github/workflows/` is a full 40-character commit SHA with a `# vX.Y.Z` comment; Dependabot updates them; a CI step fails if any `uses:` is not a SHA (CEO C7). Add `.github/dependabot.yml`: weekly `github-actions` and `npm` updates, grouped into one PR per ecosystem, `react`, `react-dom`, `@types/react` and `@types/react-dom` ignored for versions `>=19.4.0` (eng S3), titles pass the PR-title check: npm `dependencies` use `commit-message.prefix: "fix(deps)"` so shipped-library fixes cut a patch release; `prefix-development: "chore(deps)"` for devDependencies and `chore(deps)` for GitHub Actions cut none (CEO X2, C8).
 - **Acceptance:** `vp dev` shows a dark page titled "Synapse Horizon" in cyan and prints a `http://127.0.0.1:` URL. `vp lint`, `vp test`, `vp build` pass locally and in CI. `.node-version` matches `24.<minor>.<patch>` exactly, and CI's `node --version` equals it. The repo's Insights > Dependency graph > Dependabot tab shows no config error for `.github/dependabot.yml`.
 - **README:** Title, pitch, quick start, status line "Chunk 01 done". Image: `01-scaffold.png` (blank branded page).
 
@@ -408,16 +408,16 @@ Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
   - **Release config test (eng E5):** `scripts/releaserc.test.ts` in `vp test` asserts `branches: ["main"]`, plugin order (commit-analyzer, release-notes, changelog, exec, git, github), no `@semantic-release/npm` (npm refuses under pnpm `devEngines`), that the exec `prepareCmd` runs `scripts/set-version.ts` and sets the version, that each plugin `require.resolve`s, and that the exec `successCmd` writes `published` and `version`.
   - **Workflow guard (C7, E3 proof):** `scripts/check-workflows.ts` (run in `ci.yml`) with `scripts/check-workflows.test.ts` fixtures: a `uses:` tag ref fails, a workflow without top-level `permissions:` fails, a valid file passes.
   - **Local release script** `vp run release:dry`: runs semantic-release in `--dry-run` so you can see the next version and notes before merging.
-  - **Server split (eng D1):** `sidecar/server.ts` exports `createServer({ port, assets })` with `checkHost()`, manifest lookup and the request handler, and has no argv, process or browser code; `sidecar/cli.ts` handles flags, listen-with-retry, opening the browser and signals. Chunk 14's plugin imports `checkHost` from `server.ts`, so the Host gate exists once. Tests: `sidecar/server.test.ts` (C6 gate, manifest, handler) and `sidecar/cli.test.ts` (flags, ports, open, signals).
-  - **Server entry** `sidecar/cli.ts`: serves the built app from embedded assets on `127.0.0.1:7317` and opens the default browser at `http://127.0.0.1:<port>`; the same `127.0.0.1` string is used in the README and is the only host the Origin check accepts (CEO C2; 4317 is the OpenTelemetry collector port). Requests whose `Host` is `localhost:<port>` get a 308 redirect to `http://127.0.0.1:<port>` with the same path, so a hand-typed `localhost` URL still works. The Origin check accepts exactly `http://127.0.0.1:<port actually bound>`, including after the busy-port fallback. Host gate (CEO C6): only `Host: 127.0.0.1:<bound port>` is served; `localhost:<port>` gets the 308 above; any other Host gets 421 and one stderr line (method, path, Host). Files are served only from a manifest built at startup (the SEA asset list, or a walk of `dist/`); request paths are looked up in that manifest and never joined to a disk path. Chunk 14's WebSocket and import endpoints sit behind the same Host gate. Asset source: when `node:sea` `isSea()` is true, files come from embedded SEA assets; otherwise from `dist/` on disk.
+  - **Server split (eng D1):** `sidecar/server.ts` exports `createServer({ port, assets })` with `checkHost()`, manifest lookup and the request handler, and has no argv, process or browser code; `sidecar/cli.ts` handles flags, listen-with-retry, opening the browser and signals. Chunk 14a's plugin imports the Host gate from `server.ts` (parameterised with the allowed host per server, C73), so it exists once. Tests: `sidecar/server.test.ts` (C6 gate, manifest, handler) and `sidecar/cli.test.ts` (flags, ports, open, signals).
+  - **Server entry** `sidecar/cli.ts`: serves the built app from embedded assets on `127.0.0.1:7317` and opens the default browser at `http://127.0.0.1:<port>`; the same `127.0.0.1` string is used in the README and is the only host the Origin check accepts (CEO C2; 4317 is the OpenTelemetry collector port). Requests whose `Host` is `localhost:<port>` get a 308 redirect to `http://127.0.0.1:<port>` with the same path, so a hand-typed `localhost` URL still works. The Origin check accepts exactly `http://127.0.0.1:<port actually bound>`, including after the busy-port fallback. Host gate (CEO C6): only `Host: 127.0.0.1:<bound port>` is served; `localhost:<port>` gets the 308 above; any other Host gets 421 and one stderr line (method, path, Host). Files are served only from a manifest built at startup (the SEA asset list, or a walk of `dist/`); request paths are looked up in that manifest and never joined to a disk path. Chunk 14a's WebSocket and import endpoints sit behind the same Host gate. Asset source: when `node:sea` `isSea()` is true, files come from embedded SEA assets; otherwise from `dist/` on disk.
     - Flags: `--port`, `--no-open`, `--version`, `--help`. `--version` comes from an esbuild `define` of `package.json`'s version at bundle time (a SEA binary has no `package.json` to read).
     - `sidecar/server.ts` stays loadable as ESM (Vite plugin) and as CJS (SEA bundle): no `import.meta`, no top-level await; a `no-restricted-syntax` lint rule on `MetaProperty` and top-level `await` in `sidecar/` makes `vp check` fail otherwise (eng review).
     - If the port is busy, try the next 10 ports and print the chosen URL. Busy is detected from the `listen` error (`EADDRINUSE`), never by probing first.
     - Failure behaviour: every row of the Section 2 error registry in the CEO review record is required (CEO C5), each with a Vitest case in `sidecar/server.test.ts`, `sidecar/cli.test.ts` or `scripts/build-bin.test.ts` (fetch and child processes mocked). Port tests bind ephemeral ports (`listen(0)`) and occupy them on purpose, never fixed ports, so parallel CI jobs cannot collide.
-    - In Phase 0 it serves the app only; chunk 14 adds the log watcher and WebSocket to this same entry.
+    - In Phase 0 it serves the app only; chunk 14a adds the log watcher and WebSocket to this same entry.
   - **Single executable build** `vp run build:bin`:
     1. `vp build` builds the web app.
-    2. The CLI is bundled to one CommonJS file, with only pure-JS dependencies so nothing native has to be embedded. That means chokidar v4 (no fsevents) and `ws`.
+    2. The CLI is bundled to one CommonJS file, with only pure-JS dependencies so nothing native has to be embedded. That means `ws`; the watcher uses Node's built-in `fs.watch` (chunk 14a, CEO T2; was chokidar v4).
     3. `build:bin` generates `sea-config.json` from the `dist/` listing on every run (SEA assets must be named one by one, and Vite file names carry content hashes), then embeds them.
     4. The SEA blob is injected with `postject` into a copy of the official nodejs.org binary for the pinned Node version, downloaded by the script and checked against nodejs.org `SHASUMS256.txt` (never the local `node`, which may be a Homebrew or shared-library build).
     5. On macOS: remove the signature, inject, then ad-hoc sign (`codesign --sign -`); Apple Silicon will not run the binary otherwise.
@@ -603,36 +603,98 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 #### [ ] 13. Derived and estimated metrics with provenance
 - **Goal:** Every metric is a `Metric` with value, unit, provenance, basis.
 - **Depends on:** 12.
-- **Tasks:** Session lifecycle inference (session end after 30 min idle, status, waiting_user) computed in the store from the single store clock, so live and replay behave the same (eng review A3). Jobs slice (authoritative, eng Q1) and the optional `AgentEvent` fields the job model needs, added to `src/data/schema.ts` (additive; CEO C35). Selectors for tokens/min, cost (price table), rack kW, inlet/hot-aisle °C (lagged), hall heat, cooling duty, job stage derivation (section 2 job model). `ProvenanceBadge` component per section 4b (8 px top-right glyph: solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated; tooltip on hover and focus showing `basis`; "(est.)" only on panel labels) (design D19). Type-level enforcement: selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5). Inference and derived selectors read the chunk 12 store clock (`SimClock.now()`, epoch ms, one clock for every source) and treat an event `ts` later than `now()` as `now()`; derived values stay frozen while the clock is paused (chunk 12 C47, C50). Re-run chunk 12's `waiting` and `churn` shape tests with session-end inference on (TODOS, chunk 12 E46).
-- **Acceptance:** Unit tests for every formula with fixed inputs. A session idle-ends at the same sim time at 1x and 60x replay (G6). An unknown model shows cost "unknown", never 0 (G7). Debug panel shows each metric with the correct badge. A type test (`// @ts-expect-error` on passing a `number`) proves the formatter rejects raw numbers. A Playwright audit asserts every `[data-metric]` element contains a provenance badge.
-- **README:** "Provenance legend" section with badge image `13-provenance.png` and the estimation formulas.
+- **Tasks:**
+  - **Metric type and enforcement (CEO C75, design D19):** `Metric` is `{ value: number | null, unit, provenance, basis }`; `null` means unknown and every formatter renders it as "unknown" (G7: an unknown model's cost is `null`, never 0). Selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5). A composite metric's provenance is the highest of its inputs on real < derived < estimated (E-voice M7): cost, hall heat and cooling duty are `estimated`, tokens/min is `derived`.
+  - **`ProvenanceBadge`** per section 4b: 8 px top-right glyph (solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated), tooltip on hover and focus showing `basis`; "(est.)" only on panel row labels (design D19). In this chunk the badge is shown only in the `dev=1` HUD Data section, which lists each metric with value, unit, badge and basis (spec 3.6, pass-2 2.1); the "(est.)" panel-label check moves to chunk 29.
+  - **Schema and jobs slice:** Jobs slice (authoritative, eng Q1) and the optional `AgentEvent` fields for jobs, added to `src/data/schema.ts` (additive; CEO C35): `todo?: { id: string, status: "pending" | "in_progress" | "completed" }` (TodoWrite item; its text goes through `currentTask`, redacted) and `toolClass?: "edit" | "git_commit" | "test" | "lint" | "other"` (classified in Node by the parsers; raw commands never reach the browser, D16) (spec 3.5). Job stage derivation per the section 2 job model. The mock generator is unchanged (steady digests stay byte-identical, chunk 12 E36); job-stage tests use hand-written fixture events in `src/data/jobs.test.ts` (E56).
+  - **Estimation constants:** `src/config/estimation.ts` names every constant with its value and an `[estimated]` comment: `IDLE_KW = 0.8`, `KW_PER_TOKEN_PER_MIN = 0.004`, `RACK_MAX_KW = 40`, `INLET_BASE_C = 22`, `INLET_C_PER_KW = 0.25`, `HOT_AISLE_DELTA_C = 12`, `LAG_TAU_S = 30`, `HALL_COOLING_CAPACITY_KW = 400`, `IDLE_END_MS = 30 * 60_000`.
+  - **Price table and cost (CEO F3, X4, F7, spec 1.1):** the price table is keyed by model and token class (`in`, `out`, `cacheRead`, `cacheWrite`, per million tokens) and carries `asOf` (YYYY-MM); cost is the sum over the four classes. The metric's label is "API-equivalent cost" and its `basis` names `asOf` and says it is not a subscription bill (for example "tokens x claude-opus price, prices as of 2026-10"). A cost total over sessions where some models are unknown sums only the known ones and its `basis` says "excludes N sessions with unknown model"; it is `null` only when every session is unknown. In live mode every token or cost total names its window in `basis` ("last 24 h, backfill window"), so totals never read as all-time.
+  - **Data-layer selectors:** tokens/min is the trailing 60 sim s window kept in per-session one-second buckets (not read from the ring buffer). Rack kW = `IDLE_KW` + `KW_PER_TOKEN_PER_MIN` x tokens/min, clamped to `RACK_MAX_KW`. In the data layer a rack is a main session (its subagents' tokens/min add to it, section 2) and a hall is a project (D5); no data selector reads scene placement (pass-3 1.2). Hall heat = sum of rack kW of the racks in that hall; rack load = rack kW / `RACK_MAX_KW`; inlet = `INLET_BASE_C` + `INLET_C_PER_KW` x kW with a first-order lag (`LAG_TAU_S`); hot aisle = inlet + `HOT_AISLE_DELTA_C` x mean rack load of the hall; cooling duty = min(1, total hall heat / (`HALL_COOLING_CAPACITY_KW` x placed halls)), where "placed halls" is the number of projects with at least one main session not `done` (`activeProjects`) with a floor of 2 (halls A and B always exist, D8); when the unclamped duty exceeds 1 its `basis` says "over capacity" (pass-2 1.3).
+  - **Session lifecycle inference in the store (eng review A3, CEO C77, E51):** session end after 30 min idle, status and `waiting_user` are computed from the single store clock (`SimClock.now()`, epoch ms, one clock for every source), so live and replay behave the same. One store action `advanceTo(nowMs)`: the store calls `advanceTo(clock.now())` after every ingest and from one 1 s real-time interval created in `connect` and cleared in `disconnect` (the `Source` interface is unchanged); the store resets the last-advance mark on every `connect` and `sourceEpoch` change (spec 1.4). A session whose last activity is at T ends at exactly T + 30 min (its end `ts` is that value, never the tick time), so G6 holds at 1x, 10x and 60x. `advanceTo` is a no-op while the clock is paused or when `nowMs` is not later than the last call, and commits to the store only when an idle-end, bucket roll, eviction or lag value changes (E-voice M9). `waiting_user` holds until the 30 min idle end like any other status (eng Q3, pass-2 1.1). An event `ts` later than `now()` is treated as `now()`; derived values stay frozen while the clock is paused (chunk 12 C47, C50).
+  - **Late and out-of-order events (eng voice H1):** an event with `ts` earlier than the last `advanceTo` mark is clamped to that mark for lag and bucket state; `advanceTo` does not idle-end sessions while the source status is `catching_up`; an event for an idle-ended session whose `ts` is earlier than its inferred end reopens it (the inferred end is removed and recomputed).
+  - **Exact lag integration (CEO T3, pass-2 3.2, E57):** the inlet lag state lives in the store and `advanceTo` integrates it exactly in sim time across every input change between the previous and the new `nowMs` (one-second bucket boundaries): per one-second step while any bucket in the 60 s window is non-zero, closed-form decay once the window is empty. No selector holds hidden state, so derived values at a sim time T are identical at 1x, 10x and 60x.
+  - **Bounded `done` sessions (CEO X1, E55, spec 1.2, pass-2 1.4, 3.3, eng voice L3):** sessions and subagents with status `done` are evicted from the `sessions`/`subagents` maps once they are no longer in the ring buffer, with project and global token totals unchanged. The ring keeps a per-session reference count updated on push and overwrite, and eviction runs inside `advanceTo` for `done` sessions whose count is 0. Evicted session and subagent ids go into an insertion-ordered `Set` tombstone capped at 100,000 ids (dropping the oldest deletes its first entry; CEO T4). A later event for a tombstoned id reactivates it as an active session without incrementing the project's session count again, and project and global totals still add its tokens. Per-session token counters of an evicted session are dropped; a reactivated session restarts its per-session counters at 0 while project and global totals stay exact; an id dropped from the full tombstone set returns as a new session.
+  - Re-run chunk 12's `waiting` and `churn` shape tests with session-end inference on (TODOS, chunk 12 E46): `waiting` keeps at least 3 sessions with latest status `waiting_user` at 600 s and 1,200 s and those sessions are `done` at their last event + 30 min (about 2,390 sim s); `churn` shapes over [0, 1,800 s) are unchanged, since every idle gap there is under 30 min or ends with `session_end` (pass-2 1.1).
+- **Acceptance:**
+  - Unit tests for every formula with fixed inputs, including the cooling-duty clamp and "over capacity" basis; one provenance test per composite selector (M7).
+  - A session idle-ends at the same sim ms at 1x, 10x and 60x replay (G6). Speed-equivalence of every derived selector at T = 1,200 s. A 10-minute jump at 60x equals a run of 600 one-second advances to within 1e-9 °C (E57).
+  - An unknown model gives `value: null` and formats as "unknown", never 0 (G7). Cost totals: mixed (excludes N unknown), all-known and all-unknown tests. Cost with cache-read tokens dominating gives the per-class sum, not one blended rate. The cost `basis` contains `asOf`.
+  - Fake-timer tests: a quiet source idle-ends a session at T + 30 min; `disconnect` clears the interval; after a scenario switch inference runs again; a paused clock makes no store commit, and a running clock with no due changes makes 0 commits over 20 ticks.
+  - Late-event tests: an out-of-order batch; a backfill delivered after `now`; a late event inside the 30-minute window reopens the session.
+  - A 2-hour `churn` run at 60x keeps the map size bounded (at most active sessions plus the ring-buffer-referenced ones) with totals equal to an uncompacted run; a session still referenced by the ring is not evicted. A session idle-ends, is evicted, then gets a new event 40 sim min later: counts and totals match an uncompacted run.
+  - The re-run `waiting` and `churn` expectations above hold.
+  - A type test (`// @ts-expect-error` on passing a `number`) proves the formatter rejects raw numbers. The `dev=1` HUD Data section shows each metric with the correct badge. A Playwright audit asserts every `[data-metric]` element contains a provenance badge.
+- **README:** "Provenance legend" section with badge image `13-provenance.png` and the estimation formulas. Notes the tombstone limits: a reactivated session restarts its per-session counters at 0, and an id dropped from the full 100,000-id set counts as a new session (pass-2 1.4).
 
-#### [ ] 14. Log server plugin: watcher and WebSocket stream
-- **Goal:** The dev server itself tails real log folders and streams to the app (eng review D1).
-- **Depends on:** 11, 02b (extends `sidecar/cli.ts` and uses `vp run build:bin`).
-- **Tasks:** `sidecar/plugin.ts` Vite plugin (`configureServer`) plus the existing `sidecar/cli.ts` from chunk 02b (the release binary entry), which gains the same watcher and WebSocket logic: config file with log roots (defaults `~/.claude/projects`, `~/.codex/sessions`), chokidar watch, per-file byte offset tailing (handles partial lines and file rotation), 24 h backfill, WebSocket endpoint on the dev-server origin, heartbeat. Reject WebSocket upgrades and `POST /api/import` whose `Origin` is not the app origin, and require a per-run random token injected into the served page (eng review A1). At this stage it streams raw line counts per file only (parsers come next). Backfilled events carry `backfill: true`; they update counts silently and never toast or announce (eng re-review E4); test: a backfill containing 20 errors raises 0 toasts and 0 live announcements (G13). Server sends backfill progress `{done, total}` files and the pill shows "Catching up n/N files" (design D10). Events are sent in batches (up to 500 per message) so a 24 h backfill does not flood the socket (eng review P3). Server keeps a per-file byte-offset cursor; on reconnect the client sends its last cursor and the server resumes from it (eng review Q1). App shows a connection pill (connected / reconnecting / off). When no log files are found, show the first-run card from section 4b (design D9). When the server is down, show the amber banner under the top bar (design D11).
-- **Acceptance:** Appending a line to a watched file shows up in the app within 1 s. Restarting `vp dev` shows "reconnecting" in an open tab, then recovers without duplicates. A test page on another origin (e.g. `http://127.0.0.1:<other port>`) cannot open the WebSocket or call the import endpoint; a request without the token is refused. A WebSocket upgrade with `Host: evil.example:<port>` is refused by `checkHost` under both `vp dev` and the binary (eng review, C6 proof). Server refuses non-localhost connections. Unit tests for the tailer with partial-line, truncated-file and rotated-file fixtures (G1). The local `vp run build:bin` binary built from this chunk tails real logs too; the CI matrix smoke that opens the WebSocket with the injected token is added in chunk 14b. Log roots resolve with `os.homedir()` on macOS, Linux and Windows. Backfill skips files with mtime older than 24 h without reading them (G2). Restarting `vp dev` with a tab open gives identical token totals (G4). A missing or unreadable log root shows its reason in the pill and does not crash (G5).
-- **README:** Quick start notes that `vp dev` also starts the log watcher; `vp run serve` for the built app. "Data sources and privacy" section: what is read, localhost only.
+#### [ ] 14a. Log server: watcher, tailer and WebSocket stream
+- **Goal:** The dev server, the preview server and the release binary themselves tail real log folders and stream to the app over a gated WebSocket (eng review D1). This chunk is Node only; nothing in the browser connects until chunk 14c.
+- **Depends on:** 11, 12 (`sourceEpoch`, `SourceStatus`, params), 02b (extends `sidecar/cli.ts` and uses `vp run build:bin`; the open 02b ruleset item does not block this chunk).
+- **Tasks:**
+  - **Log roots (CEO X2, spec 3.1, DX voice M2, H4, M8):** one name per concept: flag `--log-root <dir>` (repeatable), env `SYNAPSE_LOG_ROOTS` (the OS path delimiter: `:`, `;` on Windows), config key `logRoots`. Precedence, first non-empty source wins and sources never merge: `--log-root`, then `SYNAPSE_LOG_ROOTS`, then the config file `logRoots` (`$XDG_CONFIG_HOME/synapse-horizon/config.json`, else `~/.config/synapse-horizon/config.json`, on Windows `%APPDATA%\synapse-horizon\config.json`; a missing file is normal), then the defaults `$CLAUDE_CONFIG_DIR/projects` (else `~/.claude/projects`) and `$CODEX_HOME/sessions` (else `~/.codex/sessions`), all through `os.homedir()` and `path` (resolver in `sidecar/roots.ts`). A config file that exists but cannot be read or parsed never falls back to the defaults: the binary exits non-zero printing the path, the parse error and a valid example; under `vp dev` and `vp preview` the server watches nothing and reports the error as the root status. `--no-logs` (and `SYNAPSE_LOG_ROOTS=none`) watches nothing and logs one `[logs] watching nothing (--no-logs)` line.
+  - **Watcher (`sidecar/watch.ts`, CEO T2, spec 1.5, eng voice M5):** Node's built-in `fs.watch(root, { recursive: true })` per root (one handle per root on macOS and Windows) plus a 5 s stat rescan of known files as a backstop for missed events; no file-watcher dependency. The rescan re-probes missing roots and starts watching a root that appears after startup, logging one `[logs]` line. Watcher errors are handled both as a synchronous throw and as a later `'error'` event (on Linux an `ENOSPC` inotify limit included), each falling back to rescan-only for that root with one `[logs]` line naming the limit; in rescan-only mode the 5 s pass lists the root with one recursive `readdir`, skipping entries older than 24 h, so new files are found.
+  - **Tailer (`sidecar/tail.ts`) and cursors (pass-2 1.2, eng voice H2, M4):** per-file byte-offset tailing that handles partial lines, truncation and rotation. A cursor is `{ path, fileId, offset }`; `fileId` is the string `dev:ino` from `fs.stat(path, { bigint: true })`, falling back to `birthtimeMs` plus size only when `ino` is `0n` (Windows). `offset` is always the byte after the last complete newline, never bytes read. On resume, a changed `fileId` or a file shorter than `offset` re-reads that file from 0. After a server restart the server rebuilds every line total from 0 for files modified in the last 24 h; client cursors only skip re-sending events from chunk 15 on. Cursor `path` values from the client are matched against the server's own known-file set and unknown paths are ignored (no path is ever opened from client input). Each file has one serial read queue shared by watch events, the rescan and resume, so overlapping reads give the same total.
+  - **Backfill (eng review P3, E58, G2):** 24 h backfill skips files with mtime older than 24 h without reading them. Files stream in 64 KiB chunks, at most 4 files at a time, newest mtime first, yielding between chunks. The server sends progress `{ type: "progress", done, total }` in files. Events are sent in batches of up to 500 (`MAX_BATCH`) per message. Backfilled events carry `backfill: true` (eng re-review E4).
+  - **Wire protocol (`src/data/wire.ts`, pass-3 1.1):** a zod/mini, Node-runnable schema shared by server and client: `{ type: "hello", token, cursors }` (client), `{ type: "lines", path, fileId, total }` (the absolute line total of that file identity, never a delta, so a re-read from 0 replaces the value), `{ type: "progress", done, total }`, `{ type: "roots", roots: [{ path, files, reason?, source }] }` (`source` names flag, env, config or default, DX voice M1) and `{ type: "heartbeat" }`, sent right after an accepted hello and then every 10 s. In this chunk the server streams per-file line counts only (parsers come in chunk 15).
+  - **Server (`sidecar/logServer.ts`, `sidecar/plugin.ts`, `sidecar/cli.ts`; C70, E52, E53, eng voice H3):** the middleware registers in `configureServer` and `configurePreviewServer` (so `vp preview` serves the WebSocket) and in the binary entry `sidecar/cli.ts` from chunk 02b. HTTP upgrades are handled only for `/api/stream`; any other upgrade path (Vite HMR) is ignored without touching the socket. The Host and Origin gates cover only `/api/stream`, `/api/session`, `/api/import` and index templating, never Vite's static or HMR traffic. One `templateIndex(html, { token, mode })` helper injects `<meta name="synapse-token">` and `<meta name="synapse-mode" content="dev|preview|binary">`: dev uses it from `transformIndexHtml`, preview from a `configurePreviewServer` pre-middleware, the binary from `sidecar/server.ts`; every response that serves `index.html` (`/`, `/index.html` and the SPA fallback) carries the current token and `Cache-Control: no-store` (spec 3.3, pass-2 3.5).
+  - **Gates (C73, eng review A1, pass-2 2.3, pass-3 2.2, 3.1, DX voice H3):** Host and Origin are checked before the upgrade (421 and 403 over HTTP). Under `vp dev` the Host and Origin checks accept the Vite server's own resolved origin (`localhost:<port>`, per merged PR #9); under `vp preview` and the binary they accept `127.0.0.1:<port>`; any other Host gets 421 and any other present Origin gets 403. Under `vp dev`, `Host: 127.0.0.1:<port>` gets a 308 to `http://localhost:<port>/` from a middleware registered before Vite's own host check; every 421 body names the URL to use. A request with no `Origin` header (non-browser local clients: the Node integration test, the 14b smoke) passes the Origin check and still needs the token. The token is checked after the upgrade: the client's first message is the `hello`, and a missing or wrong token within 2 s closes the socket with code 4401 (an upgrade is never refused for the token alone). Any first message other than `hello` closes with 4400.
+  - **Session and import endpoints (CEO T1, spec 3.4):** `GET /api/session` returns a fresh token for the running server (same Host and Origin gates, requires `Sec-Fetch-Site: same-origin` when the header is present, no CORS headers, `Cache-Control: no-store`). `POST /api/import` is a gated stub: Host, Origin and token checks, then 501 "import arrives in chunk 17".
+  - **Limits and backpressure (eng voice M2, M3):** `ws` `maxPayload` is 1 MB; at most 16 unauthenticated sockets are pending at once (the 17th is closed with 1013); a `hello` may carry at most as many cursors as the server has known files. When a client's `bufferedAmount` exceeds 1 MB the server stops sending to it and keeps only the latest `lines` total per file, sending the coalesced set when the buffer drains.
+  - **Dependency and bundle (pass-2 5.1, pass-3 5.2):** `ws` is added as a runtime dependency and bundled into the CLI by esbuild (not external); `scripts/bundle-cli.ts` marks `bufferutil` and `utf-8-validate` external (`ws` falls back to its JS paths when they are missing). A test asserts the CLI bundle has no unresolved `require` other than those two.
+  - **CLI output and errors (DX2, DX4, DX5, DX voice M5):** `--help` lists `--log-root <dir>` (repeatable), `--no-logs`, the `SYNAPSE_LOG_ROOTS` env var, the config file path for the current OS and the default roots with their `CLAUDE_CONFIG_DIR`/`CODEX_HOME` overrides. The binary's start output is three kinds of line: the version, the URL (`listening on http://127.0.0.1:<port>/`, which the 14b smoke reads for the port) and one `[logs]` line per root (X3, G5): resolved path and file count modified within 24 h, or the reason it is missing or unreadable. With zero files found it adds "no Claude Code or Codex logs found in the last 24 h; start a session, or pass --log-root <dir>". Every `[logs]` error line and root `reason` states problem, cause and fix and ends with the README anchor that explains it (`#configuration` or `#data-sources-and-privacy`), for example "cannot watch ~/.claude/projects: inotify watch limit reached (ENOSPC); polling every 5 s instead. Raise it with: sudo sysctl fs.inotify.max_user_watches=524288", "permission denied (EACCES) reading <file>; skipped. Check the file's owner", "root not found: <path>; set --log-root or SYNAPSE_LOG_ROOTS".
+- **Acceptance:**
+  - Node integration tests (real `ws` server and Node 24's global `WebSocket` client): appending a line to a watched file yields an updated `lines` total within 1 s. Stopping and restarting the real server on the same port while a client stays connected gives equal absolute totals after restart (G4 as a protocol test; event de-duplication proof moves to chunk 15). Restart while a file ends in a partial line counts the line once when it is completed.
+  - Gates: a test page on another origin (`Origin: http://127.0.0.1:<other port>`) cannot open the WebSocket or call the import endpoint; `Host: evil.example:<port>` is refused by the Host gate, parameterised with the allowed host for each server, under `vp dev`, `vp preview` and the binary (eng review, C6 proof). Absent Origin with token is accepted, absent Origin without token is closed 4401, mismatched Origin gets 403; no `hello` within 2 s, a wrong token and a correct token each behave as specified. `/api/import` gate rejections and the 501. `/api/session`: a restart with a new token recovers via a fresh fetch; a cross-origin fetch gets no readable body; `Host: evil.example` gets 421. An HMR-path upgrade is untouched and a dev page hot-reloads with the plugin installed; `Host: 127.0.0.1:<port>` under dev gets the 308 and HMR still connects.
+  - Templating: `templateIndex` output; all three servers serve the current token; preview `/`, `/index.html` and a deep SPA route carry both meta tags and `Cache-Control: no-store`.
+  - Watcher and tailer: unit tests with partial-line, truncated-file and rotated-file fixtures (G1); append, create, truncate and rotate fixtures are seen within 1 s through events and within 6 s with events disabled (rescan only); a root created after start is picked up within 6 s; an injected `ENOSPC`, both as a throw and as a later `'error'` event, keeps tailing via rescan. These run in `vp test` on ubuntu in CI. Truncated and rotated while the server was down; a fake bigint `ino` above 2^53 yields the right `fileId`; a forged `../` cursor path is ignored; a watch event and a rescan racing on one file give one correct total.
+  - Roots: tests per OS path style with mocked env and homedir, including precedence (env plus config gives only the env roots; flag plus env gives only the flag roots); invalid JSON, wrong type and unreadable config file; `--no-logs` creates no watcher. Log roots resolve with `os.homedir()` on macOS, Linux and Windows. `cli.test.ts` asserts each item in the `--help` text, the three DX4 error texts, the `[logs]` lines and the zero-files hint.
+  - Backfill: files with mtime older than 24 h are not read (G2); 500 fixture files complete with no single read over 64 KiB and progress reaching 500/500. A stalled client during a 10,000-file backfill keeps server memory bounded (pending entries at most the file count). Tests for each limit (1 MB payload, 17th pending socket closed 1013, cursor count, first message other than `hello` closed 4400). The wire schema rejects unknown types; a rotation replaces a `lines` total and a reconnect resends absolute totals.
+  - The CLI bundle test passes. The local `vp run build:bin` binary built from this chunk tails real logs too; the CI matrix smoke that opens the WebSocket with the injected token is added in chunk 14b.
+- **README:** "Configuration" section (DX voice H5, eng voice L2): the precedence rule (flag, env, config, defaults; first non-empty wins; sources never merge, so adding a root means listing the defaults too), per-OS config paths, the env delimiter, copy-paste examples, and a note that `SYNAPSE_LOG_ROOTS=none` means "watch nothing", so a directory literally named `none` needs `--log-root`. `config.example.json` is committed and referenced. Quick start and "Data sources and privacy" are written in chunk 14c.
+
+#### [ ] 14c. Live source and connection states
+- **Goal:** The app connects to the log server by default and shows its state: pill, banner, first-run card and per-file line counts.
+- **Depends on:** 14a.
+- **Tasks:**
+  - **`LiveSource` (`src/data/liveSource.ts`, C72, E50, eng voice L5):** implements the `Source` interface over the `/api/stream` WebSocket with the shared `src/data/wire.ts` schema. A dropped WebSocket or a down server is retried inside the live source with backoff (1 s, 2 s, 4 s, capped at 10 s) without calling the store's `connect` and without bumping `sourceEpoch`; the status is `reconnecting`, never `error`. On reopen the client sends `hello` with the token from the page's `synapse-token` meta tag and its per-file cursors, and the server resumes. `SourceStatus` gains `reconnecting`. `error` is used only for a second token rejection, an invalid config file and a wire-schema failure. Backfilled events update counts silently and never toast or announce (eng re-review E4, G13).
+  - **Token refresh (CEO T1, DX voice M6):** when the server closes with code 4401 (or answers 401 on HTTP), the live source fetches a fresh token once from `GET /api/session` and reconnects; a second rejection sets status `error` with the reason and the D11 banner shows "Session expired. Reload the page." with a Reload button.
+  - **Live default (C79, spec 1.8, eng voice L4):** `source=live` is the default when no `source` param is given, `source=mock` selects the mock, and `parseParams` accepts `live` and `mock`; `source=mock` without `scenario` selects `steady`. With `freeze=1` and no explicit `source`, no source connects (today's behaviour), so every frozen screenshot baseline and `vp run shots` output is unchanged; the live default applies only without `freeze=1`. Specs that test D9, D10, D11 or the pill pass `source=live` and their own fixture roots.
+  - **`logLines` slice (pass-3 1.1, eng voice M6):** line totals go to a separate store slice `logLines` keyed by `path + fileId`, never through `applyBatch`. The `dev=1` HUD Data section lists them as `real` metrics with `data-metric`; the `basis` reads "whole file; files modified in the last 24 h" (per-line time windows arrive with chunk 15 timestamps). The `lines` totals are absolute, so a re-read replaces the value.
+  - **Connection pill (design D10, spec 3.2):** `connecting` "Connecting"; `catching_up` "Catching up n/N files" (from server `progress`); `live` "Connected"; `reconnecting` "Reconnecting"; `closed` "Off"; `error` "Off" plus the reason in the tooltip. A root `reason` from the server's `roots` message (G5) shows in the pill; `--no-logs` shows "Off".
+  - **D11 banner (DX3):** amber banner under the top bar, shown when the first connection fails or `reconnecting` lasts 3 s or more, hidden on `live`. Its text depends on the server's `synapse-mode` meta: `dev` "Log server not running. Start it with `vp dev`."; `binary` "Synapse Horizon stopped. Run it again to reconnect."; `preview` "Log server not running. Start it with `vp run serve`."
+  - **D9 first-run card (pass-3 3.3, DX voice M1, C79):** shown when the server reports zero files in every root after backfill. It names the resolved roots from the `roots` message and the source that supplied them (flag, env, config or default), never a hard-coded path. In this chunk it offers only "Try the demo", which switches to `source=mock&scenario=steady`; "Drop a .jsonl to replay" appears with chunk 17.
+  - **Interim placement (pass-2 2.1):** until the top bar (chunk 27) exists, the pill sits at the right end of the existing top-bar row, the D11 banner directly below that row and the D9 card centred in the `safeArea`, all visible without `dev=1`. KPI shimmer (D10) moves to chunk 28.
+  - **Playwright `logserver` project (pass-3 2.1, C70):** a separate project with its own `webServer` (`vp preview` on its own port, `SYNAPSE_LOG_ROOTS` set to `e2e/.tmp/logs`, `workers: 1`); each spec rewrites that directory before it navigates (empty for the D9 card, a fixture file for counts, an appended line for the 1 s check). The D11 banner and `reconnecting` states use `page.routeWebSocket` to refuse or drop the socket, so no server has to stop mid-run. The other projects keep their current `webServer` and never read a real home directory, because their pages connect with no `source` under `freeze=1` or with explicit `source=mock`.
+- **Acceptance:**
+  - A page without `source` (and without `freeze=1`) opens the WebSocket (Playwright); `parseParams` tests for `live`, `mock` and `source=mock` without `scenario`. The existing frozen screenshot baselines pass unchanged in this PR.
+  - Appending a line to a watched fixture file shows up in the `dev=1` HUD `logLines` row within 1 s (Playwright against `vp preview`, C70). Restarting `vp dev` with a tab open shows "Reconnecting", then recovers with identical per-file line counts (G4, a protocol test; event de-duplication is proved in chunk 15, eng L5); under `vp dev` a full page reload by Vite's own client on restart is acceptable and is checked manually.
+  - Live-source tests with a fake socket: kill and restart the server and totals equal an uninterrupted run; drop and restore the socket three times and status returns to `live` each time; a restart with a new token recovers without reload; a second rejection sets `error` and shows the "Session expired" banner.
+  - Each `SourceStatus` renders its pill text; each `synapse-mode` renders its D11 text; the D9 card lists the resolved roots and their source; "Try the demo" switches to `source=mock&scenario=steady`.
+  - A backfill containing 20 errors raises 0 toasts and 0 live announcements (G13).
+  - A missing or unreadable log root shows its reason in the pill and does not crash (G5).
+- **README:** Quick start (DX voice M4): `vp dev` for development, `vp run serve` for the built app; the log server runs under `vp dev`, `vp preview` (used by Playwright) and the binary alike. "Data sources and privacy" section (CEO F10, spec 5.3): what is read, localhost only; what reaches the browser now (per-file line counts and root paths only) and what chunk 15 will add (session ids, model, token counts, tool names, `currentTask` truncated to 120 chars and redacted, D16); the token is defence in depth for browsers (Origin checks stop cross-origin pages, the Host gate stops DNS rebinding), and any local process can read `/api/session` or the page, so it does not defend against local processes, which can read the log files directly. Links to the "Configuration" section from 14a.
 
 #### [ ] 14b. Downloadable builds for 4 platforms
-- **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1).
-- **Depends on:** 02b, 14.
+- **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1). It follows chunk 15 so the first public binary shows real Claude Code sessions, not only line counts (UC2).
+- **Depends on:** 02b, 14a, 14c, 15 (14c owns `LiveSource` and the live-by-default page, so without it the binary would still show no sessions).
 - **Tasks:**
-  - **Build matrix** in `release.yml`: `needs: release`, `if: needs.release.outputs.published == 'true'`, and checks out the new tag `v${{ needs.release.outputs.version }}` (not the merge SHA, whose `package.json` still has the old version). Runners: macos-15 (arm64; `macos-14` is removed on 2026-11-02), macos-15-intel (x64; `macos-13` was retired 2025-12-04, and GitHub drops x64 macOS when the macOS 15 image retires in fall 2027), ubuntu-latest (x64), windows-latest (x64). Each runner builds with its own official Node binary (no cross-compiling) via `vp run build:bin` and uploads to the release. Output names `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows).
-  - **Job order per OS:** build → smoke (acceptance below) → attest → upload. A failed smoke uploads nothing for that OS.
-  - **Partial failure:** the matrix sets `fail-fast: false`, so one failed OS does not cancel the others. If any matrix job fails, the checksums job does not run, and a final step (`if: failure()`) builds the missing-OS list from `gh release view --json assets` and edits the release notes to start with "Incomplete: builds missing for <os list>". Re-running the failed job fills it in; the checksums job, once it runs with all 4 binaries present, removes that prefix.
-  - **Checksums job** after the matrix: downloads all 4 binaries from the release, writes `SHA256SUMS.txt` and uploads it.
-  - **Provenance (CEO X1):** each binary gets `actions/attest-build-provenance` (job-level permissions on the matrix jobs: `contents: write`, `id-token: write`, `attestations: write`; set per job, because workflow-level permissions would replace `contents: write` and the upload would fail with 403). Repo is public, so this is free.
+  - **Reusable workflow (E54):** the build, smoke, attest and upload matrix lives in `.github/workflows/binaries.yml` (`workflow_call` inputs `version`, `ref`, `upload`; `workflow_dispatch` runs it with `upload: false`, so the 14b PR proves all 4 runners before merge, CEO Section 9). `release.yml` calls it after `release` with `upload: true`: `needs: release`, `if: needs.release.outputs.published == 'true'`, and the ref is the new tag `v${{ needs.release.outputs.version }}` (not the merge SHA, whose `package.json` still has the old version). `binaries.yml` opens with `permissions: {}` and uses job-level grants. `scripts/check-workflows.ts` covers the new file.
+  - **Build matrix:** runners macos-15 (arm64; `macos-14` is removed on 2026-11-02), macos-15-intel (x64; `macos-13` was retired 2025-12-04, and GitHub drops x64 macOS when the macOS 15 image retires in fall 2027), ubuntu-latest (x64), windows-latest (x64). Each runner builds with its own official Node binary (no cross-compiling) via `vp run build:bin`. Output names `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows). Uploads use `gh release upload --clobber` (eng voice L1).
+  - **Job order per OS:** build, smoke, attest, upload. A failed smoke uploads nothing for that OS.
+  - **Smoke (X5, pass-3 3.2, spec 3.3):** each matrix smoke starts the binary with `--no-open --port 4400 --log-root <fixture dir>`, reads the port from the `listening on http://127.0.0.1:<port>/` line and the token from the served HTML, appends one line to a fixture file, and runs the committed `scripts/smoke-ws.mjs` (the runner's Node 24 from setup-vp, on all 4 runners), which sends the `hello` and waits up to 5 s for a heartbeat and a `lines` message for the appended line. Windows steps use `shell: bash`.
+  - **Partial failure (C78):** the matrix sets `fail-fast: false`, so one failed OS does not cancel the others. A `report` job with `needs: [release, build]` and `if: always() && needs.build.result != 'success' && needs.release.outputs.published == 'true'` builds the missing-OS list from `gh release view --json assets` and edits the release notes to start with "Incomplete: builds missing for <os list>". Re-running the failed job fills it in.
+  - **Checksums job** after the matrix (runs only when the matrix succeeded): downloads all 4 binaries from the release, writes `SHA256SUMS.txt`, uploads it, and removes the "Incomplete" prefix once all 4 binaries exist.
+  - **Permissions (pass-3 1.3):** the `report` and `checksums` jobs each get job-level `contents: write`. A called workflow can only keep or reduce its caller's token scopes, so the `release.yml` job that calls `binaries.yml` grants `contents: write`, `id-token: write` and `attestations: write` at job level (`release.yml` keeps top-level `permissions: {}`); `release-workflow.test.ts` asserts these caller-job scopes. **Provenance (02b CEO X1, attestation):** each binary gets `actions/attest-build-provenance` (job-level permissions on the matrix jobs: `contents: write`, `id-token: write`, `attestations: write`; set per job, because workflow-level permissions would replace `contents: write` and the upload would fail with 403). Repo is public, so this is free.
 - **Acceptance:**
-  - A `feat:` PR merges and produces a GitHub Release with 4 binaries and `SHA256SUMS.txt`.
-  - In each matrix job, a smoke step starts the binary with `--no-open --port 4400`. `curl http://127.0.0.1:4400/` returns 200 with the app HTML, `--version` prints the tag version, and the WebSocket accepts the injected token and sends a heartbeat.
+  - A `feat:` PR merges and produces a GitHub Release with 4 binaries and `SHA256SUMS.txt`. A `workflow_dispatch` run of `binaries.yml` builds and smokes all 4 runners and uploads nothing.
+  - `scripts/release-workflow.test.ts` asserts the job graph and conditions (including the `report` job's `if`), the `binaries.yml` call with its inputs, that a dispatch never uploads, every job's permissions, and `--clobber`.
+  - In each matrix job, the smoke step passes: `curl http://127.0.0.1:4400/` returns 200 with the app HTML, `--version` prints the tag version, and `scripts/smoke-ws.mjs` receives a heartbeat and the `lines` message for the appended fixture line using the injected token.
   - `gh attestation verify <binary> --repo bjorkgard/ai-center` passes for every binary.
   - On your Mac, the downloaded arm64 binary starts after the Gatekeeper first-run step (macOS 15+: System Settings > Privacy & Security > Open Anyway, or `xattr -d com.apple.quarantine <file>`) and serves the app. A machine with no Node installed runs it (checked once on a clean VM or a user account without Node).
-- **README:** Add "Download and run" (per-OS steps, unsigned-binary first-run notes: macOS 15 and later removed the right-click > Open bypass, so use System Settings > Privacy & Security > Open Anyway after the first blocked launch, or `xattr -d com.apple.quarantine <file>`; Windows SmartScreen "More info > Run anyway", flags, `gh attestation verify`). Image: `14b-release.png` (screenshot of the first GitHub Release page with the 4 assets), captured manually and stored in `docs/img/`.
+- **README:** Add "Download and run" (DX1, DX voice H1, M7): per-OS copy-paste blocks, each starting with `chmod +x synapse-horizon-<version>-<os>-<arch>` for macOS and Linux (release assets lose the exec bit), then the first-run bypass, then the run command and the expected first output line (`listening on http://127.0.0.1:7317/`). Unsigned-binary first-run notes: macOS 15 and later removed the right-click > Open bypass, so use System Settings > Privacy & Security > Open Anyway after the first blocked launch, or `xattr -d com.apple.quarantine <file>`; Windows SmartScreen "More info > Run anyway"; flags (`--port`, `--no-open`, `--version`, `--log-root`, `--no-logs`). Copy-paste checksum commands next to `gh attestation verify`: `shasum -a 256 -c SHA256SUMS.txt --ignore-missing` (macOS, Linux) and `Get-FileHash <file> -Algorithm SHA256` (Windows). Image: `14b-release.png` (screenshot of the first GitHub Release page with the 4 assets), captured manually and stored in `docs/img/`.
 
 #### [ ] 15. Claude Code parser
 - **Goal:** Claude JSONL lines become AgentEvents.
-- **Depends on:** 13, 14.
+- **Depends on:** 13, 14a.
 - **Tasks:** Inspect your real files first and record the observed format in `docs/log-formats/claude.md` (versions seen). Parser as a pure Node module in `sidecar/parsers/`. Map: session start, turns, tool calls/results, usage tokens, model, cwd, sidechain/subagent links to parent, TodoWrite to currentTask, Edit/Write paths to filesTouched. Parsers emit only facts from lines; session end, status and waiting inference live in the store and use the store clock (eng review A3). Redaction (120-char task, paths outside project, secret patterns from `sidecar/parsers/redact.ts`: key prefixes, bearer tokens, 32+ char high-entropy strings, eng review D2). Unknown line types counted, not fatal. Redacted fixtures committed.
 - **Acceptance:** Fixture tests cover: plain session, session with subagents, tool error, malformed line, unknown type, each secret pattern redacted, and a long git SHA in task text that is NOT redacted. Pointing the log server at your real folder shows your actual sessions with correct projects and token totals that match a manual count on one file within 1%.
 - **README:** "Supported logs" with Claude format notes and known gaps.
@@ -646,7 +708,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 
 #### [ ] 17. Drag-and-drop file import replay
 - **Goal:** Drop log files on the page and replay them through the local log server (eng review D1).
-- **Depends on:** 16.
+- **Depends on:** 16, 14c (the `POST /api/import` gate stub is from 14a; the D9 card and live default are from 14c).
 - **Tasks:** Drop zone and file picker accepting `.jsonl` (multiple files). Drop switches the mode chip to `REPLAY` and shows the replay bar (design D8). Upload to `POST /api/import` (streamed, size-capped), parse in Node with the same parsers, return events to the replay clock from 12. When the server is not running, the drop zone says so instead of failing silently.
 - **Acceptance:** Works in Chrome, Safari, Firefox (Playwright test drops a fixture). A 50 MB log imports without freezing the UI (main thread long tasks under 100 ms). Drop with the server stopped shows a clear message. Files over the size cap, malformed JSONL and binary files get a clear error and import nothing (G3).
 - **README:** "Replay a log" instructions.
@@ -816,13 +878,13 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
                                                                    08 → 10
 04a → 04c → 06                           (look, parallel to 04b and 05; CEO C22)
 04a → 11 → 12 → 13 → 15 → 16 → 17       (data track, parallel to 04b-10; CEO S-RW1)
-     11 → 14 ─────┘ ; 02b → 14 ; 14 → 14b (downloads)
+     11 → 14a → 14c ; 02b → 14a ; 14a → 15 ; 14c → 17 ; 14a + 14c + 15 → 14b (downloads)
 08 + 13 → 18;  13 → 19;  18 + 19 + 10 → 20 → 21;  21 + 09 → 22 → 23   (CEO C26)
 23 → 24 → 25, 26;  25 → 27 → 28, 29(+26), 30, 31 → 32(+29), 33
 27 → 34 → 35 → 36 → 37
 ```
 
-The data track (11-17) can run alongside world building (04-10) in a separate branch or worktree, since they share no files after chunk 04a, except `sidecar/cli.ts` from 02b, which chunk 14 extends, and the store from 04a, which chunk 11 extends (CEO S-RW1). Each store slice lives in its own file under `src/app/store/`, so 04b (`safeArea`) and chunk 11 never edit the same slice file. 04b and 04c can run in parallel; both append entries to `scripts/shots.config.ts`, which merges trivially.
+The data track (11-17) can run alongside world building (04-10) in a separate branch or worktree, since they share no files after chunk 04a, except `sidecar/cli.ts` from 02b, which chunk 14a extends, and the store from 04a, which chunk 11 extends (CEO S-RW1). Each store slice lives in its own file under `src/app/store/`, so 04b (`safeArea`) and chunk 11 never edit the same slice file. 04b and 04c can run in parallel; both append entries to `scripts/shots.config.ts`, which merges trivially.
 
 ---
 
@@ -833,7 +895,7 @@ The data track (11-17) can run alongside world building (04-10) in a separate br
 | R3F vs vanilla | Gates every scene chunk | Measured spike with churn test, ADR | 03 |
 | Unsigned binaries | macOS Gatekeeper and Windows SmartScreen warn or block on first run | README first-run steps; ad-hoc signing on macOS so arm64 runs; Apple Developer ID notarisation is a later option | 02b, 14b |
 | x64 macOS runners end (fall 2027, when the macOS 15 image retires) | No native x64 Mac build host | Before then, inject into the darwin-x64 Node binary on an arm64 runner and smoke-test under Rosetta (Rosetta on hosted runners unverified) | 14b, revisit 2027 |
-| Native modules in the single executable | SEA cannot load native addons such as fsevents | Pure-JS dependencies only (chokidar v4, `ws`), checked by the per-OS smoke test | 02b, 14, 14b |
+| Native modules in the single executable | SEA cannot load native addons such as fsevents | Pure-JS dependencies only (`ws`; the watcher uses Node's built-in `fs.watch`), checked by the per-OS smoke test | 02b, 14a, 14b |
 | Release bot vs protected `main` | The release commit push fails | `main` ruleset with the release bot on the bypass list (CEO C4); tag-only versioning rejected because it breaks D19 | 02b |
 | Instanced perf in Safari/Firefox | Safari WebGL and Firefox compositing are the slowest paths | InstancedMesh everywhere, shared materials, draw-call budget test, quality tiers | 03, 07, 36 |
 | Bloom and `backdrop-filter` cost | Both expensive over a live WebGL canvas, worst in Firefox | Auto-disable below 45 fps, solid panel fallback | 04, 27, 36 |
@@ -842,8 +904,8 @@ The data track (11-17) can run alongside world building (04-10) in a separate br
 | Hall teardown leaks | Hours of churn will exhaust GPU memory | Pure reconciler, explicit dispose, automated churn leak test in all browsers | 19, 20 |
 | Log formats undocumented and changing | Parsers can silently break | Record observed formats, tolerant parsers, unknown-type counters, parse-failure alert, fixtures per version | 15, 16, 32 |
 | Unrecoverable fields | Subagent parent (Codex), session end, task, cost | `parentKnown`, idle inference, derived/estimated badges, feasibility table kept current | 15, 16, 37 |
-| Local folder access in Safari/Firefox | No File System Access API | Log server Vite plugin plus drag-and-drop upload | 14, 17 |
-| Privacy of prompts and code | Logs contain sensitive content | Redaction at parse time, localhost-only server, no raw content in store | 14, 15 |
+| Local folder access in Safari/Firefox | No File System Access API | Log server Vite plugin plus drag-and-drop upload | 14a, 17 |
+| Privacy of prompts and code | Logs contain sensitive content | Redaction at parse time, localhost-only server, no raw content in store | 14a, 15 |
 | Scale beyond 12 halls | Campus layout is finite | Defined cap with "Unassigned" board and alert | 19 |
 
 ---
@@ -7549,3 +7611,915 @@ PR #29 review (Codex, 2026-10-15), applied by Auto-fix: churn's fast lanes ended
 - **VERDICT:** CEO CLEARED for chunk 12. Eng Review ISSUES OPEN means 20 found issues, all accepted into the chunk 12 entry with 0 unresolved decisions and 0 critical gaps; chunk 12 is ready to implement. eng review required.
 
 NO UNRESOLVED DECISIONS
+
+## CEO review record: Chunks 13, 14 and 14b (/autoplan, 2026-10-15)
+
+Approved at the final gate 2026-10-15 (reply `all`); chunk 14 is split into 14a and 14c (UC3) and 14b follows chunk 15 (UC2).
+
+Mode: SELECTIVE EXPANSION (autoplan override). The 0E rule alone would recommend SCOPE REDUCTION: about 38 changed files across three chunks [estimated: 13 about 14, 14 about 18, 14b about 6], but the three chunks ship as three PRs (D18), each under 20 files, so reduction would only split what is already split. Codex outside voice disabled (`codex_reviews` disabled); Claude subagents only.
+
+### System audit (pre-review)
+
+- main at fee2a7f, clean, no stashes, no open PRs. Chunk 12 merged (#30). Chunk 02b `[~]`: ruleset bypass proof pending (bucket `phase-0-tooling`); release 0.12.0 proves `release.yml` publishes, so 14b is not blocked by the ruleset.
+- `src/app/App.tsx:54` connects only `source=mock`; with no `source` param nothing connects. `src/app/params.ts` allowlist has no `live`.
+- `playwright.config.ts:55` runs `vp build && vp preview --host 127.0.0.1`; every e2e runs the production preview server, never `vp dev` (prior learning applied: e2e-runs-production-build, confidence 9/10, 2026-10-13).
+- `vite.config.ts:65` dev `host: "localhost"` (PR #9, dc8612a); `sidecar/server.ts:23` `checkHost` serves only `127.0.0.1:<port>`.
+- `.github/dependabot.yml` npm `prefix: "build(deps)"` (PR #8, b17f26e), against CEO C8 (`fix(deps)` for runtime deps, approved Q13 2026-10-12). semantic-release default rules cut no release for `build`.
+- `package.json`: no `chokidar`, no `ws` yet. `scripts/build-bin.ts:72-75` already maps win32/linux/darwin to official Node archives.
+- `src/data/reduce.ts:210-211` copies `sessions` and `subagents` Maps on every batch (TODOS P2 "Bound the growth of done sessions", trigger chunk 13).
+- Taste references: good: `src/data/clock.ts` (injected clocks, pure, one-line `[data]` logs), `sidecar/server.ts` (manifest-only serving, Host gate as a pure function with tests). Avoid: growing `App.tsx` effects per source; parse logic in the browser.
+- Landscape: Search used for two facts only. `macos-15-intel` is the hosted Intel macOS label used by CPython and WordPress, supported to about Aug 2027 [web, not GitHub's own doc page]. chokidar v4 dropped the native FSEvents backend and starts `fs.watch` watchers for everything under the watched paths; macOS default per-process fd limit is low (256 soft) [web].
+
+### 0A. Premise table
+
+| # | Premise | Claim | Receipt | Verdict |
+|---|---|---|---|---|
+| PR1 | Chunk 14 acceptance can be automated in Playwright | "Appending a line ... within 1 s", reconnect, Origin tests | `playwright.config.ts:55` (preview, not dev); plan registers only `configureServer` | finding: plugin absent in every e2e |
+| PR2 | Per-run token plus restart recovery | token "per-run random"; "Restarting `vp dev` ... recovers without duplicates" | PLAN chunk 14 Tasks/Acceptance | finding: restarted server has a new token, the open tab holds the old one |
+| PR3 | Reconnect resumes from cursor | "client sends its last cursor" | `src/app/store/data.ts` `connect` clears aggregates and bumps `sourceEpoch` | finding: resume must not go through `connect` |
+| PR4 | Dev origin equals the Host gate origin | Origin check "app origin" | `vite.config.ts:65` localhost vs `sidecar/server.ts:23` | finding: dev origin is `http://localhost:<port>` |
+| PR5 | Runtime dependency fixes reach binaries | C8 approved `fix(deps)` | `.github/dependabot.yml` `build(deps)` | finding: user changed it in #8; user decides (UC1) |
+| PR6 | `Metric.value: number` covers "unknown" cost | G7 "cost unknown, never 0" | PLAN section 2 `Metric` | finding: needs a non-number state |
+| PR7 | chokidar v4 is fine for the log roots | 02b dependency choice | web: v4 has no FSEvents, per-path `fs.watch` | finding (taste): fd use grows with file count |
+| PR8 | Idle-end can be computed "in the store from the single store clock" | eng A3 | no store action runs without events | finding: needs a clock-driven advance |
+| PR9 | Default log roots are `~/.claude/projects`, `~/.codex/sessions` | chunk 14 | Claude Code honours `CLAUDE_CONFIG_DIR`, Codex honours `CODEX_HOME` [unverified in this repo; vendor docs] | finding: roots ignore relocated configs |
+| PR10 | `Metric` and badge exist for chunk 13 to extend | chunk 13 | no `Metric` type in `src/data/` (grep) | pass: chunk 13 creates it |
+| PR11 | 14b matrix can read `published` and `version` | 14b | `.github/workflows/release.yml` `outputs` | pass |
+| PR12 | Partial-failure step `if: failure()` edits notes | 14b | GitHub: `failure()` is per-job; a sibling job sees only `needs.*.result` | finding: needs its own job |
+
+unverified=1 (PR9 env-var behaviour is vendor-documented, not observed here).
+
+0A verdict: the three chunks solve the real problem (live data from real logs, honest metrics, a binary users can run). Do-nothing cost: the app stays a mock demo and the binary serves a UI with no data. No premise is wrong enough to stop; PR1-PR4, PR6, PR8, PR12 are required fixes inside accepted contracts; PR5 is the user's call; PR7 is taste.
+
+### 0B. Existing code leverage
+
+| Sub-problem | Existing code | Plan |
+|---|---|---|
+| Host gate, manifest serving | `sidecar/server.ts` `checkHost`, `createServer` | reuse; add dev-origin variant (PR4) |
+| CLI flags, port retry | `sidecar/cli.ts` `parseArgs`, `listenWithRetry` | extend with `--logs` |
+| Binary build per OS | `scripts/build-bin.ts` `nodeTarget` | reuse unchanged in 14b |
+| Release outputs | `.github/workflows/release.yml` | add jobs |
+| Workflow pin guard | `scripts/check-workflows.ts` | new actions must be SHA-pinned |
+| Source contract, batches | `src/data/schema.ts` `Source`, `MAX_BATCH` | `LiveSource` implements it |
+| Clock | `src/data/clock.ts` `createLiveClock` | live source uses it |
+| Store lifecycle | `src/app/store/data.ts` `connect`/`disconnect` | reconnect stays inside the source (PR3) |
+| Toasts | `src/ui/toasts.ts` | G13 asserts 0 toasts on backfill |
+| Glass panel | `src/ui/GlassPanel.tsx` | first-run card, banner |
+
+### Reality rows
+
+REALITY: premise-table finding 12 premises, 8 findings, unverified=1 .gstack/tmp/autoplan/chunks-13-14-14b-plan.md:1
+REALITY: already-done pass git log since 2026-10-12 for sidecar/plugin.ts, src/data/metrics, release.yml shows no chunk 13/14/14b work; last touch of release.yml is 02b .github/workflows/release.yml:1
+REALITY: surface-check finding `vp run build:bin`, `vp run serve`, `vp run e2e:local` exist; `--logs` flag and `source=live` param do not exist yet (planned) sidecar/cli.ts:33
+REALITY: binding-decisions pass honours chunk 11/12 decisions (sourceEpoch on connect, MAX_BATCH 500, one clock via source.clock); C8 conflict with #8 raised as UC1, not re-decided src/app/store/data.ts:80
+REALITY: numbers pass every number is plan-chosen (500/batch, 24 h, 30 min, 1 s, tau 30 s, 40 kW) [estimated]; fd limit 256 [web] .gstack/tmp/autoplan/chunks-13-14-14b-plan.md:7
+REALITY: deferred-asks pass TODOS P2 #8/#9 (both halves raised: PR4 decided, PR5 UC1), TODOS P2 done-session growth (expansion X1), TODOS P2 waiting/churn re-check (already in chunk 13) TODOS.md:15
+REALITY: pr-count pass three PRs, one per chunk (D18); 13 and 14 are independent, 14b after 14 .gstack/tmp/autoplan/chunks-13-14-14b-plan.md:14
+
+### 0C. Dream state
+
+```
+  CURRENT STATE                  THIS PLAN                          12-MONTH IDEAL
+  mock-only store, no Metric,    Metric+provenance everywhere,      ambient ops view of every agent
+  binary serves UI only,         live log server in dev, preview    on the machine, trusted numbers,
+  no live source                 and binary, 4-OS release binaries  one download, zero setup
+```
+The plan moves straight toward the ideal; parsers (15, 16) are the remaining gap to real events.
+
+### 0E. Mode
+
+Mode: SELECTIVE EXPANSION; approved decisions: none. Autoplan fixes the mode; cherry-picks below are auto-decided by P1/P2 (in blast radius, under 1 day CC) or deferred by P3.
+
+### 0F/0G. HOLD checks and cherry-picks
+
+HOLD checks: (1) complexity: each chunk exceeds 8 files and chunk 14 adds 3 services (watcher, tailer, WS hub); kept, because each is a separate tested unit and the plan already splits per chunk. (2) Minimum change: nothing deferrable without breaking an acceptance line. (3) Invariants kept: G1, G2, G4, G5, G6, G7, G13, eng A1, A3, D5, P3, Q1.
+
+Delight scan and cherry-picks (auto-decided):
+
+| ID | Proposal | Effort | Decision | Principle |
+|---|---|---|---|---|
+| X1 | Evict `done` sessions/subagents after they leave the ring buffer, totals unchanged (TODOS P2, trigger chunk 13) | S | ACCEPTED into 13 | P2 blast radius |
+| X2 | Log roots honour `CLAUDE_CONFIG_DIR` (`<dir>/projects`) and `CODEX_HOME` (`<dir>/sessions`); `--logs <dir>` (repeatable) on the binary; `SYNAPSE_LOG_ROOTS` env for tests | S | ACCEPTED into 14 | P1 completeness |
+| X3 | Startup prints one `[logs]` line per root: path, file count within 24 h, or the reason it is missing | S | ACCEPTED into 14 | P1, Prime Directive 5 |
+| X4 | Price table carries `asOf` (YYYY-MM), shown in every cost `basis` | S | ACCEPTED into 13 | P1 trust |
+| X5 | 14b smoke starts the binary with `--logs <fixture dir>`, appends a line, and reads a count message over the WebSocket, proving the bundled watcher on each OS | S | ACCEPTED into 14b | P1 |
+| X6 | One-line install script / Homebrew tap | M | DEFERRED to TODOS | P3 outside blast radius |
+
+### Decision ledger (CEO, chunks 13-14b)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C70 PR1 (CEO 0A) | e2e runs `vp preview` (`playwright.config.ts:55`) | plugin in `configureServer` only | same middleware also in `configurePreviewServer`; e2e points roots at a temp fixture dir via `SYNAPSE_LOG_ROOTS` | approved | autoplan P1 mechanical (required for chunk 14 acceptance); chunk 14 only |
+| C71 PR2 (CEO 0A) | eng A1 per-run token; restart acceptance | stale token after restart | token-refresh path, see TASTE T1 | approved (taste) | autoplan P5, surfaced at gate |
+| C72 PR3 (CEO 0A) | `connect` clears store | unspecified | live source reconnects internally (no `connect`, no `sourceEpoch` bump), resends per-file cursors; seen-id dedupe stays as backstop; `SourceStatus` gains `reconnecting` | approved | autoplan P1 mechanical; chunk 14 |
+| C73 PR4 (CEO 0A) | #9 dev host `localhost` | gate allows only `127.0.0.1` | plugin accepts the Vite server's own origin (`http://localhost:<port>` under dev, `http://127.0.0.1:<port>` under preview); binary gate unchanged; chunk 01 text corrected to match #9 | approved | autoplan P3; chunk 14 and plan text only; closes TODOS P2 half 2 |
+| C74 PR5 | C8 vs #8 | `build(deps)` | see UC1 | user challenge | Phase 4 gate |
+| C75 PR6 | G7 | `value: number` | `value: number \| null`; `null` renders "unknown"; formatters reject raw numbers | approved | autoplan P1 mechanical; chunk 13 |
+| C76 PR7 | 02b chose chokidar v4 | chokidar | see TASTE T2 | approved (taste) | gate |
+| C77 PR8 | eng A3, G6 | no time-driven inference | store action `advanceTo(now)` | approved | autoplan P1 mechanical; chunk 13 |
+| C78 PR12 | GitHub job semantics | `if: failure()` step | separate `report` job | approved | autoplan P5 mechanical; chunk 14b |
+| C79 live default | D3, D9, D11 | nothing connects without `source=mock` | `source=live` is the default; `source=mock` explicit | approved | autoplan P1 (D11 banner presumes live is the default); chunk 14 |
+| X1-X5 | cherry-picks | - | accepted | approved | autoplan P1/P2; per table above |
+| X6 | installer | - | deferred | deferred | autoplan P3; TODOS |
+
+### 0H. CEO plan and spec review
+
+CEO summary: `~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-15-chunks-13-14-14b-metrics-logserver-binaries.md`. Spec Review Loop: 3 launches (cap), scores 5, 6, 6 out of 10; 54 issues reported, 44 fixed and not repeated by later passes, 10 from pass 3 applied but not re-reviewed (issues verified: 10 of 10 applied edits). Metrics appended to `~/.gstack/analytics/spec-review.jsonl`. Document approval: auto-decided A (approve and continue to 0I) under /autoplan; both documents carry the exact decisions above.
+
+### 0I. Temporal interrogation
+
+```
+  HOUR 1 (foundations):   13: Metric type, estimation.ts constants, price table with asOf; 14: wire.ts schema, roots resolver, Host/Origin gate parameterised
+  HOUR 2-3 (core logic):  13: advanceTo with exact idle-end and lag integration, buckets, eviction + tombstones, jobs slice; 14: tailer (partial line, truncate, rotate, fileId), recursive watch + rescan, hello/token, cursors
+  HOUR 4-5 (integration): 13: HUD Data section metrics, ProvenanceBadge; 14: plugin in dev and preview, binary, LiveSource with reconnect + T1 refresh, pill/banner/card, params live default
+  HOUR 6+ (polish/tests): 13: speed-equivalence, waiting/churn re-run, README legend + image; 14: logserver Playwright project, restart integration test, README; 14b: matrix, smoke-ws.mjs, report/checksums jobs, workflow test
+```
+Effort [estimated]: chunk 13 human ~3 days / CC ~1.5 h; chunk 14 human ~4 days / CC ~2 h; chunk 14b human ~1.5 days / CC ~45 min (first release run on GitHub adds wall-clock time CC cannot compress). Feasibility blockers: none open. Surprises to expect: Linux recursive `fs.watch` is per-directory inotify (ENOSPC fallback planned); Windows `ino` may be 0 (birthtime fallback planned); the first 14b run is the only real proof of the 4-OS matrix.
+
+
+### Taste decisions (CEO)
+
+- T1 token refresh after restart: chosen same-origin `GET /api/session` refresh (P5 explicit, keeps eng A1 per-run token). Alternative: reload the page on 4401; simpler, but loses the open tab's state and breaks the G4 "open tab recovers" acceptance.
+- T2 watcher backend: chosen Node recursive `fs.watch` plus 5 s rescan (P3 pragmatic, reuse ladder rung 2: stdlib before a dependency; one handle per root avoids macOS EMFILE with thousands of JSONL files). Alternative: keep chokidar v4 (the 02b choice), which starts `fs.watch` watchers for every path under the roots. Reverses a 02b dependency choice, so surfaced.
+
+### User challenges (CEO)
+
+- UC1 Dependabot prefix for runtime dependencies. You said (PR #8, b17f26e): npm updates use `build(deps)`, which cuts no release. CEO C8 (approved 2026-10-12) said runtime deps use `fix(deps)` so `ws` and watcher fixes reach the binaries. Recommendation: `prefix: "fix(deps)"` for runtime deps, keep `prefix-development: "chore(deps)"`. Why: from chunk 14 on, runtime deps ship inside the 14b binaries; under `build(deps)` a security fix waits for the next unrelated `feat`/`fix`. Blind spot: you may have switched to avoid a patch release on every weekly frontend bump (react, three); that cost is real (about one patch release a week). Cost if wrong: weekly patch releases with 4 binaries each (noise), or, the other way, a known-vulnerable `ws` in shipped binaries for weeks.
+
+- UC2 Binary release timing. You said (CEO C1, chunk 14b "Depends on: 02b, 14"): 4-OS binaries start once the binary tails real logs. Both reviews here (primary and independent CEO voice, both Claude; Codex disabled) recommend making 14b depend on chunk 15 too, so the first public binary shows real Claude Code sessions instead of per-file line counts. Why: after 14 the binary can only show a line counter and the mock demo; a first download is the product's first impression. Blind spot: you may want the release pipeline proven early, independent of parser risk; chunk 14's local `build:bin` check proves the bundle on the Mac only. Cost if wrong: either a weak first download (keep as is) or the 4-OS pipeline proven one chunk later (change).
+
+- Chunk 13: `Metric` is `{ value: number | null, unit, provenance, basis }`; `null` means unknown and every formatter renders it as "unknown" (G7: an unknown model's cost is `null`, never 0). Unit test: unknown model gives `value: null` and formatted "unknown".
+- Chunk 13: session-end inference runs through one store action `advanceTo(nowMs)`, called after every applied batch and on every source tick (also when a tick delivers no events); a session whose last activity is at T ends at exactly T + 30 min (its end `ts` is that value, never the tick time), so G6 holds at 1x, 10x and 60x; `advanceTo` is a no-op while the clock is paused or when `nowMs` is not later than the last call. Test: the same session ends at the same sim ms at 1x and 60x, and N paused ticks make no store commit.
+- Chunk 13: tokens/min is the trailing 60 sim s window, kept in per-session one-second buckets (not read from the ring buffer); the inlet first-order lag (tau 30 s) is integrated exactly in sim time between input changes, so derived values at a sim time T are identical at 1x, 10x and 60x. Test: speed-equivalence of every derived selector at T = 1,200 s.
+- Chunk 13 (X1): sessions and subagents with status `done` are evicted from the `sessions`/`subagents` maps once they are no longer in the ring buffer, with project and global token totals unchanged. Test: a 2-hour `churn` run at 60x keeps the map size bounded (at most active sessions plus the ring-buffer-referenced ones) and totals equal to an uncompacted run.
+- Chunk 13 (X4): the price table carries `asOf` (YYYY-MM) and every cost `basis` names it (for example "tokens x claude-opus price, prices as of 2026-10"). Test: basis string contains `asOf`.
+- Chunk 14 (C70): the log-server middleware registers in both `configureServer` and `configurePreviewServer`, so `vp preview` and every Playwright run serve the WebSocket; e2e sets `SYNAPSE_LOG_ROOTS` to a per-test temp fixture dir and never reads the real home directory. Test: the "appended line shows within 1 s" check runs in Playwright against preview.
+- Chunk 14 (C72): a dropped WebSocket is retried inside the live source with backoff (1 s, 2 s, 4 s, capped at 10 s) without calling the store's `connect` and without bumping `sourceEpoch`; on reopen the client sends its per-file byte cursors and the server resumes from them; `SourceStatus` gains `reconnecting`, which the pill shows. Test: kill and restart the server under a fake source socket; totals equal an uninterrupted run with 0 duplicates (G4).
+- Chunk 14 (C73): under `vp dev` the plugin's Host and Origin checks accept the Vite server's own resolved origin (`localhost:<port>` per #9); under `vp preview` and the binary they accept `127.0.0.1:<port>`; any other Host gets 421 and any other Origin is refused. Chunk 01 text and the C2 note are corrected to describe #9. Tests: upgrade with `Origin: http://127.0.0.1:<other>` refused; `Host: evil.example:<port>` refused under dev, preview and binary.
+- Chunk 14 (C79): `source=live` is the default when no `source` param is given; `source=mock` selects the mock; `parseParams` accepts `live` and `mock`. When the log server is unreachable the D11 banner shows and the D9 card's "Try the demo" switches to `source=mock&scenario=steady`. Test: params and a Playwright check that a page without `source` opens the WebSocket.
+- Chunk 14 (X2): log roots resolve, in order, from `SYNAPSE_LOG_ROOTS` (path-delimiter separated), the binary's repeatable `--logs <dir>`, the `roots` array of the config file (`$XDG_CONFIG_HOME/synapse-horizon/config.json`, else `~/.config/synapse-horizon/config.json`, on Windows `%APPDATA%\synapse-horizon\config.json`; a missing file is normal, an unreadable or invalid one logs one `[logs]` line and falls through), then defaults `$CLAUDE_CONFIG_DIR/projects` (else `~/.claude/projects`) and `$CODEX_HOME/sessions` (else `~/.codex/sessions`), all through `os.homedir()` and `path`. Tests per OS path style with mocked env and homedir.
+- Chunk 14 (X3): at start the server logs one `[logs]` line per root: resolved path and file count modified within 24 h, or the reason it is missing or unreadable (G5). Test asserts the lines.
+- Chunk 14b (C78): a `report` job with `needs: [release, build]` and `if: always() && needs.build.result != 'success' && needs.release.outputs.published == 'true'` writes the "Incomplete: builds missing for <os list>" prefix; the checksums job removes it once all 4 binaries exist. Test: `scripts/release-workflow.test.ts` asserts the job graph and conditions.
+- Chunk 14b (X5): each matrix smoke starts the binary with `--no-open --port 4400 --logs <fixture dir>`, appends one line to a fixture file, and reads a line-count message over the WebSocket using the injected token, besides the existing HTTP, `--version` and heartbeat checks; Windows steps use `shell: bash`.
+- Chunk 14 (taste T1): when the server rejects the token (close code 4401, or 401 on HTTP), the live source fetches a fresh token once from `GET /api/session` (same Host and Origin gates, requires `Sec-Fetch-Site: same-origin` when the header is present, no CORS headers, `Cache-Control: no-store`) and reconnects; a second rejection sets status `error` with the reason. Tests: restart with a new token recovers without reload; a cross-origin fetch of `/api/session` gets no readable body; `Host: evil.example` gets 421.
+- Chunk 14 (taste T2): the watcher uses Node's built-in `fs.watch(root, { recursive: true })` per root (one handle per root on macOS and Windows) plus a 5 s stat rescan of known files as a backstop for missed events, instead of chokidar; no `chokidar` dependency is added. Tests: append, create, truncate and rotate fixtures are seen within 1 s through events and within 6 s with events disabled (rescan only).
+- Chunk 13 (spec 1.1): a cost total over sessions where some models are unknown sums only the known ones and its `basis` says "excludes N sessions with unknown model"; it is `null` ("unknown") only when every session is unknown. Tests: mixed, all-known, all-unknown.
+- Chunk 13 (spec 1.2): evicted session ids go into a tombstone set capped at 100,000 ids (oldest dropped); a later event for a tombstoned id reactivates it as an active session without incrementing the project's session count again, and project and global totals still add its tokens. Test: a session idle-ends, is evicted, then gets a new event 40 sim min later; counts and totals match an uncompacted run.
+- Chunk 13 (spec 1.3, 1.4): every source calls `advanceTo` at least once per real second (the mock and replay on their 250 ms ticks; the live source on a 1 s timer even with no events); the store resets the last-advance mark on every `connect` and `sourceEpoch` change. Tests: a quiet live fake source idle-ends a session at T + 30 min; after a scenario switch, inference runs again.
+- Chunk 13 (spec 3.5): the optional `AgentEvent` fields for jobs are `todo?: { id: string, status: "pending" | "in_progress" | "completed" }` (TodoWrite item; text goes through `currentTask`, redacted) and `toolClass?: "edit" | "git_commit" | "test" | "lint" | "other"` (classified in Node by the parsers; raw commands never reach the browser, D16). `src/config/estimation.ts` names every constant with its value and an `[estimated]` comment: `IDLE_KW = 0.8`, `KW_PER_TOKEN_PER_MIN = 0.004`, `RACK_MAX_KW = 40`, `INLET_BASE_C = 22`, `INLET_C_PER_KW = 0.25`, `HOT_AISLE_DELTA_C = 12`, `LAG_TAU_S = 30`, `HALL_COOLING_CAPACITY_KW = 400`, `IDLE_END_MS = 30 * 60_000`.
+- Chunk 13 (spec 3.6): "debug panel" in the acceptance means the `dev=1` HUD Data section; it lists each metric with value, unit, badge and basis.
+- Chunk 14 (spec 1.5): the 5 s rescan also re-probes missing roots and starts watching a root that appears after startup, logging one `[logs]` line; on Linux an `ENOSPC` (inotify watch limit) from `fs.watch` falls back to rescan-only for that root with one `[logs]` line naming the limit. Tests: root created after start is picked up within 6 s; injected `ENOSPC` keeps tailing via rescan.
+- Chunk 14 (spec 1.8): with `freeze=1` and no explicit `source`, no source connects (today's behaviour), so every frozen screenshot baseline and `vp run shots` output is unchanged; the live default applies only without `freeze=1`. Specs that test D9, D10, D11 or the pill pass `source=live` and their own fixture roots. Test: the existing baselines pass unchanged in the chunk 14 PR.
+- Chunk 14 (spec 3.2): pill mapping from `SourceStatus`: `connecting` "Connecting"; `catching_up` "Catching up n/N files" (D10, from server progress); `live` "Connected"; `reconnecting` "Reconnecting"; `closed` "Off"; `error` "Off" plus the reason in the tooltip. The D11 banner shows when the first connection fails or `reconnecting` lasts 3 s or more, and hides on `live`. The D9 card shows when the server reports zero files in every root after backfill. Test: each status renders its pill text.
+- Chunk 14 (spec 3.3): the token is injected as `<meta name="synapse-token" content="...">` in the served HTML (dev via `transformIndexHtml`, preview and binary by templating `index.html` at serve time); the binary prints `listening on http://127.0.0.1:<port>/` and the 14b smoke reads the token from the HTML and the port from that line.
+- Chunk 14 (spec 3.4): `POST /api/import` exists in chunk 14 only as a gated stub: Host, Origin and token checks, then 501 "import arrives in chunk 17". Tests cover the gate rejections and the 501.
+- Chunk 14 (spec 5.3, threat model): the token is defence in depth for browsers: Origin checks stop cross-origin pages and the Host gate stops DNS rebinding; any local process can read `/api/session` or the page, so the token does not defend against local processes, which already can read the log files directly. README "Data sources and privacy" states this.
+- Chunk 14 (spec 3.1, pass-2 2.2): root sources do not merge, and the order is: the binary's `--logs` first, then `SYNAPSE_LOG_ROOTS`, then the config file `roots`, then the two defaults; the first non-empty source wins, so a flag always beats an exported env var. This order replaces the X2 order above. Tests: env set plus config file gives only the env roots; `--logs` plus env gives only the `--logs` roots.
+- Chunk 13 (pass-2 1.1): `waiting_user` holds until the 30-minute idle end like any other status (eng Q3), so a waiting session ends at its last event + 30 min. Re-run expectations: `waiting` keeps at least 3 sessions with latest status `waiting_user` at 600 s and 1,200 s and those sessions are `done` at their last event + 30 min (about 2,390 sim s); `churn` shapes over [0, 1,800 s) are unchanged, since every idle gap there is under 30 min or ends with `session_end`.
+- Chunk 13 (pass-2 1.3): hall heat = sum of rack kW of the racks in that hall; rack load = rack kW / `RACK_MAX_KW`; hot aisle = inlet + `HOT_AISLE_DELTA_C` x mean rack load of the hall; cooling duty = min(1, total hall heat / (`HALL_COOLING_CAPACITY_KW` x placed halls)); when the unclamped value exceeds 1 the duty `basis` says "over capacity". Tests: fixed inputs for each formula, including the clamp.
+- Chunk 13 (pass-2 1.4, 3.3): tombstones cover subagent ids as well as session ids. Per-session token counters of an evicted session are dropped; a reactivated session restarts its per-session counters at 0 while project and global totals stay exact; an id dropped from the full tombstone set (beyond 100,000) counts as a new session if it returns. README notes both limits.
+- Chunk 13 (pass-2 3.2): the inlet lag state lives in the store and `advanceTo` integrates it exactly across every input change between the previous and the new `nowMs` (one-second bucket boundaries), so no selector holds hidden state.
+- Chunk 13 and 14 (pass-2 2.1): until the top bar (chunk 27) exists, the pill sits at the right end of the existing top-bar row, the D11 banner directly below that row, and the D9 card centred in the `safeArea`, all visible without `dev=1`; `ProvenanceBadge` is shown in chunk 13 only in the `dev=1` HUD Data section. KPI shimmer (D10) moves to chunk 28 and the "(est.)" panel-label check to chunk 29.
+- Chunk 14 (pass-2 1.2): a cursor is `{ path, fileId, offset }`, where `fileId` is `dev:ino` from `fs.stat` (or `birthtimeMs` where `ino` is 0 on Windows); on resume, a changed `fileId` or a file shorter than `offset` re-reads that file from 0 and the browser dedupes by event id. Tests: truncated and rotated while the server was down.
+- Chunk 14 (pass-2 2.3, 3.1): Host and Origin are checked before the upgrade (421 and 403 over HTTP); the token is checked after the upgrade: the client's first message is `{ type: "hello", token, cursors }`, and a missing or wrong token within 2 s closes the socket with code 4401, which the browser can see and which triggers T1. Tests: no hello in 2 s, wrong token, and correct token.
+- Chunk 14 (pass-2 3.4): the automated G4 restart test is a Node integration test that stops and restarts the real WebSocket server on the same port while a `LiveSource` (Node 24's global `WebSocket` client) stays connected; under `vp dev` a full page reload by Vite's own client on restart is acceptable and is checked manually.
+- Chunk 14 (pass-2 3.5): the token meta tag is templated into every response that serves `index.html` (`/`, `/index.html` and the SPA fallback), each with `Cache-Control: no-store`. Test: all three carry the current token and the header.
+- Chunk 14 (pass-2 5.1): `ws` is added as a runtime dependency and bundled into the CLI by esbuild (not external); a test asserts the CLI bundle contains no `require("ws")` left unresolved. The rescan-only and `ENOSPC` tests run in `vp test` on ubuntu in CI.
+- Chunk 14 (pass-3 1.1): the server sends line counts as `{ type: "lines", path, fileId, total }`, the absolute line total of that file identity (never a delta), so a re-read from 0 after rotation replaces the value instead of adding to it; backfill progress is `{ type: "progress", done, total }`, root status is `{ type: "roots", roots: [{ path, files, reason? }] }`, and heartbeats are `{ type: "heartbeat" }`, sent right after an accepted hello and then every 10 s. The message schema lives in `src/data/wire.ts` (zod/mini, Node-runnable) and is shared by server and client. Line totals go to a separate `logLines` store slice keyed by `path + fileId`, never through `applyBatch`; the `dev=1` HUD Data section lists them as `real` metrics with `data-metric`, and the Playwright "within 1 s" check reads that row. Tests: rotation replaces, reconnect resends absolute totals, schema rejects unknown types.
+- Chunk 13 (pass-3 1.2): in the data layer a rack is a main session (its subagents' tokens/min add to it, section 2) and a hall is a project (D5); "placed halls" for cooling duty is the number of projects with at least one main session not `done` (`activeProjects`), with a floor of 2 because halls A and B always exist (D8). No data selector reads scene placement.
+- Chunk 14b (pass-3 1.3): the `report` and `checksums` jobs each get job-level `contents: write`; `release-workflow.test.ts` asserts every job's permissions.
+- Chunk 14 (pass-3 2.1): e2e for the log server runs in a separate Playwright project `logserver` with its own `webServer` (`vp preview` on its own port, `SYNAPSE_LOG_ROOTS` set to `e2e/.tmp/logs`, `workers: 1`); each spec rewrites that directory before it navigates (empty for the D9 card, a fixture file for counts, an appended line for the 1 s check). The D11 banner and `reconnecting` states use Playwright `page.routeWebSocket` to refuse or drop the socket, so no server has to stop mid-run. The other projects keep their current `webServer` and never read a real home directory, because their pages connect with no `source` under `freeze=1` or with explicit `source=mock`.
+- Chunk 14 (pass-3 2.2): the original chunk 14 text "require a per-run random token injected into the served page" is implemented by the hello-message check above (pass-2 2.3, 3.1); an upgrade is not refused for the token alone.
+- Chunk 14 (pass-3 3.1): a request with no `Origin` header (non-browser local clients: the Node integration test, the 14b smoke) passes the Origin check and still needs the token; a present Origin that does not match gets 403. Tests: absent Origin with token accepted, absent Origin without token closed 4401, mismatched Origin 403.
+- Chunk 14b (pass-3 3.2): the smoke's WebSocket client is a committed `scripts/smoke-ws.mjs`, run with the runner's Node 24 from setup-vp on all 4 runners, which sends the hello and waits up to 5 s for a heartbeat and a `lines` message for the appended fixture line.
+- Chunk 14 (pass-3 3.3): in chunk 14 the D9 card shows only "Try the demo"; "Drop a .jsonl to replay" appears with chunk 17.
+- Chunk 14 (pass-3 5.2): `scripts/bundle-cli.ts` marks `bufferutil` and `utf-8-validate` external (`ws` falls back to its JS paths when they are missing); the bundle test allows exactly those two unresolved requires and fails on any other.
+- Chunk 13 (CEO voice F3): the price table is keyed by model and token class (`in`, `out`, `cacheRead`, `cacheWrite`, per million tokens) and cost = the sum over the four classes; the metric's label is "API-equivalent cost" and its `basis` says it is not a subscription bill. Test: fixed input with cache-read tokens dominating gives the per-class sum, not one blended rate.
+- Chunk 13 (CEO voice F7): every token or cost total in live mode names its window in `basis` ("last 24 h, backfill window"), so totals never read as all-time.
+- Chunk 14 (CEO voice F10): README "Data sources and privacy" lists what reaches the browser now (per-file line counts and root paths only) and what chunk 15 will add (session ids, model, token counts, tool names, `currentTask` truncated to 120 chars and redacted, D16).
+- All three chunks (CEO voice F4): when this review is written back to `docs/PLAN.md`, each chunk's Tasks and Acceptance are rewritten as one canonical text with every accepted requirement merged in and superseded wording removed; review IDs stay as short tags, and rationale stays in the review record.
+- Chunk 14 (CEO Section 3, 4): cursor `path` values from the client are matched against the server's own known-file set and unknown paths are ignored (no path is ever opened from client input); each file has one serial read queue shared by watch events, the rescan and resume, so overlapping reads give the same total. Tests: forged `../` path ignored; event and rescan racing on one file give one correct total.
+- Chunk 14b (CEO Section 9): the build-and-smoke part of the matrix also runs on `workflow_dispatch` without upload, so the 14b PR proves all 4 runners before merge.
+
+### CEO voices and consensus
+
+Native CEO voice (Claude subagent, INPUT ceo c44a8b9f…, hash matches the snapshot): 10 findings. Codex: disabled (`codex_reviews`). Dispositions:
+
+| # | Finding (severity) | Disposition |
+|---|---|---|
+| F1 | First public binary is a line counter (critical) | UC2 at the gate (changes the user's chunk dependency) |
+| F2 | Undocumented JSONL is the only source; Claude Code has an OpenTelemetry export (high) | DEFERRED to TODOS (P3): OTLP/HTTP ingest as a second `Source`; D3 stands |
+| F3 | Cost ignores per-class prices; subscription users (high) | ACCEPTED (P1): per-class price table, "API-equivalent cost" label |
+| F4 | Amendments contradict the verbatim chunk text (high) | ACCEPTED (P5): canonical rewrite at PLAN.md write-back |
+| F5 | Too much precision on invented thermal numbers (medium) | TASTE T3: keep exact lag integration (frozen and speed-equivalent captures need it; chunk 12 C49/C50); alternative per-tick step |
+| F6 | Tombstones speculative (medium) | TASTE T4: keep tombstones (exact session counts, P1); alternative: count a returning session as new |
+| F7 | 30 min and 24 h assumed; totals read as all-time (medium) | window label ACCEPTED (P1); configurable idle end DEFERRED (D4 settled 30 min) |
+| F8 | npx/Homebrew over unsigned binaries (medium) | DEFERRED to TODOS (P3), with X6; D19 stands |
+| F9 | Vertical slice before dashboard polish (medium) | DEFERRED to TODOS (P2): roadmap order 15 then 18 before 16/17 |
+| F10 | Privacy wording (medium) | ACCEPTED (P1): README lists what reaches the browser now and in 15 |
+
+```
+CEO DUAL VOICES — CONSENSUS TABLE:
+  Dimension                            Claude  Codex     Consensus
+  1. Premises valid?                    mostly  disabled  N/A
+  2. Right problem to solve?            yes*    disabled  N/A
+  3. Scope calibration correct?         no (F1) disabled  N/A
+  4. Alternatives sufficiently explored? no (F2,F8) disabled N/A
+  5. Competitive/market risks covered?  no (F9) disabled  N/A
+  6. 6-month trajectory sound?          risk (F2,F3) disabled N/A
+  * right problem, wrong release order. Outside voice disabled: no CONFIRMED cells. [subagent-only]
+```
+Single-voice critical flagged: F1 (UC2).
+
+### Section 1: Architecture
+
+```
+  ~/.claude/projects  ~/.codex/sessions   (roots: --logs > SYNAPSE_LOG_ROOTS > config > CLAUDE_CONFIG_DIR/CODEX_HOME defaults)
+          │                   │
+          └── sidecar/watch.ts: fs.watch(recursive) + 5 s rescan ── sidecar/tail.ts: cursor {path,fileId,offset}
+                                   │ lines/progress/roots/heartbeat (src/data/wire.ts, zod)
+          sidecar/logServer.ts: Host gate → Origin gate → WS upgrade → hello{token,cursors} (4401) ── GET /api/session (T1)
+             ▲ registered by            ▲ registered by              ▲ used by
+     sidecar/plugin.ts               sidecar/plugin.ts            sidecar/cli.ts (binary, 127.0.0.1)
+     configureServer (dev,           configurePreviewServer
+     localhost per #9)               (preview, Playwright)
+                                   │ same-origin WebSocket
+          src/data/liveSource.ts (Source; locked live clock; reconnect 1/2/4/10 s; 1 s advance tick)
+                                   ▼
+          store: data slice (applyBatch, advanceTo, eviction+tombstones, jobs, lag state) + logLines slice
+                 │ selectors → Metric {value|null, unit, provenance, basis}
+                 ▼
+          HUD Data section (dev=1) + ProvenanceBadge;  pill / D11 banner / D9 card (no dev=1)
+```
+Dependency change: `sidecar/*` imports only Node-runnable `src/data/wire.ts` and `schema.ts` (existing rule, E31). New coupling: `logLines` slice is separate from `applyBatch`, so chunk 15 can retire it without touching reducers. State machine (live source):
+
+```
+  idle ─connect→ connecting ─hello ok→ catching_up ─progress done→ live
+     live/catching_up ─socket drop→ reconnecting ─reopen+hello→ catching_up
+     reconnecting ─4401→ (refresh token once, T1) ─fail→ error
+     any ─disconnect→ closed      invalid: live→connecting (only via store connect, which bumps sourceEpoch)
+```
+Scaling: 10x files is cheap on macOS/Windows (one handle per root); on Linux the inotify watch count grows per directory (ENOSPC fallback). 100x backfill: 24 h of lines streamed as per-file totals, not lines, so payload stays small in chunk 14; chunk 15 batches events at 500. Single points of failure: the server process (banner D11, reconnect). Security architecture: Section 3. Rollback: each chunk is one squash PR; revert ships a patch (02b runbook). Findings: PR1-PR4, PR7, PR8 (all dispositioned in the ledger). Value test: no process-only artifacts added; `[logs]` lines and the pill are product observability.
+
+### Section 2: Error and rescue map
+
+| Codepath | What can go wrong | Class | Rescued | Action | User sees |
+|---|---|---|---|---|---|
+| roots resolve | env/config path missing | ENOENT | Y | `[logs]` line, root marked missing | pill tooltip reason (G5) |
+| roots resolve | config JSON invalid | SyntaxError / zod | Y | `[logs]` line, fall through | defaults used |
+| watch | fd/inotify limit | EMFILE / ENOSPC | Y | rescan-only for root, `[logs]` line | nothing, slower updates |
+| watch | root deleted at runtime | ENOENT | Y | re-probe every 5 s | pill reason |
+| tail | file truncated / rotated | size < offset, fileId change | Y | re-read from 0, absolute totals | correct counts |
+| tail | partial last line | no newline | Y | hold bytes until newline | nothing |
+| tail | read permission | EACCES | Y | skip file, `[logs]` line, count in `roots` | pill reason |
+| WS upgrade | bad Host | gate | Y | 421 + stderr line | n/a (attacker) |
+| WS upgrade | bad Origin | gate | Y | 403 | n/a |
+| WS hello | missing/wrong token | 4401 | Y | client refreshes once (T1) | "Reconnecting", then error reason |
+| WS send | slow client backpressure | bufferedAmount high | Y | drop to latest absolute totals per file | nothing |
+| live source | server down | close 1006 / connect fail | Y | backoff 1/2/4/10 s | D11 banner after 3 s |
+| wire parse | unknown message type | zod | Y | ignore + one `[data]` warn per type | nothing |
+| advanceTo | clock paused | n/a | Y | no-op | frozen values |
+| cost | unknown model | n/a | Y | `null`, partial-sum basis | "unknown" |
+| 14b smoke | binary fails on one OS | job failure | Y | no upload for that OS, `report` job prefix | "Incomplete" release note |
+| 14b checksums | asset missing | gh error | Y | job not run until all 4 exist | prefix stays |
+No catch-alls planned; every rescue logs one line with root/file/path context. GAPS: 0.
+
+### Section 3: Security and threat model
+
+| Threat | Likelihood | Impact | Mitigated |
+|---|---|---|---|
+| Cross-origin page opens WS | Med | High (prompts, paths) | Y: Origin 403, token via hello |
+| DNS rebinding | Low | High | Y: Host gate 421 under dev, preview, binary |
+| Non-localhost network client | Low | High | Y: binds 127.0.0.1 (binary, preview), `localhost` (dev) |
+| `/api/session` token read cross-origin | Low | Med | Y: no CORS, Sec-Fetch-Site, Host gate |
+| Local process reads token | Med | Low | Accepted: it can read the logs directly (README) |
+| Path traversal via cursor `path` | Med | High | finding → client cursors are matched against the server's known-file set; unknown paths ignored (added to accepted block) |
+| Log content to browser | n/a in 14 | High in 15 | 14 sends counts and root paths only; D16 redaction test in 15 |
+| New deps (`ws`) | Low | Med | pinned by lockfile; UC1 decides release of fixes |
+| Release attestation | Low | Med | attest-build-provenance SHA-pinned (C7 guard) |
+
+### Section 4: Data flow and interaction edge cases
+
+```
+ file append → watch event | rescan → tail(cursor) → [partial line? hold] → total → wire `lines` → logLines slice → HUD row
+   shadow: empty file → total 0; huge file (24 h) → read in 64 KiB chunks; truncated → re-read; rotated → new fileId;
+           non-UTF-8 bytes → counted by \n only; duplicate after reconnect → absolute totals replace
+```
+Async ordering: invariant "a file's displayed total equals its line count at the newest cursor". Overlap A: watch event and rescan both read the same file. Schedule 1: event reads to offset 100, rescan sees size 100, no-op. Schedule 2: rescan reads first, event then reads 0 bytes. Mechanism: one serial read queue per file (accepted below); both orders give the same total. Overlap B: reconnect hello with old cursors while a new append lands: server answers with absolute totals after the resume read, so order does not matter. Test: controlled pause between the two reads per file.
+
+| Interaction | Edge case | Handled | How |
+|---|---|---|---|
+| "Try the demo" | double click | Y | sets params once; second click no-op |
+| open tab, server restart | stale token | Y | T1 refresh |
+| tab hidden for hours | many changes | Y | absolute totals on next message |
+| zero roots / zero files | empty | Y | D9 card |
+| 10k files in root | large list | Y | progress n/N, per-file totals |
+Finding: per-file serial read queue and cursor path validation were missing; added.
+
+### Section 5: Code quality
+
+Fits existing patterns: pure modules with injected clocks (`clock.ts`), Host gate as a pure function. Risk of duplicate gate logic between `server.ts` and `plugin.ts`: one `logServer.ts` used by both (accepted in the architecture). `advanceTo` could branch more than 5 times (idle-end, lag, buckets, eviction); split into four pure helpers called in order. No over-engineering beyond T3/T4 taste items.
+
+### Section 6: Test review
+
+```
+ NEW                                 TYPE         HAPPY / FAILURE / EDGE
+ Metric + formatters (13)            unit+type    value / null "unknown" / @ts-expect-error number
+ advanceTo idle-end (13)             unit         T+30 min / paused no-op / 1x=10x=60x, reset on connect
+ lag + buckets (13)                  unit         fixed input / clamp / speed equivalence at 1,200 s
+ eviction + tombstones (13)          unit         bounded map / reactivation / cap overflow
+ per-class cost (13)                 unit         known / partial / all unknown
+ jobs stages (13)                    unit         each stage / missing todo / toolClass other
+ HUD metrics + badge audit (13)      e2e          every [data-metric] has badge
+ roots resolver (14)                 unit         each source / precedence / invalid config
+ tailer (14)                         unit         append / partial, truncate, rotate / offline rotate
+ watcher (14)                        unit+CI      events / rescan-only / ENOSPC, late root
+ gates + hello (14)                  unit         ok / bad Host, Origin, token / absent Origin
+ restart (14)                        integration  same totals, 0 dups
+ logserver project (14)              e2e          1 s append / D9 / D11+reconnecting via routeWebSocket
+ frozen baselines (14)               e2e          unchanged
+ release workflow (14b)              unit         job graph, permissions, conditions
+ matrix smoke (14b)                  CI           HTTP, --version, hello, heartbeat, lines
+```
+2am-Friday test: the restart integration test plus the logserver e2e. Hostile QA: rotate a file while the server is down and send a forged cursor path (now covered). Chaos: kill the server mid-backfill. Flakiness: watcher timing tests use the rescan path with a fake timer where possible; the 1 s e2e budget allows one retry. No LLM prompt changes.
+
+### Section 7: Performance
+
+Max sizes: buckets 60 per active session; tombstones 100,000 ids (about 4 MB [estimated]); `logLines` one entry per file in 24 h. `applyBatch` map copying (`reduce.ts:210`) bounded by X1. Slow paths: 24 h backfill read (streamed in 64 KiB chunks, progress per file), initial stat walk of large roots, Linux recursive watch setup. No DB.
+
+### Section 8: Observability
+
+`[logs]` lines at start, per root change, per rescan fallback; `[data]` lines for source status transitions and unknown wire types; HUD Data section shows status, per-file totals and metrics with basis; the pill tooltip carries the last error reason. Debuggable 3 weeks later from the terminal `[logs]` lines plus the HUD. Runbook rows added to CONTRIBUTING with 14b: "Incomplete" release prefix → re-run failed job.
+
+### Section 9: Deployment and rollout
+
+Three PRs in order 13, 14, 14b (13 and 14 can run in parallel; 14b after 14, or after 15 if UC2 changes it). No migrations. Rollback: revert PR (patch release). 14b risk window: first matrix run on a real `feat:` merge; mitigation: `workflow_dispatch` dry run of the matrix on the PR branch tag-less (builds and smokes without upload) before merge. Post-deploy: download the four assets, `gh attestation verify`, run the Mac binary.
+
+### Section 10: Long-term trajectory
+
+Reversibility 4/5 (T2 watcher swap and T1 endpoint are local; Metric type is a one-way door for every later chunk, intended). Debt: `logLines` slice is temporary until chunk 15 (record in TODOS trigger). Platform potential: `wire.ts` and `Source` make OTLP ingest (F2) a second source later. Retrospective: X2 and X5 are load-bearing for tests and 14b smoke; good picks.
+
+### Section 11: Design and UX
+
+SKIPPED (no UI scope per Phase 0 detector). Note: the plan adds UI states (pill, banner, card, badge) already specified by design decisions D9, D10, D11 and D19 (section 4b); /plan-design-review is recommended before chunk 27.
+
+### NOT in scope
+
+- X6 install script / Homebrew tap: deferred (TODOS), outside blast radius.
+- F2 OTLP ingest: deferred (TODOS), D3 stands.
+- F8 npx distribution: deferred (TODOS, merged with X6), D19 stands.
+- F9 vertical-slice reordering: deferred (TODOS), roadmap decision for after chunk 15.
+- F7 configurable idle end: deferred, D4 settled.
+- KPI shimmer (D10) to chunk 28; "(est.)" label check to chunk 29.
+
+### What already exists
+
+`checkHost`, manifest serving and CLI flags (`sidecar/server.ts`, `cli.ts`) reused; `build-bin.ts` reused unchanged; `Source`, `MAX_BATCH`, `createLiveClock`, `connect`/`sourceEpoch`, `activeProjects`, toasts and `GlassPanel` reused; `check-workflows.ts` guards new actions.
+
+### Dream state delta
+
+After these chunks: honest metrics and a live pipe exist, but real sessions need chunk 15; the binary ships (now or after 15 per UC2). Remaining gap to the 12-month ideal: parsers, scene binding, dashboard.
+
+### Error and rescue registry
+
+See Section 2 table: 17 rows, 0 critical gaps.
+
+### Failure modes registry
+
+```
+  CODEPATH        | FAILURE MODE              | RESCUED? | TEST? | USER SEES?          | LOGGED?
+  watch           | EMFILE/ENOSPC             | Y        | Y     | slower updates      | Y
+  tail            | offline rotation          | Y        | Y     | correct totals      | Y
+  hello           | stale token after restart | Y        | Y     | Reconnecting        | Y
+  liveSource      | server down               | Y        | Y     | D11 banner          | Y
+  advanceTo       | paused / epoch change     | Y        | Y     | frozen / reset      | n/a
+  cost            | unknown model             | Y        | Y     | "unknown"           | n/a
+  cursor path     | forged path               | Y        | Y     | nothing             | Y
+  14b matrix      | one OS fails              | Y        | Y     | "Incomplete" note   | Y
+```
+0 CRITICAL GAPS.
+
+### Diagrams produced
+
+System architecture, live-source state machine, data flow with shadow paths, test diagram (Sections 1, 4, 6). Stale diagram audit: `docs/PLAN.md` section 3 "Architecture in one picture" still names "chokidar tail"; update at write-back if T2 holds.
+
+### Implementation Tasks (CEO)
+
+- [ ] **T1 (P1, human: ~3d / CC: ~1.5h)** — chunk 13 — Metric, estimation constants, per-class price table, advanceTo, buckets, lag, eviction, jobs, HUD metrics, badge
+  - Surfaced by: 0A PR6, PR8; X1, X4; F3, F7
+  - Files: src/data/metrics.ts, src/data/reduce.ts, src/config/estimation.ts, src/config/prices.ts, src/data/schema.ts, src/app/store/data.ts, src/scene/DataSection.tsx, src/ui/ProvenanceBadge.tsx
+  - Verify: vp test (unit + type tests), Playwright badge audit
+- [ ] **T2 (P1, human: ~4d / CC: ~2h)** — chunk 14 — log server, wire schema, live source, pill/banner/card, logserver e2e project
+  - Surfaced by: PR1-PR4, PR7, C79, X2, X3, T1, T2, Sections 3-4
+  - Files: sidecar/logServer.ts, sidecar/watch.ts, sidecar/tail.ts, sidecar/roots.ts, sidecar/plugin.ts, sidecar/cli.ts, src/data/wire.ts, src/data/liveSource.ts, src/app/params.ts, src/ui/ConnectionPill.tsx, playwright.config.ts, vite.config.ts
+  - Verify: vp test, restart integration test, vp run e2e:local
+- [ ] **T3 (P1, human: ~1.5d / CC: ~45min)** — chunk 14b — matrix, smoke-ws.mjs, report and checksums jobs
+  - Surfaced by: PR12, X5, pass-3 1.3, 3.2
+  - Files: .github/workflows/release.yml, scripts/smoke-ws.mjs, scripts/release-workflow.test.ts, README.md
+  - Verify: release-workflow test; first feat: release shows 4 binaries + SHA256SUMS.txt
+- [ ] **T4 (P2, human: ~1h / CC: ~10min)** — docs — canonical rewrite of chunks 13, 14, 14b and chunk 01/C2 text in docs/PLAN.md; TODOS updates
+  - Surfaced by: F4, C73
+  - Files: docs/PLAN.md, TODOS.md
+  - Verify: no superseded wording remains (grep "chokidar watch", "if: failure()")
+
+Approval readiness: PASS. Checked rows C70, C72, C73, C75, C77, C78, C79, X1-X5 (autoplan P1/P2/P3/P5 auto-decisions), spec-review fixes (autoplan P1 auto-decisions, passes 1-3), CEO voice F3, F4, F7 label, F10 (P1/P5), T1-T4 (taste, provisional until the gate), X6/F2/F8/F9/F7-config (deferred, P3). UC1, UC2: open for the user at the gate.
+
+### Reality rows (CEO, check)
+
+PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=1 verdict=complete
+
+### Completion summary (CEO)
+
+```
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION (autoplan override)     |
+  | System Audit         | e2e runs preview; dev host localhost (#9);  |
+  |                      | build(deps) vs C8 (#8); no live source yet  |
+  | Step 0               | 12 premises, 8 findings; 6 cherry-picks     |
+  | Section 1  (Arch)    | 6 issues found (PR1-4, PR7, PR8)            |
+  | Section 2  (Errors)  | 17 error paths mapped, 0 GAPS               |
+  | Section 3  (Security)| 1 issue found (cursor path), 0 High open    |
+  | Section 4  (Data/UX) | 5 edge cases mapped, 2 unhandled -> fixed   |
+  | Section 5  (Quality) | 2 issues found                              |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps                    |
+  | Section 7  (Perf)    | 0 issues found                              |
+  | Section 8  (Observ)  | 0 gaps found                                |
+  | Section 9  (Deploy)  | 1 risk flagged (first matrix run)           |
+  | Section 10 (Future)  | Reversibility: 4/5, debt items: 1           |
+  | Section 11 (Design)  | SKIPPED (no UI scope)                       |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (6 items)                           |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 17 rows, 0 CRITICAL GAPS                    |
+  | Failure modes        | 8 total, 0 CRITICAL GAPS                    |
+  | TODOS.md updates     | 4 items added                               |
+  | Scope proposals      | 6 proposed, 5 accepted                      |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex disabled; native CEO subagent completed |
+  | Lake Score           | N/A (no scored questions asked)             |
+  | Diagrams produced    | 4 (architecture, state, data flow, tests)   |
+  | Stale diagrams found | 1 (PLAN section 3 "chokidar tail")          |
+  | Unresolved decisions | 2 (UC1, UC2 at the gate)                    |
+  | Reality rows         | 7/7 rows (PLAN_REALITY), 1 unverified       |
+  +====================================================================+
+```
+
+
+### Phase 2 (Design): skipped
+
+Skipped: Phase 0 scope detector returned uiRequired=false (no rendered file path or UI term next to a visual noun). Not a completed review. The UI states touched here (pill, banner, card, badge) follow existing design decisions D9, D10, D11, D19.
+
+
+## DX review record: Chunks 13, 14 and 14b (/autoplan Phase 2.5, 2026-10-15)
+
+Mode: DX POLISH (autoplan override). Product type: CLI tool plus local web app (the `synapse-horizon` binary and `vp dev` log server); secondary: developer tool for Claude Code and Codex users. Auto-decided under /autoplan; no prior DX review (the chunk 12 run logged DX as skipped).
+
+### Developer persona (0A, auto-decided P6)
+
+```
+TARGET DEVELOPER PERSONA
+========================
+Who:       a developer who runs Claude Code and/or Codex CLI daily on a Mac (also Linux or Windows)
+Context:   wants an ambient view of what their agents and subagents are doing, beside the editor
+Tolerance: about 5 minutes and one blocked step before closing the tab
+Expects:   a download or one command, no account, no config, their own sessions visible quickly
+```
+Evidence: README tagline "tracks Claude and Codex agents and subagents" (README.md:7); D19 "Users download, run and get the app at localhost with no Node or dev setup".
+
+### Empathy narrative (0B)
+
+I saw the release badge on the README, so I grab the arm64 binary from the Releases page. macOS blocks it; the README (14b) tells me to use Privacy & Security > Open Anyway, which costs me a minute and some trust. It starts, prints a URL and opens my browser. The campus is pretty. A pill says "Catching up 120/480 files" and then "Connected". The `[logs]` lines in my terminal say it found `~/.claude/projects` with 312 files. But after chunk 14 all I can see is per-file line counts in a debug panel I have to enable with `dev=1`; my sessions are not racks yet. If the server dies, a banner tells me to run `vp dev`, which I do not have. [Predicted, from the plan text; nothing here is observed runtime output.]
+
+### Competitive benchmark (0C)
+
+| Tool | Start → result | Time + evidence type | DX choice | Source |
+|---|---|---|---|---|
+| ccusage | `npx ccusage@latest` → usage table from local JSONL incl. cache tokens | under 1 min [reported] | npx, zero config, per-class tokens | npmjs.com/package/ccusage |
+| Claude Code `/cost` | in-session command → session cost | seconds [reported] | built in | vendor docs (not checked here) |
+| Synapse Horizon binary (after 14b) | download → Open Anyway → run → campus + "Connected" | about 3-4 min [estimated] | unsigned SEA, auto-open browser | this plan |
+| Synapse Horizon dev (`vp dev`) | clone → install vp → `vp install` → `vp dev` | about 5-10 min [estimated] | contributor path | README.md:19 |
+
+Target (auto-decided P5): Competitive, 2-5 min from download to "Connected" with the user's roots listed. Champion (<2 min) needs npx or signing (deferred TODO).
+
+### Magical moment (0D)
+
+Moment: within seconds of first launch the terminal and the pill name the user's own log folders and file counts ("found 312 Claude Code files"), proving the tool sees their machine; after chunk 15 the same moment becomes "your sessions are racks". Vehicle (auto-decided P5, existing capability): the X3 `[logs]` lines plus the D10 pill. No new API.
+
+### Developer journey (0F)
+
+```
+STAGE           | DEVELOPER DOES                          | FRICTION POINTS                                         | STATUS
+----------------|-----------------------------------------|---------------------------------------------------------|--------
+1. Discover     | reads README, sees release badge        | "Download and run" only from 14b                         | ok (planned)
+2. Install      | downloads binary, first-run bypass       | Linux needs `chmod +x`; not in README text               | fixed (DX1)
+3. Hello World  | runs binary, browser opens               | default page shows no visible data until 15 (UC2)        | gate (UC2)
+4. Real Usage   | relocated config dirs, custom roots      | `--help` lacks `--logs`, config path and env var        | fixed (DX2)
+5. Debug        | server down / roots missing / ENOSPC     | banner says `vp dev` to binary users; errors lack fixes | fixed (DX3, DX4)
+6. Upgrade      | new release                              | no "new version" hint; manual re-download               | deferred (TODO)
+```
+
+### First-time developer confusion report (0G)
+
+```
+FIRST-TIME DEVELOPER REPORT
+Persona: daily Claude Code user on a Mac
+Attempting: Synapse Horizon binary getting started
+T+0:00  Releases page: four binaries plus SHA256SUMS.txt; picks darwin-arm64. Fine.
+T+0:40  Double-click: "cannot be opened". Finds README "Open Anyway" step. Mild distrust.
+T+1:30  Runs it; browser opens to 127.0.0.1:7317; terminal prints [logs] lines. Good.
+T+2:00  Campus visible, pill "Connected". Where are my sessions? (until chunk 15: nowhere visible)
+T+3:00  Ctrl+C by mistake; banner: "Start it with vp dev". Confused: what is vp? (DX3 fixes)
+```
+
+- Chunk 14 (DX1): README "Download and run" gives per-OS copy-paste steps including `chmod +x synapse-horizon-<version>-linux-x64` on Linux and the expected first output line (`listening on http://127.0.0.1:7317/`).
+- Chunk 14 (DX2): `--help` lists `--logs <dir>` (repeatable), the `SYNAPSE_LOG_ROOTS` env var, the config file path for the current OS and the default roots with their `CLAUDE_CONFIG_DIR`/`CODEX_HOME` overrides. Test: `cli.test.ts` asserts each appears in the usage text.
+- Chunk 14 (DX3): the D11 banner text depends on how the page was served: under `vp dev` "Log server not running. Start it with `vp dev`."; under the binary "Synapse Horizon stopped. Run it again to reconnect."; under `vp preview` "Log server not running. Start it with `vp run serve`." The server injects its mode as `<meta name="synapse-mode" content="dev|preview|binary">` beside the token. Test: each mode renders its text.
+- Chunk 14 (DX4): every `[logs]` error line and pill reason states problem, cause and fix, e.g. "[logs] cannot watch ~/.claude/projects: inotify watch limit reached (ENOSPC); polling every 5 s instead. Raise it with: sudo sysctl fs.inotify.max_user_watches=524288"; "permission denied (EACCES) reading <file>; skipped. Check the file's owner"; "root not found: <path>; set --logs or SYNAPSE_LOG_ROOTS". Test asserts the three texts.
+- Chunk 14 (DX5): the binary's start output is three lines: the version, the URL, and one `[logs]` line per root; with zero files found it adds "no Claude Code or Codex logs found in the last 24 h; start a session, or pass --logs <dir>". Test asserts the zero-files hint.
+- Chunk 14 (DX voice H1, extends DX1): every per-OS block starts with `chmod +x` for macOS and Linux (release assets lose the exec bit), then the first-run bypass, then the run command.
+- Chunk 14 (DX voice M1): the D9 card names the resolved roots from the server's `roots` message and the source that supplied them (flag, env, config or default), never a hard-coded path.
+- Chunk 14 (DX voice H3): under `vp dev`, `Host: 127.0.0.1:<port>` gets a 308 to `http://localhost:<port>/` (the mirror of the binary's redirect); any other Host still gets 421, and every 421 body names the URL to use. Test: both redirects and the 421 body.
+- Chunk 14 (DX voice M2, P5): one name per concept: flag `--log-root <dir>` (repeatable), env `SYNAPSE_LOG_ROOTS`, config key `logRoots`; this replaces `--logs` and `roots` everywhere above (X2, X5, spec 3.1, DX2, DX4, DX5). The env delimiter is the OS path delimiter (`:`, `;` on Windows).
+- Chunk 14 (DX voice M4): README Quick start: `vp dev` for development, `vp run serve` for the built app; the log server runs under `vp dev`, `vp preview` (used by Playwright) and the binary alike.
+- Chunk 14 (DX voice H4, overrides the X2 fall-through): a config file that exists but cannot be read or parsed never falls back to the defaults: the binary exits non-zero printing the path, the parse error and a valid example; under `vp dev` and `vp preview` the server watches nothing and the pill shows the error. Tests: invalid JSON, wrong type, unreadable file.
+- Chunk 14 (DX voice M5, extends DX4): each `[logs]` error line ends with the README anchor that explains it (`#configuration` or `#data-sources-and-privacy`).
+- Chunk 14 (DX voice M6): after a second token rejection (T1) the D11 banner shows "Session expired. Reload the page." with a Reload button.
+- Chunk 14 (DX voice H5): README gains a "Configuration" section: the precedence rule (flag, env, config, defaults; first non-empty wins; sources never merge, so adding a root means listing the defaults too), per-OS config paths, the env delimiter, and copy-paste examples; `config.example.json` is committed and referenced.
+- Chunk 14 (DX voice M8): `--no-logs` (and `SYNAPSE_LOG_ROOTS=none`) watches nothing, logs one `[logs] watching nothing (--no-logs)` line and the pill shows "Off". Test: no watcher is created.
+- Chunk 14b (DX voice M7): README "Download and run" has copy-paste checksum commands: `shasum -a 256 -c SHA256SUMS.txt --ignore-missing` (macOS, Linux) and `Get-FileHash <file> -Algorithm SHA256` (Windows), next to `gh attestation verify`.
+
+
+### DX voices and consensus
+
+Claude SUBAGENT (DX — independent review): completed, INPUT dx 945029fc… matches the snapshot; 6 high, 9 medium, 0 critical. Codex: disabled. Dispositions: H1 (extends DX1), H2 (= DX3), H3, H4, H5, M1, M2, M4-M8 accepted (P1/P5); M3 already DX2; H6 already F4 (canonical rewrite before any builder brief); M9 deferred to TODOS (`--since`, price overrides) with the roots workaround documented.
+
+```
+DX DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude    Codex     Consensus
+  1. Getting started < 5 min?          no (H1)   disabled  N/A
+  2. API/CLI naming guessable?         no (M2)   disabled  N/A
+  3. Error messages actionable?        no (H4,M5) disabled N/A
+  4. Docs findable & complete?         no (H5)   disabled  N/A
+  5. Upgrade path safe?                partial   disabled  N/A
+  6. Dev environment friction-free?    no (H3)   disabled  N/A
+  Outside voice disabled: no CONFIRMED cells. [subagent-only]
+```
+
+### Pass 1: Getting started (4 → 7)
+
+Gap: 6 steps and about 3-5 min [estimated] to "Connected", with an undocumented `chmod` and an unsigned-binary bypass. A 10 is `npx` or a signed binary that opens straight into the user's sessions. Fixed in plan: DX1/H1 copy-paste blocks, DX5 start lines, magical moment via `[logs]` lines. Residual: unsigned binaries (TODO npx), visible data only after 15 (UC2).
+
+### Pass 2: CLI design (6 → 8)
+
+Flags `--port`, `--no-open`, `--version`, `--help` are guessable. Fixed: one name per concept (M2), `--help` lists everything (DX2), `--no-logs` escape hatch (M8), dev 127.0.0.1 redirect (H3). Residual: no root merge (documented).
+
+### Pass 3: Error messages (4 → 8)
+
+Traced three paths. (1) Server down in a binary tab: was "Start it with `vp dev`", now mode-aware (DX3). (2) inotify limit: was a bare `ENOSPC` reason, now problem + cause + fix + anchor (DX4, M5). (3) Typo in config: was silent fallback to the full home roots, now a hard error naming the file and parse error (H4). Token expiry gets "Session expired. Reload the page." (M6).
+
+### Pass 4: Documentation (5 → 8)
+
+Added "Configuration" (H5) with precedence, paths and examples; per-OS "Download and run" with checksum and attestation commands (M7); privacy section with what reaches the browser now and in 15 (F10). Residual: the plan text itself needs the F4 canonical rewrite (H6).
+
+### Pass 5: Upgrade path (5 → 6)
+
+Semver from conventional commits, CHANGELOG and release notes exist (02b). No in-app "new version" hint; config keys are new so no migration yet. Deferred: update notice (folded into the npx/install TODO). No breaking change in these chunks.
+
+### Pass 6: Dev environment (6 → 8)
+
+Contributor path is `vp install`, `vp dev`; e2e no longer touches the real home directory (C70, pass-3 2.1); ubuntu CI runs watcher fallbacks; Windows path handling is tested. Fixed: dev Host redirect (H3). Residual: `vp` install itself is a prerequisite documented in README.md:19.
+
+### Pass 7: Community (6 → 6)
+
+Public repo, CONTRIBUTING, release notes; no change in scope here. No issues, moving on.
+
+### Pass 8: DX measurement (3 → 5)
+
+Measure the approved clock (download to "Connected" with roots listed) once on a clean macOS account when 14b ships, as the existing manual acceptance already requires; record minutes in the README image caption notes. No telemetry (privacy D16). Boomerang: run /devex-review after 14b.
+
+### DX scorecard
+
+```
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD                             |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend  |
+|----------------------|--------|--------|--------|
+| Getting Started      | 7/10   | 4/10   | +3 ↑   |
+| API/CLI/SDK          | 8/10   | 6/10   | +2 ↑   |
+| Error Messages       | 8/10   | 4/10   | +4 ↑   |
+| Documentation        | 8/10   | 5/10   | +3 ↑   |
+| Upgrade Path         | 6/10   | 5/10   | +1 ↑   |
+| Dev Environment      | 8/10   | 6/10   | +2 ↑   |
+| Community            | 6/10   | 6/10   |  0     |
+| DX Measurement       | 5/10   | 3/10   | +2 ↑   |
++--------------------------------------------------------------------+
+| TTHW                 | 3-4 min [est] | 5-6 min [est] | ↑       |
+| Competitive Rank     | Competitive                                 |
+| Magical Moment       | designed via [logs] lines + D10 pill        |
+| Product Type         | CLI tool + local web app                    |
+| Mode                 | POLISH                                      |
+| Overall DX           | 7/10   | 5/10   | +2 ↑   |
++====================================================================+
+| DX PRINCIPLE COVERAGE                                               |
+| Zero Friction      | gap (unsigned binary; npx deferred)            |
+| Learn by Doing     | covered (copy-paste blocks, config example)    |
+| Fight Uncertainty  | covered (problem + cause + fix errors)         |
+| Opinionated + Escape Hatches | covered (--no-logs, --log-root)      |
+| Code in Context    | covered (per-OS commands)                      |
+| Magical Moments    | covered after 15; partial in 14                |
++====================================================================+
+```
+Scores below 6: DX Measurement (5): no automated TTHW measure; accepted, one manual measurement per release of the binary path.
+
+### DX implementation checklist
+
+```
+[ ] Download to "Connected" under 5 min on a clean macOS account (manual, 14b)
+[ ] Per-OS copy-paste blocks incl. chmod, bypass, run, checksum, attestation
+[ ] First run prints version, URL and one [logs] line per root (zero-files hint)
+[ ] Every [logs] error: problem + cause + fix + README anchor
+[ ] D11 banner text per serving mode; session-expired reload
+[ ] --help lists --log-root, SYNAPSE_LOG_ROOTS, config path, defaults
+[ ] --no-logs watches nothing
+[ ] invalid config is a hard error, never a silent fallback
+[ ] README Configuration section + config.example.json
+[ ] D9 card shows resolved roots and their source
+```
+
+### NOT in scope (DX)
+
+`--since` and price overrides (TODO), npx/signing (TODO), update notice (folded into TODO), root merging (documented workaround).
+
+### What already exists (DX)
+
+`--port`, `--no-open`, `--version`, `--help` and EADDRINUSE retry (`sidecar/cli.ts:14-21`, `listenWithRetry`); "could not open a browser ... open this URL" fallback (`sidecar/cli.ts:197`); README Development setup (README.md:19); release badge.
+
+### Implementation Tasks (DX)
+
+- [ ] **T1 (P1, human: ~4h / CC: ~20min)** — chunk 14 CLI/server — `--log-root`, `--no-logs`, `--help`, hard config errors, mode meta, actionable `[logs]` lines, dev Host redirect
+  - Surfaced by: DX2-DX5, H3, H4, M2, M5, M8
+  - Files: sidecar/cli.ts, sidecar/roots.ts, sidecar/logServer.ts, sidecar/plugin.ts
+  - Verify: vp test (cli.test.ts, roots tests)
+- [ ] **T2 (P1, human: ~2h / CC: ~10min)** — chunk 14 UI — mode-aware banner, session-expired reload, D9 card with resolved roots
+  - Surfaced by: DX3, M1, M6
+  - Files: src/ui/ConnectionPill.tsx, src/ui/Shell.tsx
+  - Verify: logserver Playwright project
+- [ ] **T3 (P2, human: ~2h / CC: ~10min)** — README — Configuration, Download and run (chmod, checksums), Quick start commands
+  - Surfaced by: DX1, H1, H5, M4, M7
+  - Files: README.md, config.example.json
+  - Verify: manual read-through; commands copy-paste on a clean shell
+
+
+## Eng review record: Chunks 13, 14 and 14b (/autoplan Phase 3, 2026-10-15)
+
+Scope gate: /autoplan target, the active plan `.gstack/tmp/autoplan/chunks-13-14-14b-plan.md` (Implementation plan with CEO and DX accepted requirements). Report file: the same plan. Prior learnings applied: e2e-runs-production-build (9/10, 2026-10-13); frozen-frame-is-catchup-only (9/10, 2026-10-15). Retrospective: no reverts on `sidecar/`, `src/data/`, `release.yml` (`git log --grep=revert` empty).
+
+### Scope Challenge
+
+A. What exists: `sidecar/server.ts:80` `createServer` (node:http, Host gate, manifest assets), `sidecar/cli.ts:127` `run` (flags, port retry), `src/app/store/data.ts:80` `createDataSlice` (connect/ingest/sticky error at `setStatus`: `if (current.status === "error" || current.status === status) return;`), `src/data/reduce.ts:69` `DataState` (projects/sessions/subagents maps, ring with `seen` set), `src/data/mock.ts:444` `tick` (250 ms ticks via injected `schedule`). Minimum change: every chunk is needed for its acceptance; nothing deferrable without failing a line. Complexity: about 38 changed files across three PRs [estimated], new services: watcher, tailer, log-server hub, live source (4). Search check: Node recursive `fs.watch` [Layer 1, stdlib]; `ws` noServer upgrade handling [Layer 1]; GitHub reusable workflows [Layer 1]. TODOS cross-reference: P2 #8/#9 (handled C73 + UC1), P2 done-session growth (X1), P2 waiting/churn re-check (pass-2 1.1). Distribution: 14b covers build, publish, per-OS install docs.
+
+B. Complexity gate tripped (8+ files, 2+ services). Auto-decided under /autoplan (P2 never reduce, P5 explicit): feature list kept; structure `Original arrangement` (one pure, tested module per concern: `sidecar/roots.ts`, `watch.ts`, `tail.ts`, `logServer.ts`, `plugin.ts`; `src/data/wire.ts`, `liveSource.ts`, `metrics.ts`, `jobs.ts`; `src/config/estimation.ts`, `prices.ts`) over a smaller merged `sidecar/logs.ts`, matching the repo's file-arrangement rule (PLAN chunk 06-10 "pure, unit-tested modules each get their own file"). Scope record: feature answers: autoplan P2; structure: A (autoplan P5); accepted scope: the CEO and DX accepted requirements; pending remedies: none. Result: scope accepted as-is.
+
+C. Findings (eng, primary review):
+
+- [P1] (confidence: 9/10) `src/app/store/data.ts` setStatus — `if (current.status === "error" || current.status === status) return;` makes `error` sticky until `connect`. If a dropped socket were reported as `error`, the live source could never return to `live`. Remedy E50: server-down and socket drops are `reconnecting`, never `error`; `error` is reserved for a second token rejection, invalid config (DX H4) and wire-schema failures. Accepted (P1, required for C72).
+- [P1] (confidence: 9/10) `src/data/schema.ts` `Source` has only `onEvents`/`onStatus`; spec 1.3 asks every source to call `advanceTo`. Remedy E51: the store owns the cadence: it calls `advanceTo(clock.now())` after every ingest and from one store-owned 1 s real-time interval created in `connect` and cleared in `disconnect`; the `Source` interface does not change. Supersedes spec 1.3's "every source calls". Accepted (P5).
+- [P1] (confidence: 8/10) Vite dev and preview share their HTTP server's `upgrade` event with Vite's own HMR WebSocket. Remedy E52: the log server handles upgrades only for its own path `/api/stream` and returns without touching the socket for any other path; Host/Origin gates apply only to the plugin's own routes (`/api/stream`, `/api/session`, `/api/import`, and the index templating), never to Vite's static or HMR traffic. Test: an HMR-path upgrade is left alone; a dev page still hot-reloads with the plugin installed. Accepted (P1).
+- [P1] (confidence: 8/10) `transformIndexHtml` does not run under `vp preview` (static `dist/`). Remedy E53: under preview the plugin's `configurePreviewServer` registers a pre-middleware that templates `index.html` for `/`, `/index.html` and the SPA fallback (pass-2 3.5); dev uses `transformIndexHtml`; the binary templates in `sidecar/server.ts`. One `templateIndex(html, { token, mode })` helper serves all three. Accepted (P1, DRY).
+- [P1] (confidence: 8/10) CEO Section 9 adds `workflow_dispatch` to the matrix, but `release.yml` runs semantic-release; a dispatch there would attempt a release. Remedy E54: the build/smoke/attest/upload matrix lives in a reusable workflow `.github/workflows/binaries.yml` (`workflow_call` with inputs `version`, `ref`, `upload`; `workflow_dispatch` with `upload: false`), called by `release.yml` after `release` with `upload: true`; `binaries.yml` opens with `permissions: {}` and job-level grants (C7 guard). Test: `release-workflow.test.ts` asserts the call, inputs and that dispatch never uploads. Accepted (P5).
+- [P2] (confidence: 8/10) X1 eviction needs to know when a session is no longer in the ring. Remedy E55: the ring keeps a per-session reference count updated on push and overwrite; eviction runs inside `advanceTo` for `done` sessions with count 0. Accepted.
+- [P2] (confidence: 8/10) Adding `todo`/`toolClass` to mock events would change the chunk 12 steady digests (E36, byte-identical contract). Remedy E56: the mock stays unchanged in chunk 13; job-stage tests use hand-written fixture events in `src/data/jobs.test.ts`. Accepted (protects an approved contract).
+- [P2] (confidence: 7/10) The trailing tokens/min window slides every sim second even without events, so "integrate exactly across every input change" means per-second steps. Remedy E57: `advanceTo` integrates the lag per one-second step while any bucket in the 60 s window is non-zero and uses the closed-form decay once the window is empty, so a 10-minute hidden tab at 60x costs at most 60 steps per session. Accepted.
+- [P2] (confidence: 7/10) Backfill of many files at server start could block the event loop. Remedy E58: backfill reads with streams in 64 KiB chunks, at most 4 files concurrently, newest mtime first, yielding between chunks; progress counts files. Test: 500 fixture files backfill without one read over 64 KiB. Accepted.
+
+### User challenges (eng)
+
+- UC3 Split chunk 14. You said (PLAN chunk 14 as one chunk, one PR per chunk, D18). The primary eng review and the independent eng voice (both Claude; Codex disabled) recommend splitting it into 14a (Node: config/roots, tailer, watcher, `wire.ts`, server, gates, token refresh, CLI flags; Node integration tests) and 14c (client: `LiveSource`, `source=live` default, pill, D9, D11, session-expired state, `logserver` Playwright project, README), with 14b depending on 14a only. Why: chunk 14 now carries about 18 files and four services plus UI; one PR hides failures of one area behind another and is slow to review. Blind spot: you may prefer one PR so the live path is never half-wired on `main`; 14a alone ships a server with no client (harmless, nothing connects by default until 14c). Cost if wrong: one more PR and release cycle (split), or one oversized PR and review (keep).
+
+- Chunk 14 (E50): socket drops and server-down are reported as `reconnecting`, never `error`; `error` is used only for a second token rejection, an invalid config file and a wire-schema failure. Test: drop and restore the socket three times; status returns to `live` each time.
+- Chunk 13 (E51, supersedes spec 1.3 "every source calls"): the store calls `advanceTo(clock.now())` after every ingest and from one 1 s real-time interval created in `connect` and cleared in `disconnect`; the `Source` interface is unchanged. Tests with fake timers: a quiet source idle-ends at T + 30 min; disconnect clears the interval.
+- Chunk 14 (E52): the log server handles HTTP upgrades only for `/api/stream` and ignores any other upgrade path without touching the socket; Host and Origin gates cover only `/api/stream`, `/api/session`, `/api/import` and index templating, never Vite's static or HMR traffic. Tests: an HMR-path upgrade is untouched; a dev page hot-reloads with the plugin installed.
+- Chunk 14 (E53): one `templateIndex(html, { token, mode })` helper injects the token and mode meta tags; dev uses it from `transformIndexHtml`, preview from a `configurePreviewServer` pre-middleware for `/`, `/index.html` and the SPA fallback, and the binary from `sidecar/server.ts`. Test: the helper's output, and all three servers serve the current token.
+- Chunk 14b (E54): the build, smoke, attest and upload matrix lives in a reusable `.github/workflows/binaries.yml` (`workflow_call` inputs `version`, `ref`, `upload`; `workflow_dispatch` runs it with `upload: false`), called by `release.yml` after `release` with `upload: true`; it opens with `permissions: {}` and job-level grants. `release-workflow.test.ts` asserts the call, the inputs and that a dispatch never uploads; `check-workflows.ts` covers the new file.
+- Chunk 13 (E55): the ring keeps a per-session reference count updated on push and overwrite, and eviction runs inside `advanceTo` for `done` sessions whose count is 0. Test: a session still referenced by the ring is not evicted.
+- Chunk 13 (E56): the mock generator is unchanged in chunk 13 (steady digests stay byte-identical, chunk 12 E36); job-stage tests use hand-written fixture events in `src/data/jobs.test.ts`.
+- Chunk 13 (E57): `advanceTo` integrates the lag per one-second step while any bucket in the 60 s window is non-zero and uses closed-form decay once the window is empty. Test: a 10-minute jump at 60x equals a run of 600 one-second advances to within 1e-9 °C.
+- Chunk 14 (E58): backfill streams files in 64 KiB chunks, at most 4 files at a time, newest mtime first, yielding between chunks. Test: 500 fixture files complete with no single read over 64 KiB and progress reaching 500/500.
+- Chunk 13 (eng voice H1): late and out-of-order events: an event with `ts` earlier than the last `advanceTo` mark is clamped to that mark for lag and bucket state; `advanceTo` does not idle-end sessions while the source status is `catching_up`; an event for an idle-ended session whose `ts` is earlier than its inferred end reopens it (the inferred end is removed and recomputed). Tests: an out-of-order batch; a backfill delivered after `now`; a late event inside the 30-minute window reopens the session.
+- Chunk 14 (eng voice H2): after a server restart the server rebuilds every line total from 0 for files modified in the last 24 h; client cursors only skip re-sending events from chunk 15 on. A cursor `offset` is always the byte after the last complete newline, never bytes read. Test: restart while a file ends in a partial line; the line is counted once when completed.
+- Chunk 14 (eng voice H3, extends E52/E53): the dev 308 for `127.0.0.1:<port>` runs in a middleware registered before Vite's own host check; tests: HMR still connects under `vp dev` with the plugin on; preview `/`, `/index.html` and a deep SPA route carry the meta tags.
+- Chunk 14 (eng voice M2): `ws` `maxPayload` is 1 MB; at most 16 unauthenticated sockets are pending at once (the 17th is closed with 1013); a `hello` may carry at most as many cursors as the server has known files; any first message other than `hello` closes with 4400. Tests for each limit.
+- Chunk 14 (eng voice M3): when a client's `bufferedAmount` exceeds 1 MB the server stops sending to it and keeps only the latest `lines` total per file, sending the coalesced set when the buffer drains. Test: a stalled client during a 10,000-file backfill keeps server memory bounded (pending entries at most the file count).
+- Chunk 14 (eng voice M4, refines pass-2 1.2): `fileId` uses `fs.stat(path, { bigint: true })` as the string `dev:ino`; only when `ino` is `0n` does it fall back to `birthtimeMs` plus size. Test with a fake bigint `ino` above 2^53.
+- Chunk 14 (eng voice M5): watcher errors are handled both as a synchronous throw and as a later `'error'` event, each falling back to rescan-only for that root; in rescan-only mode the 5 s pass lists the root with one recursive `readdir`, skipping entries older than 24 h, so new files are found. Test: an `'error'` event ENOSPC after construction.
+- Chunk 14 (eng voice M6): the `logLines` metric `basis` reads "whole file; files modified in the last 24 h"; per-line time windows arrive with chunk 15 timestamps.
+- Chunk 13 (eng voice M7): a composite metric's provenance is the highest of its inputs on real < derived < estimated (cost: estimated; hall heat: estimated; cooling duty: estimated; tokens/min: derived). One test per composite selector.
+- Chunk 13 (eng voice M9): `advanceTo` commits to the store only when an idle-end, bucket roll, eviction or lag value changes. Test: a running clock with no due changes makes 0 commits over 20 ticks.
+- Chunk 14b (eng voice L1): uploads use `gh release upload --clobber`, asserted in `release-workflow.test.ts`.
+- Chunk 14 (eng voice L2, L4): README Configuration notes that `SYNAPSE_LOG_ROOTS=none` means "watch nothing", so a directory literally named `none` needs `--log-root`; a `parseParams` test shows `source=mock` without `scenario` selects `steady`.
+- Chunk 13 (eng voice L3): tombstones are an insertion-ordered `Set`; dropping the oldest deletes its first entry.
+- Chunk 14 (eng voice L5): G4 in chunk 14 is a protocol test (absolute totals equal after restart); event de-duplication proof moves to chunk 15.
+
+
+### Eng voices and consensus
+
+Claude SUBAGENT (eng — independent review): completed, INPUT eng 6253c5bc… matches the snapshot; 4 high, 9 medium, 5 low. Codex: disabled. Dispositions: H1, H2, H3, M2-M7, M9, L1-L5 accepted (P1/P5, added to the eng accepted block); M1 already F4; M8 already E55; H4 (split chunk 14) is UC3 at the gate.
+
+```
+ENG DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude      Codex     Consensus
+  1. Architecture sound?               yes, gaps   disabled  N/A
+  2. Test coverage sufficient?         no (8 adds) disabled  N/A
+  3. Performance risks addressed?      no (M3,M9)  disabled  N/A
+  4. Security threats covered?         mostly (M2) disabled  N/A
+  5. Error paths handled?              mostly (H1) disabled  N/A
+  6. Deployment risk manageable?       yes (L1)    disabled  N/A
+  Outside voice disabled: no CONFIRMED cells. [subagent-only]
+```
+
+### Reality rows (eng)
+
+REALITY: premise-table pass CEO table re-checked against code: setStatus sticky error (data.ts:84), Source has no tick hook (schema.ts:46), preview webServer (playwright.config.ts:55); unverified=1 (vendor env vars) src/app/store/data.ts:84
+REALITY: already-done pass no commit touches sidecar/plugin.ts, src/data/wire.ts, metrics or binaries.yml since 02b (git log) .github/workflows/release.yml:1
+REALITY: surface-check finding `--log-root`, `--no-logs`, `/api/stream`, `/api/session`, `/api/import` are new (planned); existing flags verified in USAGE sidecar/cli.ts:14
+REALITY: binding-decisions pass chunk 11/12 decisions kept (connect bumps sourceEpoch, MAX_BATCH 500, steady digests E36 protected by E56) src/data/mock.ts:444
+REALITY: numbers pass every limit in the eng block is a plan-chosen value tagged [estimated], none measured; receipts are the accepted-block lines in this plan .gstack/tmp/autoplan/chunks-13-14-14b-plan.md:1
+REALITY: deferred-asks pass every TODOS trigger for chunks 13/14 answered (X1, pass-2 1.1, C73, UC1) TODOS.md:11
+REALITY: pr-count finding three PRs as planned; UC3 would make four (14a, 14c), one more release cycle .gstack/tmp/autoplan/chunks-13-14-14b-plan.md:14
+
+### 1. Architecture review
+
+```
+                    ┌──────────────── Node (sidecar/) ─────────────────┐
+  roots.ts ─► watch.ts (fs.watch recursive | rescan) ─► tail.ts (fileId, serial queue)
+     │                                                       │ totals
+     └──────────────► logServer.ts (gates, /api/stream ws noServer, /api/session, /api/import 501,
+                                    hello+token, backpressure, templateIndex)
+                         ▲                 ▲                    ▲
+               plugin.ts dev        plugin.ts preview      server.ts + cli.ts (binary)
+               (transformIndexHtml)  (pre-middleware)        (manifest, 127.0.0.1)
+                    └──────────── shared: src/data/wire.ts (zod/mini, Node-runnable) ─┘
+  Browser: liveSource.ts (Source, reconnect, T1) ─► store data slice (+ advanceTo interval, logLines)
+           metrics.ts / jobs.ts selectors ─► Metric ─► ProvenanceBadge in HUD; ConnectionPill/Banner/Card
+  CI: release.yml ─► binaries.yml (workflow_call; workflow_dispatch upload=false)
+```
+Findings (all accepted above): E50-E54 [P1], E52/E53 with eng voice H3. Production failure per new path: watcher ENOSPC (handled, rescan); restart mid-partial-line (handled, H2); stalled tab (handled, M3); HMR clash (handled, E52); one OS fails in the matrix (handled, report job). Distribution: binaries built per OS on each release, attested, checksummed; update channel is manual download (npx TODO).
+
+### 2. Code quality review
+
+- [P2] (confidence: 8/10) three index-templating paths would drift; resolved by one `templateIndex` (E53).
+- [P2] (confidence: 7/10) `advanceTo` could exceed 5 branches; split into `endIdle`, `rollBuckets`, `integrateLag`, `evictDone` pure helpers called in order (accepted, P5).
+- [P3] (confidence: 7/10) superseded wording in the plan (`--logs`, `roots`, X2 order); resolved by the F4 canonical rewrite before builder briefs.
+Shared-code rubric: `templateIndex` has three proposed callers (dev hook, preview middleware, binary server) with one contract (token + mode meta, no-store); estimated about 40 lines added, about 60 avoided across three copies [estimated]. Stale diagram: PLAN section 3 "chokidar tail" (update at write-back).
+
+### 3. Test review
+
+Framework: Vitest in node (`vp test`), Playwright projects (chromium/firefox CI, webkit/lookdev on the Mac), per `playwright.config.ts`.
+
+```
+CODE PATHS                                              USER FLOWS
+[+] src/data/metrics.ts, jobs.ts, estimation.ts         [+] Open app (live default)
+  ├── [GAP→unit] formulas fixed inputs, clamp, null       ├── [GAP→E2E logserver] page opens WS, "Connected"
+  ├── [GAP→unit] per-class cost, partial basis            ├── [GAP→E2E] append line shows in ≤1 s
+  ├── [GAP→unit] provenance max rule (M7)                 ├── [GAP→E2E] empty roots → D9 card with resolved roots
+  └── [GAP→unit] job stages from fixtures (E56)           └── [GAP→E2E] routeWebSocket drop → Reconnecting → D11
+[+] store advanceTo                                     [+] Server restart
+  ├── [GAP→unit] idle-end exact at 1x/10x/60x (G6)        └── [GAP→integration] totals equal, partial line (H2)
+  ├── [GAP→unit] late/out-of-order events (H1)          [+] Token expiry
+  ├── [GAP→unit] lag 600 steps == jump (E57)              └── [GAP→integration] 4401 → refresh → live; twice → error
+  ├── [GAP→unit] eviction refcount + tombstones         [+] Binary first run
+  └── [GAP→unit] 0 commits when quiet (M9)                └── [GAP→CI smoke] 4 OS: HTTP, version, hello, heartbeat, lines
+[+] sidecar/roots.ts  [GAP→unit] precedence, OS paths, invalid config hard error, --no-logs
+[+] sidecar/tail.ts   [GAP→unit] partial, truncate, rotate, offline rotate, bigint ino
+[+] sidecar/watch.ts  [GAP→unit] events, rescan-only, ENOSPC throw + 'error', late root
+[+] sidecar/logServer.ts [GAP→unit] Host 421/308, Origin 403/absent, hello limits, backpressure, HMR untouched
+[+] .github/workflows [GAP→unit] release-workflow.test.ts graph, perms, --clobber, dispatch no upload
+[+] existing: chunk 12 steady digests ★★★ (mock.test.ts) must stay unchanged; frozen baselines ★★★ unchanged
+COVERAGE: 0/27 new paths tested today (all planned)  |  QUALITY target ★★★ for every GAP above
+```
+Regression rule: existing behaviours at risk are the steady digests (E56 keeps them byte-identical), frozen screenshot baselines (spec 1.8), `checkHost` binary behaviour (C73 keeps it) and the release job (binaries run after it). Each has an existing ★★★ test that must stay green; no new decision needed. No LLM or prompt changes, so no eval suites.
+
+Test plan artifact: written to `~/.gstack/projects/bjorkgard-ai-center/` (path in the Completion summary).
+
+### 4. Performance review
+
+- [P2] (confidence: 8/10) store commits at 4 Hz while running; resolved by M9 commit-on-change.
+- [P2] (confidence: 8/10) unbounded per-client queue during backfill; resolved by M3 coalescing.
+- [P3] (confidence: 6/10) Linux recursive watch cost on large trees (one inotify watch per directory) [estimated scale: thousands of directories under `~/.claude/projects`]; ENOSPC fallback covers the failure, measured on first Linux user report.
+Scale: tombstones at most 100,000 ids; buckets 60 per active session; `logLines` one entry per file in 24 h.
+
+### Failure modes (eng)
+
+| Path | Realistic failure | Test | Handling | User sees |
+|---|---|---|---|---|
+| advanceTo | late backfill events | Y (H1) | clamp, no idle-end while catching up | correct status |
+| logServer | Vite HMR upgrade clash | Y (E52) | path-scoped upgrade | HMR works |
+| logServer | slow tab | Y (M3) | coalesce | nothing |
+| tail | restart mid-line | Y (H2) | newline cursor | correct count |
+| watch | late ENOSPC event | Y (M5) | rescan-only + `[logs]` | slower updates |
+| binaries.yml | dispatch uploads by mistake | Y (E54) | upload input false | nothing |
+0 critical gaps.
+
+### Worktree parallelization strategy
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| 13 metrics + inference | src/data/, src/config/, src/app/store/, src/scene/ (HUD), src/ui/ (badge) | — |
+| 14 Node side (14a if UC3) | sidecar/, src/data/wire.ts, scripts/bundle-cli.ts | — |
+| 14 client side (14c if UC3) | src/data/liveSource.ts, src/app/, src/ui/, e2e/, playwright.config.ts | 14 Node side |
+| 14b binaries | .github/workflows/, scripts/ | 14 Node side (and 15 if UC2) |
+
+Lane A: 13. Lane B: 14 Node → 14 client → 14b. Launch A + B together; conflict flag: `src/app/store/data.ts` (13 adds `advanceTo` interval, 14 client adds `reconnecting` handling) and `src/data/schema.ts` (13 adds job fields, 14 adds `reconnecting` to `SourceStatus`): merge 13 first, then rebase the 14 client work.
+
+### NOT in scope (eng)
+
+UC3 split (gate), OTLP ingest, npx, `--since`, price overrides, update notice (all TODOS); per-line time windows (chunk 15).
+
+### What already exists (eng)
+
+`checkHost` and manifest serving reused by the binary; `createLiveClock` for the live source; `activeProjects` for placed halls; `toasts.ts` for the G13 zero-toast assertion; `check-workflows.ts` covers `binaries.yml`; `build-bin.ts` `nodeTarget` already maps all four OS targets.
+
+### Implementation Tasks (eng)
+
+- [ ] **T1 (P1, human: ~1d / CC: ~30min)** — chunk 13 — `advanceTo` (late events, catching-up guard, per-second lag, refcount eviction, commit-on-change), store interval
+  - Surfaced by: E51, E55, E57, H1, M9
+  - Files: src/app/store/data.ts, src/data/reduce.ts, src/data/metrics.ts
+  - Verify: vp test (fake-timer and speed-equivalence tests)
+- [ ] **T2 (P1, human: ~1d / CC: ~30min)** — chunk 14 — log server with path-scoped upgrades, limits, backpressure, `templateIndex`, bigint fileId, watcher error events
+  - Surfaced by: E52, E53, E58, H2, H3, M2-M5
+  - Files: sidecar/logServer.ts, sidecar/plugin.ts, sidecar/tail.ts, sidecar/watch.ts, sidecar/server.ts
+  - Verify: vp test; manual HMR check under vp dev
+- [ ] **T3 (P1, human: ~4h / CC: ~20min)** — chunk 14b — reusable `binaries.yml`, `--clobber`, permissions test
+  - Surfaced by: E54, L1, pass-3 1.3
+  - Files: .github/workflows/binaries.yml, .github/workflows/release.yml, scripts/release-workflow.test.ts
+  - Verify: vp test; workflow_dispatch run on the PR branch
+- [ ] **T4 (P2, human: ~2h / CC: ~10min)** — chunk 13 — provenance max rule and per-selector tests
+  - Surfaced by: M7
+  - Files: src/data/metrics.ts, src/data/metrics.test.ts
+  - Verify: vp test
+
+
+### Completion summary (eng)
+
+- Step 0: Scope Challenge — scope accepted as-is
+- Reality rows: 7/7 applicable rows emitted (PLAN_REALITY phase=eng verdict=complete), 1 unverified premise
+- Architecture Review: 5 issues found (E50, E52, E53, E54, voice H3)
+- Code Quality Review: 3 issues found
+- Test Review: diagram produced, 27 gaps identified (all planned new paths; each has a planned test)
+- Performance Review: 3 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 5 items added this run (npx/install, OTLP ingest, vertical slice, retire logLines, --since/price overrides)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 1 in this review (UC3)
+- Outside voice: codex disabled; native eng subagent completed (18 findings)
+- Parallelization: 2 lanes, 13 parallel with the 14 lane; 14 Node, 14 client, 14b sequential
+- Lake Score: N/A (no scored questions asked)
+- Test plan: ~/.gstack/projects/bjorkgard-ai-center/nathanael-main-eng-review-test-plan-20261015-151316.md
+
+Approval readiness (eng): PASS. Checked E50-E58 and eng voice items (autoplan P1/P5 auto-decisions, audit rows 25-27); UC3 open for the gate.
+
+### Final gate (2026-10-15)
+
+APPROVED. User reply `all` (gate_rev 1): UC1 a (runtime deps `fix(deps)`, restore C8), UC2 a (14b depends on 02b, 14 and 15), UC3 a (split chunk 14 into 14a Node log server and 14c client; 14b depends on 14a), d1-d4 a (T1 `/api/session` refresh, T2 Node `fs.watch` + rescan, T3 exact lag integration, T4 tombstones), p1 a (approve as-is).
+
+PR #31 review (2026-10-15): 14b also depends on 14c, which owns the browser live path; the `release.yml` job calling `binaries.yml` grants `contents: write`, `id-token: write` and `attestations: write`, because a called workflow cannot raise its caller's token scopes.
+
+<!-- AUTONOMOUS DECISION LOG -->
+## Decision Audit Trail
+
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|----------------|-----------|-----------|----------|
+| 1 | Intake | Skip /office-hours | User answer | - | user chose B | run office-hours |
+| 2 | CEO | Mode SELECTIVE EXPANSION | Mechanical | autoplan override | three PRs already split | SCOPE REDUCTION |
+| 3 | CEO | C70 preview-server registration | Mechanical | P1 | e2e runs preview | dev-only plugin |
+| 4 | CEO | C72 internal reconnect, `reconnecting` status | Mechanical | P1 | `connect` clears store | reconnect via connect |
+| 5 | CEO | C73 dev origin per #9 | Mechanical | P3 | matches merged code | revert #9 |
+| 6 | CEO | C75 `Metric.value` nullable | Mechanical | P1 | G7 | sentinel number |
+| 7 | CEO | C77 `advanceTo` exact idle-end | Mechanical | P1 | G6 | tick-time end |
+| 8 | CEO | C78 separate report job | Mechanical | P5 | job semantics | failure() step |
+| 9 | CEO | C79 live default, frozen keeps none | Mechanical | P1 | D11 presumes live | mock default |
+| 10 | CEO | X1-X5 accepted | Mechanical | P1/P2 | blast radius, S effort | - |
+| 11 | CEO | X6 deferred | Mechanical | P3 | outside radius | add now |
+| 12 | CEO | T1 `/api/session` refresh | Taste | P5 | keeps A1 per-run token | reload, persisted token |
+| 13 | CEO | T2 Node recursive fs.watch | Taste | P3 | fd use, stdlib | chokidar v4 |
+| 14 | CEO | Spec fixes passes 1-3 | Mechanical | P1 | reviewer findings | - |
+| 15 | CEO | F3 per-class cost, F4 canonical rewrite, F7 window label, F10 privacy | Mechanical | P1/P5 | CEO voice | - |
+| 16 | CEO | T3 keep exact lag integration | Taste | P1 | frozen/speed determinism | per-tick step |
+| 17 | CEO | T4 keep tombstones | Taste | P1 | exact counts | count as new |
+| 18 | CEO | F2, F8, F9, F7-config deferred | Mechanical | P3 | outside radius / settled D3, D4, D19 | add now |
+| 19 | CEO | UC1 dependabot prefix | User challenge | - | reverses user's #8 | auto-decide |
+| 20 | CEO | UC2 14b after 15 | User challenge | - | changes user's dependency | auto-decide |
+
+| 21 | DX | Mode DX POLISH, persona, Competitive target, [logs] magical moment | Mechanical | autoplan override, P5, P6 | plan scope is an enhancement | EXPANSION, Champion |
+| 22 | DX | DX1-DX5 accepted | Mechanical | P1/P5 | journey friction | - |
+| 23 | DX | DX voice H1-H5, M1, M2, M4-M8 accepted | Mechanical | P1/P5 | voice findings, in blast radius | - |
+| 24 | DX | M9 (--since, price overrides) deferred | Mechanical | P3 | new surface, D4 settled | add now |
+| 25 | Eng | Scope accepted as-is, original arrangement | Mechanical | P2, P5 | repo file rule | merged logs.ts |
+| 26 | Eng | E50-E58 accepted | Mechanical | P1/P5 | code-grounded findings | - |
+| 27 | Eng | Eng voice H1-H3, M2-M7, M9, L1-L5 accepted | Mechanical | P1/P5 | voice findings in blast radius | - |
+| 28 | Eng | UC3 split chunk 14 | User challenge | - | changes chunk structure | auto-decide |

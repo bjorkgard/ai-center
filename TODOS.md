@@ -8,14 +8,6 @@
   - Trigger to pick up: a second contributor joins, or the first setup on a fresh machine.
   - Effort: S (human ~1h / CC ~5 min).
 
-- **P2: Reconcile the plan with merged PRs #8 and #9** (added by /plan-eng-review E18, 2026-10-13, Phase 1 review)
-  - What: decide whether #8 (Dependabot npm prefix `fix(deps)` to `build(deps)`, `b17f26e`) and #9 (`vp dev` host `127.0.0.1` to `localhost`, `dc8612a`) supersede CEO C8 and C2, then update chunk 01, the C8 ledger row and chunk 14's Host-gate text in `docs/PLAN.md` to match (or revert the code).
-  - Why: under D19, `build(deps)` cuts no release, so runtime library fixes (`ws`, chokidar) would no longer reach the downloadable builds, which C8 was approved to prevent. Chunk 14's Vite plugin reuses the C6 Host gate, which serves only `Host: 127.0.0.1:<port>` and redirects `localhost`, while `vp dev` now serves `localhost:5173`.
-  - Context: plan lines are chunk 01 Tasks and Acceptance (`docs/PLAN.md`, "fix(deps)" and "host to `127.0.0.1`"), the C8 row in the Phase 0 CEO ledger, and chunk 14 Tasks (Origin and Host checks). Start by asking whether runtime dependency bumps should release, then how the chunk 14 plugin should treat `localhost` under `vp dev`.
-  - Trigger to pick up: before chunk 14 starts.
-  - Effort: S (human ~1h / CC ~10 min).
-  - Depends on: none.
-
 - **P3: Startup quality probe** (deferred by /plan-ceo-review C18, 2026-10-13, Phase 2 review)
   - What: before the loader fades, render about 1 s of frames at the high tier, discard the shader-compile frames, pick high, medium or low, and remember the pick per browser in localStorage (try/catch); the 04a frame monitor (CEO S-RW5) keeps adjusting at runtime. Fake-clock unit tests: interval-to-tier mapping, compile frames ignored, blocked storage.
   - Why deferred: the stutter it prevents lasts about 2 s (the frame monitor's drop window) and has not been measured on target hardware; the probe also lengthens D10's loader, which is approved to end at the first frame.
@@ -53,6 +45,7 @@
   - Depends on: chunk 11 data slice.
 
 - **P2: Bound the growth of `done` sessions in the store** (deferred by /autoplan chunk 12 review, 2026-10-15)
+  - Scheduled: accepted into chunk 13 (/autoplan 2026-10-15, CEO X1 / pass-2 1.1).
   - What: evict or compact sessions and subagents whose status is `done` from the `sessions`/`subagents` maps after they leave the ring buffer, keeping project and global token totals unchanged.
   - Why: churn and burst add a new session id per cycle (up to 18,000 per real hour at 60x [estimated]), and `applyBatch` copies both maps on every batch (`src/data/reduce.ts`), so a long-running 60x tab slows down.
   - Context: chunk 12 scenarios, chunk 13 session-end inference (30 min idle), `docs/PLAN.md` chunk 12 review record, CEO row 21.
@@ -61,6 +54,7 @@
   - Depends on: chunk 13.
 
 - **P2: Re-check `waiting` and `churn` after chunk 13 inference** (deferred by /autoplan chunk 12 eng review, 2026-10-15)
+  - Scheduled: accepted into chunk 13 (/autoplan 2026-10-15, CEO X1 / pass-2 1.1).
   - What: re-run the chunk 12 `waiting` and `churn` shape tests with session-end inference on; give waiting lanes a non-status heartbeat if 30-minute idle-end marks them `done` (about 2,390 sim s).
   - Why: chunk 13 inference can silently end the states these scenarios exist to show.
   - Context: `src/data/mock.ts` lane plans, chunk 13 Tasks, chunk 12 eng review finding 10.
@@ -91,3 +85,44 @@
   - Trigger to pick up: a demo or README video needs one URL that shows everything.
   - Effort: S (human ~2h / CC ~10 min).
   - Depends on: chunk 12.
+
+- **P3: npx package and install script for the app** (deferred by /autoplan chunks 13-14b CEO review X6, F8, 2026-10-15)
+  - What: publish the CLI bundle to npm so `npx synapse-horizon` runs the app with the user's own Node, and add a one-line install script (or Homebrew tap) for the 14b binaries.
+  - Why: most users already run Claude Code or Codex, so they have Node; npx avoids Gatekeeper and SmartScreen first-run friction of unsigned binaries.
+  - Pros: lowest-friction install. Cons: an npm publish step (the npm plugin is refused under pnpm `devEngines`, so a separate publish job), and a second distribution channel to keep working.
+  - Context: D19, chunk 14b, `scripts/bundle-cli.ts`, `docs/PLAN.md` chunks 13-14b CEO review record.
+  - Effort: human M / CC S (human ~4h / CC ~20 min).
+  - Trigger to pick up: after chunk 14b's first release, or the first user report of Gatekeeper/SmartScreen trouble.
+  - Depends on: chunk 14b.
+
+- **P3: OpenTelemetry ingest as a second live source** (deferred by /autoplan chunks 13-14b CEO review F2, 2026-10-15)
+  - What: a small OTLP/HTTP receiver on the log server that turns Claude Code's OpenTelemetry metrics and events into `AgentEvent`s behind the same `Source` interface, next to JSONL tailing.
+  - Why: JSONL formats are undocumented and can change without notice; a documented telemetry path means a format change degrades one source, not the product. Claude Code's OTel export is from vendor docs, not verified in this repo; Codex equivalent unknown.
+  - Context: D3, chunks 14-16, `src/data/wire.ts`, `src/data/schema.ts`.
+  - Effort: human L / CC M.
+  - Trigger to pick up: the first JSONL format break in chunk 15 or 16, or a user who cannot share log folders.
+  - Depends on: chunk 15.
+
+- **P2: Consider a vertical slice after chunk 15** (deferred by /autoplan chunks 13-14b CEO review F9, 2026-10-15)
+  - What: decide whether to build chunk 18 (store-to-scene binding) right after chunk 15, before 16 and 17, so real sessions light real racks early.
+  - Why: the data-centre scene is the differentiator; token and cost dashboards are easy for other tools to match.
+  - Context: `docs/PLAN.md` section 5 chunk order and dependencies (18 depends on 15 only through the store).
+  - Effort: human S / CC S (planning only).
+  - Trigger to pick up: chunk 15 merged.
+  - Depends on: chunk 15.
+
+- **P3: Retire the `logLines` slice when parsers land** (added by /autoplan chunks 13-14b CEO review Section 10, 2026-10-15)
+  - What: remove the per-file line-count slice and its HUD row once chunk 15 streams `AgentEvent`s, or keep it as a dev-only diagnostic.
+  - Why: two data paths from one server confuse tests and the HUD.
+  - Context: chunk 14a pass-3 1.1 requirement, `src/data/wire.ts`.
+  - Effort: human S / CC S.
+  - Trigger to pick up: chunk 15.
+  - Depends on: chunk 15.
+
+- **P3: Backfill window flag and price overrides** (deferred by /autoplan chunks 13-14b DX review M9, 2026-10-15)
+  - What: `--since <hours>` (env and config equivalents) to widen the 24 h backfill, and config-file price overrides keyed by model and token class, with `basis` naming "user override".
+  - Why: a user whose last session was 25 h ago sees an empty campus; binary users keep the release's prices until the next release.
+  - Context: chunk 13 price table (`asOf`), chunk 14a roots/config resolver, D4 (24 h backfill).
+  - Effort: human S / CC S.
+  - Trigger to pick up: first user report of an empty first run or stale prices.
+  - Depends on: chunks 13, 14a.
