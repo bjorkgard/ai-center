@@ -651,7 +651,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
   - The CLI bundle test passes. The local `vp run build:bin` binary built from this chunk tails real logs too; the CI matrix smoke that opens the WebSocket with the injected token is added in chunk 14b.
 - **README:** "Configuration" section (DX voice H5, eng voice L2): the precedence rule (flag, env, config, defaults; first non-empty wins; sources never merge, so adding a root means listing the defaults too), per-OS config paths, the env delimiter, copy-paste examples, and a note that `SYNAPSE_LOG_ROOTS=none` means "watch nothing", so a directory literally named `none` needs `--log-root`. `config.example.json` is committed and referenced. Quick start and "Data sources and privacy" are written in chunk 14c.
 
-#### [ ] 14c. Live source and connection states
+#### [x] 14c. Live source and connection states
 - **Goal:** The app connects to the log server by default and shows its state: pill, banner, first-run card and per-file line counts.
 - **Depends on:** 14a.
 - **Tasks:**
