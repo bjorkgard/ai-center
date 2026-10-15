@@ -173,6 +173,30 @@ describe("watcher failures fall back to rescan-only", () => {
   });
 });
 
+test("a file added to or removed from a running root notifies root subscribers", async () => {
+  const root = freshRoot();
+  let notified = 0;
+  const { watcher } = setup([root], { onRoots: () => notified++ });
+  await watcher.start();
+  const before = notified;
+  const file = join(root, "new.jsonl");
+  writeFileSync(file, "x\n");
+  const started = Date.now();
+  while (notified === before && Date.now() - started < 1500) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  expect(notified).toBeGreaterThan(before);
+  expect(watcher.roots()[0].files).toBe(1);
+  const afterAdd = notified;
+  rmSync(file);
+  // The removal is seen by the event or, at the latest, the 5 s rescan.
+  while (notified === afterAdd && Date.now() - started < 8000) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(notified).toBeGreaterThan(afterAdd);
+  expect(watcher.roots()[0].files).toBe(0);
+}, 15_000);
+
 test("stop() closes every handle", async () => {
   const root = freshRoot();
   let closed = 0;

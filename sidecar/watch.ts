@@ -80,6 +80,17 @@ export function createWatcher(options: WatchOptions): Watcher {
   let stopped = false;
   let rescanning = false;
 
+  // A file joined or left a running root: its file count changed. A burst becomes one notice.
+  let filesNotice = false;
+  function filesChanged(): void {
+    if (filesNotice || stopped) return;
+    filesNotice = true;
+    setImmediate(() => {
+      filesNotice = false;
+      if (!stopped) options.onRoots?.();
+    });
+  }
+
   async function scanFile(
     root: string,
     path: string,
@@ -90,7 +101,7 @@ export function createWatcher(options: WatchOptions): Watcher {
     try {
       info = await stat(path, { bigint: true });
     } catch {
-      known.delete(path);
+      if (known.delete(path) && notify) filesChanged();
       return;
     }
     if (!info.isFile()) return;
@@ -99,6 +110,7 @@ export function createWatcher(options: WatchOptions): Watcher {
     if (previous === undefined && now() - mtimeMs > maxAgeMs) return;
     const signature = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}`;
     known.set(path, { root, mtimeMs, signature });
+    if (notify && previous === undefined) filesChanged();
     if (notify && (force || previous?.signature !== signature)) onFile(path);
   }
 

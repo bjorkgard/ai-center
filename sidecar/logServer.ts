@@ -41,10 +41,12 @@ export function checkGate(
   headers: { host?: string | undefined; origin?: string | undefined },
 ): GateFailure | undefined {
   const host = allowedHost(mode, port);
-  if (headers.host !== host) {
+  // Browsers drop the port from Host and Origin when it is the scheme default (as `checkHost` does).
+  const hosts = port === 80 ? [host, host.replace(/:80$/, "")] : [host];
+  if (headers.host === undefined || !hosts.includes(headers.host)) {
     return { status: 421, body: `Misdirected Request: use http://${host}/` };
   }
-  if (headers.origin !== undefined && headers.origin !== `http://${host}`) {
+  if (headers.origin !== undefined && !hosts.some((h) => headers.origin === `http://${h}`)) {
     return { status: 403, body: `Forbidden: this server only accepts the origin http://${host}` };
   }
   return undefined;

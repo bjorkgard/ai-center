@@ -118,6 +118,18 @@ describe("fileId", () => {
   });
 });
 
+test("a file truncated and rewritten in place past the old offset is re-read from 0", async () => {
+  const file = fresh();
+  writeFileSync(file, "a\nb\n");
+  const tail = new FileTail(file);
+  expect(await total(tail)).toBe(2);
+  // Same inode (copy-truncate), now longer than the old offset.
+  writeFileSync(file, "xxxxxxxxx\n");
+  expect(await total(tail)).toBe(1);
+  appendFileSync(file, "y\n");
+  expect(await total(tail)).toBe(2);
+});
+
 test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
   "an unreadable file rejects with EACCES",
   async () => {

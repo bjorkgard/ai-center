@@ -489,6 +489,23 @@ describe("gates", () => {
     expect(checkGate(mode, 5173, { host: `evil.example:5173` })!.body).toContain(`http://${own}/`);
   });
 
+  test.each(modes)("%s on port 80 also accepts the default-port forms", (mode) => {
+    const name = allowedHost(mode, 80).replace(":80", "");
+    for (const host of [name, `${name}:80`]) {
+      expect(checkGate(mode, 80, { host })).toBeUndefined();
+      expect(checkGate(mode, 80, { host, origin: `http://${name}` })).toBeUndefined();
+      expect(checkGate(mode, 80, { host, origin: `http://${name}:80` })).toBeUndefined();
+    }
+    expect(checkGate(mode, 80, { host: "evil.example" })).toMatchObject({ status: 421 });
+    // The bare form is only the default port's: on any other port it is refused.
+    expect(checkGate(mode, 5173, { host: name })).toMatchObject({ status: 421 });
+    expect(checkGate(mode, 5173, { host: `${name}:5173`, origin: `http://${name}` })).toMatchObject(
+      {
+        status: 403,
+      },
+    );
+  });
+
   /** Opens the stream with the `ws` client, which can set Host and Origin. */
   function raw(port: number, headers: Record<string, string>) {
     return new Promise<{ status?: number; code?: number; opened: boolean }>((resolve) => {
