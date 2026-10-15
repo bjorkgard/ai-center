@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { metricsTime } from "../app/store/data.ts";
 import { useStore } from "../app/store/index.ts";
 import { SPEEDS } from "../data/clock.ts";
 import { ANCHOR_MS, createMockSource } from "../data/mock.ts";
@@ -45,8 +46,8 @@ function pick() {
     tokens: s.tokens,
     modelTokens: s.modelTokens,
     unknownSessions: s.unknownSessions,
-    // The source clock's whole second: what the metrics are read at.
-    at: s.clock ? Math.floor(s.clock.now() / 1000) * 1000 : 0,
+    // The whole second the store has advanced to: what the metrics are read at.
+    at: Math.floor(metricsTime(s.clock) / 1000) * 1000,
     ring: s.ring,
     version: s.ringVersion,
     time: now === undefined ? ANCHOR_MS : Math.floor(now / 1000) * 1000,

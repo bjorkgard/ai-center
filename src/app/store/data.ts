@@ -91,6 +91,12 @@ let lastAdvance: number | null = null;
 let watermark: number | null = null;
 let ticker: ReturnType<typeof setInterval> | null = null;
 
+// The source time derived values stand at: the last advance, which holds back to what the source
+// has delivered, else the clock. Read metrics at this, not at the raw clock.
+export function metricsTime(clock: SimClock | null): number {
+  return lastAdvance ?? clock?.now() ?? 0;
+}
+
 function detach(): void {
   const previous = active;
   active = null;

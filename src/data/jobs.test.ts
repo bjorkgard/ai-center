@@ -22,8 +22,12 @@ function ev(over: Partial<AgentEvent> & { sec: number }): AgentEvent {
   };
 }
 const run = (...events: AgentEvent[]): DataState => applyBatch(emptyData(), events);
-const stage = (s: DataState, id: string, session = "s1"): JobStage | undefined =>
-  s.jobs.get(jobKey(session, id))?.stage;
+// "turn" stands for the session's latest turn job: each turn_start makes its own job.
+const stage = (s: DataState, id: string, session = "s1"): JobStage | undefined => {
+  if (id !== "turn") return s.jobs.get(jobKey(session, id))?.stage;
+  const turns = [...s.jobs.values()].filter((j) => j.sessionId === session && j.kind === "turn");
+  return turns.sort((a, b) => b.stageAt - a.stageAt)[0]?.stage;
+};
 
 test("a turn without todos is one job: scheduled, running, then done at turn end", () => {
   expect(stage(run(ev({ sec: 0, type: "turn_start" })), "turn")).toBe("scheduled");
@@ -110,4 +114,37 @@ test("a completed todo hands tool calls back to the turn", () => {
   );
   expect(stage(s, "todo:a")).toBe("done");
   expect(stage(s, "turn")).toBe("evaluating");
+});
+
+test("each turn is its own job: a second turn_start does not overwrite the first", () => {
+  const s = run(
+    ev({ sec: 0, type: "turn_start" }),
+    ev({ sec: 1, toolClass: "test" }),
+    ev({ sec: 2, type: "turn_end" }),
+    ev({ sec: 3, type: "turn_start" }),
+    ev({ sec: 4, toolClass: "edit" }),
+  );
+  const turns = [...s.jobs.values()].filter((j) => j.kind === "turn");
+  expect(turns.map((j) => j.stage).sort()).toEqual(["checkpoint", "done"]);
+  // A tool call goes to the turn in progress, not an older one.
+  const later = applyBatch(s, [ev({ sec: 5, toolClass: "lint" })]);
+  expect(
+    [...later.jobs.values()]
+      .filter((j) => j.kind === "turn")
+      .map((j) => j.stage)
+      .sort(),
+  ).toEqual(["done", "evaluating"]);
+});
+
+test("a stale in-progress or completed todo event does not change the active todo", () => {
+  const s = run(
+    ev({ sec: 5, type: "status", todo: { id: "b", status: "in_progress" } }),
+    // Older: neither takes over nor clears.
+    ev({ sec: 2, type: "status", todo: { id: "a", status: "in_progress" } }),
+    ev({ sec: 3, type: "status", todo: { id: "b", status: "completed" } }),
+    ev({ sec: 6, toolClass: "edit" }),
+  );
+  expect(stage(s, "todo:b")).toBe("checkpoint");
+  // Nothing went to a turn job.
+  expect([...s.jobs.values()].some((j) => j.kind === "turn")).toBe(false);
 });

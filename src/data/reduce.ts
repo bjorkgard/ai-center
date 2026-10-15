@@ -55,8 +55,10 @@ export interface SessionAgg {
   // Set while the session is done only because it was idle for IDLE_END_MS: the end time and
   // the status it had, so a late event can reopen it.
   inferred?: { endAt: number; status: SessionStatus; statusAt: number; statusId: string };
-  // The TodoWrite item in progress, for the job model.
+  // Job model state: the TodoWrite item in progress, its ordering stamp and the current turn.
   activeTodo?: string;
+  todoStamp?: { at: number; id: string };
+  activeTurn?: { key: string; at: number; id: string };
 }
 
 // Rate state of one session, kept apart from the aggregates because it depends on when the
@@ -478,10 +480,25 @@ export function integrateInlet(
   toSec: number,
 ): number {
   let last = -Infinity;
-  for (const sec of buckets.keys()) last = Math.max(last, sec);
+  let next = Infinity;
+  for (const sec of buckets.keys()) {
+    last = Math.max(last, sec);
+    if (sec > fromSec) next = Math.min(next, sec);
+  }
   let window = 0;
   for (let j = fromSec - RATE_WINDOW_S + 1; j <= fromSec; j++) window += buckets.get(j) ?? 0;
   let value = inlet;
+  if (window === 0 && next > fromSec + 1) {
+    // An idle rack waking after a long gap: the empty seconds before the next bucket are one
+    // exact decay, so the work stays bounded by the window, not by the gap.
+    const skip = Math.min(next, toSec);
+    const target = inletTarget(0);
+    value = target + (value - target) * Math.exp(-(skip - fromSec) / LAG_TAU_S);
+    if (skip === toSec) return Math.abs(value - target) < 1e-12 ? target : value;
+    fromSec = skip;
+    window = 0;
+    for (let j = fromSec - RATE_WINDOW_S + 1; j <= fromSec; j++) window += buckets.get(j) ?? 0;
+  }
   for (let k = fromSec; k < toSec; k++) {
     if (k > fromSec) window += (buckets.get(k) ?? 0) - (buckets.get(k - RATE_WINDOW_S) ?? 0);
     if (window === 0 && k >= last) {

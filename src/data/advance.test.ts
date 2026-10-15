@@ -598,3 +598,35 @@ test("applying batches never changes the base state's tombstones", () => {
   expect(after.tombstones.size).toBe(1);
   expect(pre.tombstones.size).toBe(0);
 });
+
+test("a rack idle for a day then active advances in bounded work and keeps its inlet", () => {
+  class Counting extends Map<number, number> {
+    reads = 0;
+    override get(k: number) {
+      this.reads++;
+      return super.get(k);
+    }
+  }
+  const DAY = 86_400;
+  const base = new Counting([[0, 8000]]);
+  const wake = new Counting([[0, 8000]]);
+  wake.set(DAY, 5000);
+  // Reference: step every second, no fast-forward.
+  const naive = (inlet: number, b: Map<number, number>, from: number, to: number) => {
+    let v = inlet;
+    for (let k = from; k < to; k++) {
+      let w = 0;
+      for (let j = k - 59; j <= k; j++) w += b.get(j) ?? 0;
+      const target = 22 + 0.25 * Math.min(40, 0.8 + 0.004 * w);
+      v = target + (v - target) * Math.exp(-1 / 30);
+    }
+    return v;
+  };
+  // Settled long ago, then it wakes: the lag since second 600 covers a whole idle day.
+  const settled = integrateInlet(22.2, base, 0, 600);
+  wake.reads = 0;
+  const got = integrateInlet(settled, wake, 600, DAY + 120);
+  expect(wake.reads).toBeLessThan(1000);
+  const ref = naive(settled, wake, 600, DAY + 120);
+  expect(Math.abs(got - ref)).toBeLessThan(1e-9);
+});

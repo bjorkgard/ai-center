@@ -19,7 +19,7 @@ import { aggregatesOf, ringEvents, totalInvalid } from "../../data/reduce.ts";
 import { SCENARIO_NAMES } from "../../data/scenarios.ts";
 import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
 import { resetStore, useStore } from "./index.ts";
-import { setWarnClock } from "./data.ts";
+import { metricsTime, setWarnClock } from "./data.ts";
 
 class FakeSource implements Source {
   name = "fake";
@@ -708,3 +708,22 @@ test.each(["steady", "churn", "overflow", "errors", "waiting"])(
   },
   120_000,
 );
+
+test("metrics are read at the advanced time, which a behind source holds back, so tokens stay in the window", () => {
+  fake();
+  const source = new ClockedSource(1, false, T0 + 120_000);
+  store().connect(source);
+  source.report("live");
+  const usage = quiet(T0, {
+    type: "usage",
+    status: undefined,
+    tokens: { in: 4000, out: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+  // The source has delivered only through T0 + 10 s while its clock is at T0 + 120 s.
+  store().ingest("fake", [usage], undefined, T0 + 10_000);
+  expect(source.clock.now()).toBe(T0 + 120_000);
+  expect(metricsTime(store().clock)).toBe(T0 + 10_000);
+  expect(tokensPerMin(store(), metricsTime(store().clock)).value).toBe(4000);
+  // Read at the raw clock the same tokens have left the 60 s window.
+  expect(tokensPerMin(store(), source.clock.now()).value).toBe(0);
+});
