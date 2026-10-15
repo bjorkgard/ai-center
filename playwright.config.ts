@@ -54,6 +54,8 @@ export default defineConfig({
   webServer: {
     command: `vp build && vp preview --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: URL,
+    // The log server must not watch the real home directory.
+    env: { SYNAPSE_LOG_ROOTS: "none" },
     reuseExistingServer: false,
     timeout: 120_000,
   },

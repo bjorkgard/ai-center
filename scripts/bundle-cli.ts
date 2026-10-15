@@ -6,6 +6,9 @@ export const workDir = resolve("node_modules/.cache/synapse-horizon");
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
 
+/** ws's optional native add-ons: left external, it falls back to its JS paths when they are missing. */
+export const EXTERNAL = ["bufferutil", "utf-8-validate"];
+
 /** Bundles sidecar/cli.ts to one CommonJS file, shared by `serve` and `build:bin`. */
 export async function bundleCli(): Promise<string> {
   mkdirSync(workDir, { recursive: true });
@@ -21,6 +24,7 @@ export async function bundleCli(): Promise<string> {
     platform: "node",
     format: "cjs",
     target: "node24",
+    external: EXTERNAL,
     outfile,
     define: { __CLI_VERSION__: JSON.stringify(version) },
     logLevel: "warning",

@@ -1,11 +1,13 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createNetServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import WebSocketClient from "ws";
+import { afterAll, afterEach, describe, expect, test } from "vite-plus/test";
 import { loadDiskAssets } from "./assets.ts";
 import { openCommand, parseArgs, run, UsageError, type Io } from "./cli.ts";
+import { configPathFor } from "./roots.ts";
 import { createServer, type AssetMap } from "./server.ts";
 
 const assets: AssetMap = new Map([
@@ -16,6 +18,17 @@ const assets: AssetMap = new Map([
 ]);
 
 const occupied: Server[] = [];
+const scratch = mkdtempSync(join(tmpdir(), "sh-cli-"));
+let scratchCount = 0;
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+const freshDir = () => {
+  const dir = join(scratch, `d${scratchCount++}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+};
+const enoent = () => {
+  throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+};
 
 function occupy(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -65,6 +78,12 @@ function harness(overrides: Partial<Io> = {}) {
     createServer,
     signals,
     version: "9.9.9",
+    // Never the real home: tests that need log folders pass their own flags.
+    env: { SYNAPSE_LOG_ROOTS: "none" },
+    platform: process.platform,
+    homedir: join(scratch, "home"),
+    cwd: scratch,
+    readConfig: enoent,
     onListening: (port) => onReady(port),
     ...overrides,
   };
@@ -120,6 +139,75 @@ describe("flags (UsageError)", () => {
     expect(await run(["--help"], h.io)).toBe(0);
     expect(h.out.join("\n")).toContain("--no-open");
   });
+
+  test("parses --log-root (repeatable, also --log-root=) and --no-logs", () => {
+    expect(parseArgs(["--log-root", "/a", "--log-root=/b", "--no-logs"])).toMatchObject({
+      logRoots: ["/a", "/b"],
+      noLogs: true,
+    });
+    expect(parseArgs([])).toMatchObject({ logRoots: [], noLogs: false });
+    expect(() => parseArgs(["--log-root"])).toThrow(/--log-root needs a folder/);
+    expect(() => parseArgs(["--log-root="])).toThrow(UsageError);
+  });
+});
+
+describe("--help (DX2)", () => {
+  test("lists the flags, the env var, the config path for this OS and the default roots", async () => {
+    const env = {};
+    const h = harness({ env, homedir: "/home/u", platform: "linux" });
+    expect(await run(["--help"], h.io)).toBe(0);
+    const text = h.out.join("\n");
+    for (const expected of [
+      "--log-root <dir>",
+      "repeatable",
+      "--no-logs",
+      "SYNAPSE_LOG_ROOTS",
+      '"none"',
+      configPathFor(env, "linux", "/home/u"),
+      "/home/u/.claude/projects",
+      "/home/u/.codex/sessions",
+      "CLAUDE_CONFIG_DIR",
+      "CODEX_HOME",
+      "#configuration",
+    ]) {
+      expect(text).toContain(expected);
+    }
+  });
+
+  test("shows the Windows config path on win32", async () => {
+    const h = harness({
+      env: { APPDATA: "C:\\Users\\u\\AppData\\Roaming" },
+      platform: "win32",
+      homedir: "C:\\Users\\u",
+    });
+    await run(["--help"], h.io);
+    expect(h.out.join("\n")).toContain("synapse-horizon\\config.json");
+  });
+});
+
+describe("config file errors (DX4)", () => {
+  test.each([
+    ["invalid JSON", () => "{nope", /invalid config file/],
+    [
+      "an unreadable file",
+      () => {
+        throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+      },
+      /cannot read the config file/,
+    ],
+  ])(
+    "%s exits 1 naming the path, the error and a valid example",
+    async (_name, readConfig, pattern) => {
+      const h = harness({ env: {}, homedir: "/home/u", platform: "linux", readConfig });
+      expect(await run(["--no-open"], h.io)).toBe(1);
+      const text = h.err.join("\n");
+      expect(text).toContain("/home/u/.config/synapse-horizon/config.json");
+      expect(text).toMatch(pattern);
+      expect(text).toContain('"logRoots"');
+      expect(text).toContain("#configuration");
+      expect(h.out).toEqual([]);
+    },
+  );
 });
 
 describe("listen", () => {
@@ -251,8 +339,126 @@ describe("signals", () => {
     const free = await occupy(0);
     await new Promise((resolve) => occupied.pop()!.close(resolve));
     const s = await serve(["--port", String(free), "--no-open"]);
-    expect(s.out[0]).toBe(`Synapse Horizon 9.9.9 (dist) at http://127.0.0.1:${free}`);
+    expect(s.out.slice(0, 3)).toEqual([
+      "Synapse Horizon 9.9.9 (dist)",
+      `listening on http://127.0.0.1:${free}/`,
+      "[logs] watching nothing (SYNAPSE_LOG_ROOTS=none)",
+    ]);
     s.signals.emit("SIGINT");
     await s.done;
+  });
+});
+
+describe("[logs] lines (X3, G5, DX4)", () => {
+  async function started(argv: string[], overrides: Partial<Io> = {}) {
+    const s = await serve(["--no-open", ...argv], overrides);
+    s.signals.emit("SIGINT");
+    await s.done;
+    return s.out.filter((line) => line.startsWith("[logs]"));
+  }
+
+  test("one line per root with its path and 24 h file count", async () => {
+    const root = freshDir();
+    writeFileSync(join(root, "a.jsonl"), "1\n");
+    writeFileSync(join(root, "b.jsonl"), "1\n");
+    expect(await started(["--log-root", root])).toEqual([
+      `[logs] ${root}: 2 files modified in the last 24 h (flag)`,
+    ]);
+  });
+
+  test("zero files adds the hint", async () => {
+    const root = freshDir();
+    const lines = await started(["--log-root", root]);
+    expect(lines).toEqual([
+      `[logs] ${root}: 0 files modified in the last 24 h (flag)`,
+      "[logs] no Claude Code or Codex logs found in the last 24 h; start a session, or pass --log-root <dir>",
+    ]);
+  });
+
+  test("a missing root: problem, fix and README anchor", async () => {
+    const missing = join(scratch, "nope");
+    const lines = await started(["--log-root", missing]);
+    expect(lines[0]).toBe(
+      `[logs] root not found: ${missing}; set --log-root or SYNAPSE_LOG_ROOTS (see README #configuration)`,
+    );
+  });
+
+  test("--no-logs and SYNAPSE_LOG_ROOTS=none watch nothing", async () => {
+    expect(await started(["--no-logs"])).toEqual(["[logs] watching nothing (--no-logs)"]);
+    expect(await started([], { env: { SYNAPSE_LOG_ROOTS: "none" } })).toEqual([
+      "[logs] watching nothing (SYNAPSE_LOG_ROOTS=none)",
+    ]);
+  });
+
+  test("the inotify limit: names ENOSPC, the polling fallback and the sysctl fix", async () => {
+    const root = freshDir();
+    writeFileSync(join(root, "a.jsonl"), "1\n");
+    const lines = await started(["--log-root", root], {
+      logOptions: {
+        watch: {
+          watch: () => {
+            throw Object.assign(new Error("ENOSPC: no space"), { code: "ENOSPC" });
+          },
+        },
+      },
+    });
+    expect(lines[0]).toBe(
+      `[logs] cannot watch ${root}: inotify watch limit reached (ENOSPC); polling every 5 s instead. Raise it with: sudo sysctl fs.inotify.max_user_watches=524288 (see README #configuration)`,
+    );
+  });
+
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "an unreadable file: EACCES, skipped, check the owner",
+    async () => {
+      const root = freshDir();
+      const locked = join(root, "locked.jsonl");
+      writeFileSync(locked, "1\n");
+      chmodSync(locked, 0o000);
+      const s = await serve(["--no-open", "--log-root", root]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      s.signals.emit("SIGINT");
+      await s.done;
+      chmodSync(locked, 0o600);
+      expect(s.out).toContain(
+        `[logs] permission denied (EACCES) reading ${locked}; skipped. Check the file's owner (see README #configuration)`,
+      );
+    },
+  );
+
+  test("the env var and the config file feed the same resolver", async () => {
+    const root = freshDir();
+    expect(await started([], { env: { SYNAPSE_LOG_ROOTS: root } })).toEqual([
+      `[logs] ${root}: 0 files modified in the last 24 h (env)`,
+      expect.stringContaining("no Claude Code or Codex logs found"),
+    ]);
+    const fromConfig = await started([], {
+      env: {},
+      readConfig: () => JSON.stringify({ logRoots: [root] }),
+    });
+    expect(fromConfig[0]).toBe(`[logs] ${root}: 0 files modified in the last 24 h (config)`);
+  });
+});
+
+describe("log server in the binary", () => {
+  test("SIGINT closes open WebSocket clients, then exits 0", async () => {
+    const root = freshDir();
+    writeFileSync(join(root, "a.jsonl"), "1\n2\n");
+    const s = await serve(["--no-open", "--log-root", root]);
+    const html = await (await fetch(`http://127.0.0.1:${s.port}/`)).text();
+    const token = /name="synapse-token" content="([^"]+)"/.exec(html)![1];
+    const messages: unknown[] = [];
+    const ws = new WebSocketClient(`ws://127.0.0.1:${s.port}/api/stream`);
+    ws.on("message", (data) => messages.push(JSON.parse((data as Buffer).toString())));
+    await new Promise((resolve) => ws.on("open", resolve));
+    ws.send(JSON.stringify({ type: "hello", token, cursors: [] }));
+    const closed = new Promise<number>((resolve) => ws.on("close", resolve));
+    const started = Date.now();
+    while (!messages.some((m) => (m as { type: string }).type === "lines")) {
+      if (Date.now() - started > 3000) throw new Error("no lines message");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    s.signals.emit("SIGINT");
+    expect(await s.done).toBe(0);
+    expect(await closed).toBe(1001);
   });
 });

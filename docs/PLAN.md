@@ -626,7 +626,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
   - A type test (`// @ts-expect-error` on passing a `number`) proves the formatter rejects raw numbers. The `dev=1` HUD Data section shows each metric with the correct badge. A Playwright audit asserts every `[data-metric]` element contains a provenance badge.
 - **README:** "Provenance legend" section with badge image `13-provenance.png` and the estimation formulas. Notes the tombstone limits: a reactivated session restarts its per-session counters at 0, and an id dropped from the full 100,000-id set counts as a new session (pass-2 1.4).
 
-#### [ ] 14a. Log server: watcher, tailer and WebSocket stream
+#### [x] 14a. Log server: watcher, tailer and WebSocket stream
 - **Goal:** The dev server, the preview server and the release binary themselves tail real log folders and stream to the app over a gated WebSocket (eng review D1). This chunk is Node only; nothing in the browser connects until chunk 14c.
 - **Depends on:** 11, 12 (`sourceEpoch`, `SourceStatus`, params), 02b (extends `sidecar/cli.ts` and uses `vp run build:bin`; the open 02b ruleset item does not block this chunk).
 - **Tasks:**
