@@ -113,6 +113,36 @@ Scenarios (`src/data/scenarios.ts`) select what the mock shows. Add `&speed=10` 
 
 ![The Data section open over the frozen mock catch-up](docs/img/11-store-debug.png)
 
+## Configuration
+
+The dev server (`vp dev`), the preview server (`vp preview`) and the release binary tail Claude Code and Codex log folders and stream per-file line counts to the app over a WebSocket at `/api/stream`. Nothing leaves your machine: the server binds to `127.0.0.1` (`localhost` under `vp dev`), refuses other Host and Origin headers, and the page needs a per-run token. In this version the stream carries counts and folder paths only.
+
+Which folders are watched is decided by the first of these that names any; sources never merge, so to add a folder you must list the defaults too.
+
+1. `--log-root <dir>` (repeatable): binary only, `synapse-horizon --log-root ~/a --log-root ~/b`.
+2. `SYNAPSE_LOG_ROOTS`: folders separated by `:` (`;` on Windows). `SYNAPSE_LOG_ROOTS=none` watches nothing, so a folder literally named `none` needs `--log-root`.
+3. `logRoots` in the config file (a missing file is normal):
+   - macOS and Linux: `$XDG_CONFIG_HOME/synapse-horizon/config.json`, else `~/.config/synapse-horizon/config.json`
+   - Windows: `%APPDATA%\synapse-horizon\config.json`
+4. The defaults: `$CLAUDE_CONFIG_DIR/projects` (else `~/.claude/projects`) and `$CODEX_HOME/sessions` (else `~/.codex/sessions`).
+
+A config file that exists but cannot be read or parsed never falls back to the defaults: the binary exits with the path, the error and a valid example, and the dev and preview servers watch nothing and show the error as the folder's status. `--no-logs` watches nothing as well. [`config.example.json`](config.example.json) is a valid file:
+
+```json
+{ "logRoots": ["/home/you/.claude/projects", "/home/you/.codex/sessions"] }
+```
+
+```bash
+# the defaults plus a second Claude Code folder, for one run
+synapse-horizon --log-root ~/.claude/projects --log-root ~/.codex/sessions --log-root /work/other/.claude/projects
+SYNAPSE_LOG_ROOTS="$HOME/.claude/projects:$HOME/.codex/sessions:/mnt/other/logs" vp dev
+synapse-horizon --no-logs            # serve the app, watch nothing
+```
+
+On start the binary prints the version, `listening on http://127.0.0.1:<port>/` and one `[logs]` line per folder: its resolved path and how many files changed in the last 24 h, or why it is missing or unreadable. Only files modified in the last 24 h are read at startup, in 64 KiB chunks.
+
+If a `[logs]` line says the inotify watch limit was reached (`ENOSPC`, Linux), the folder is polled every 5 s instead; raise the limit with `sudo sysctl fs.inotify.max_user_watches=524288`. A `permission denied (EACCES)` line names a file the server could not read; check its owner. Quick start and "Data sources and privacy" arrive with the live source.
+
 ## Controls
 
 Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground (a road, a pad or open ground, not a hall) flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` frames the placed campus, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.

@@ -1,6 +1,8 @@
 import { request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import WebSocketClient from "ws";
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { createLogServer, type LogServer } from "./logServer.ts";
 import { checkHost, createServer, type AssetMap } from "./server.ts";
 
 const assets: AssetMap = new Map([
@@ -140,5 +142,97 @@ describe("handler errors", () => {
     expect(logs[0]).toContain("500 GET /boom");
     expect(logs[0]).toContain("kaboom");
     expect((await get(port, "/")).status).toBe(200);
+  });
+});
+
+describe("log server in the binary", () => {
+  const sockets: WebSocketClient[] = [];
+  let logServer: LogServer | undefined;
+
+  async function startWithLogs() {
+    logs = [];
+    logServer = createLogServer({
+      mode: "binary",
+      resolution: { kind: "none", reason: "--no-logs" },
+      log: (line) => logs.push(line),
+      helloTimeoutMs: 150,
+    });
+    server = createServer({ port: 0, assets, log: (line) => logs.push(line), logServer });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    return { port: (server.address() as AddressInfo).port, logServer };
+  }
+
+  afterEach(async () => {
+    while (sockets.length > 0) sockets.pop()!.terminate();
+    await logServer?.stop();
+    logServer = undefined;
+  });
+
+  function upgrade(port: number, headers: Record<string, string>) {
+    return new Promise<{ status?: number; code?: number }>((resolve) => {
+      const ws = new WebSocketClient(`ws://127.0.0.1:${port}/api/stream`, { headers });
+      sockets.push(ws);
+      ws.on("unexpected-response", (_req, res) => {
+        resolve({ status: res.statusCode });
+        res.resume();
+      });
+      ws.on("close", (code) => resolve({ code }));
+      ws.on("error", () => {});
+    });
+  }
+
+  test("/, /index.html and a deep SPA route carry the current token, both metas and no-store", async () => {
+    const { port, logServer } = await startWithLogs();
+    for (const path of ["/", "/index.html", "/halls/a/deep"]) {
+      const res = await get(port, path);
+      expect(res.status).toBe(200);
+      expect(res.body).toContain(`<meta name="synapse-token" content="${logServer.token}" />`);
+      expect(res.body).toContain('<meta name="synapse-mode" content="binary" />');
+      expect(res.headers["cache-control"]).toBe("no-store");
+    }
+    expect((await get(port, "/assets/app.js")).headers["cache-control"]).toBeUndefined();
+  });
+
+  test("a foreign Host gets 421 naming the URL to use, on every route", async () => {
+    const { port } = await startWithLogs();
+    for (const path of ["/", "/api/session", "/api/import"]) {
+      const res = await get(port, path, `evil.example:${port}`);
+      expect(res.status).toBe(421);
+      expect(res.body).toContain(`http://127.0.0.1:${port}/`);
+    }
+    expect((await upgrade(port, { Host: `evil.example:${port}` })).status).toBe(421);
+  });
+
+  test("the WebSocket gate: another origin gets 403, absent origin needs the token, the right token streams", async () => {
+    const { port, logServer } = await startWithLogs();
+    expect((await upgrade(port, { Origin: `http://127.0.0.1:${port + 1}` })).status).toBe(403);
+    expect(await upgrade(port, {})).toEqual({ code: 4401 });
+    const ok = new WebSocketClient(`ws://127.0.0.1:${port}/api/stream`);
+    sockets.push(ok);
+    const received: unknown[] = [];
+    const roots = new Promise<unknown>((resolve) =>
+      ok.on("message", (data) => {
+        const message = JSON.parse((data as Buffer).toString()) as { type: string };
+        received.push(message);
+        if (message.type === "roots") resolve(message);
+      }),
+    );
+    ok.on("open", () =>
+      ok.send(JSON.stringify({ type: "hello", token: logServer.token, cursors: [] })),
+    );
+    expect(await roots).toEqual({ type: "roots", roots: [] });
+    expect(received[0]).toEqual({ type: "heartbeat" });
+  });
+
+  test("an upgrade for any other path is closed, and /api/session answers the right Host", async () => {
+    const { port, logServer } = await startWithLogs();
+    const other = new WebSocketClient(`ws://127.0.0.1:${port}/not-the-stream`);
+    sockets.push(other);
+    const closed = await new Promise<boolean>((resolve) => {
+      other.on("error", () => resolve(true));
+      other.on("open", () => resolve(false));
+    });
+    expect(closed).toBe(true);
+    expect(JSON.parse((await get(port, "/api/session")).body)).toEqual({ token: logServer.token });
   });
 });

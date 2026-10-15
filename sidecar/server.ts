@@ -1,6 +1,7 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server } from "node:http";
 import type { ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { templateIndex, type LogServer } from "./logServer.ts";
 
 export interface Asset {
   bytes: Uint8Array;
@@ -15,6 +16,8 @@ export interface ServerOptions {
   port: number;
   assets: AssetMap;
   log: (line: string) => void;
+  /** When set, serves /api/session, /api/import and the /api/stream WebSocket, and templates index.html. */
+  logServer?: LogServer;
 }
 
 export type HostVerdict = "serve" | "redirect" | "reject";
@@ -64,11 +67,13 @@ function send(
   status: number,
   contentType: string,
   body: Uint8Array | string,
+  extraHeaders: Record<string, string> = {},
 ): void {
   res.writeHead(status, {
     "Content-Type": contentType,
     "Content-Length": typeof body === "string" ? Buffer.byteLength(body) : body.byteLength,
     "X-Content-Type-Options": "nosniff",
+    ...extraHeaders,
   });
   res.end(method === "HEAD" ? undefined : body);
 }
@@ -77,7 +82,7 @@ function sendText(res: ServerResponse, method: string | undefined, status: numbe
   send(res, method, status, "text/plain; charset=utf-8", text);
 }
 
-export function createServer({ port, assets, log }: ServerOptions): Server {
+export function createServer({ port, assets, log, logServer }: ServerOptions): Server {
   function boundPort(server: Server): number {
     const address = server.address();
     return address !== null && typeof address === "object" ? (address as AddressInfo).port : port;
@@ -89,7 +94,7 @@ export function createServer({ port, assets, log }: ServerOptions): Server {
     const verdict = checkHost(host, boundPort(server));
     if (verdict === "reject") {
       log(`421 ${method} ${url} Host: ${host ?? "(none)"}`);
-      sendText(res, method, 421, "Misdirected Request");
+      sendText(res, method, 421, `Misdirected Request: use http://127.0.0.1:${boundPort(server)}/`);
       return;
     }
     if (!url.startsWith("/")) {
@@ -101,6 +106,7 @@ export function createServer({ port, assets, log }: ServerOptions): Server {
       res.end();
       return;
     }
+    if (logServer?.handleRequest(req, res, boundPort(server))) return;
     if (method !== "GET" && method !== "HEAD") {
       res.setHeader("Allow", "GET, HEAD");
       sendText(res, method, 405, "Method Not Allowed");
@@ -122,10 +128,21 @@ export function createServer({ port, assets, log }: ServerOptions): Server {
       return;
     }
 
+    // Every response that serves index.html carries the current token and is never cached.
+    const sendIndex = (index: Asset) => {
+      if (!logServer) return send(res, method, 200, index.contentType, index.bytes);
+      const html = templateIndex(Buffer.from(index.bytes).toString("utf8"), {
+        token: logServer.token,
+        mode: "binary",
+      });
+      send(res, method, 200, index.contentType, html, { "Cache-Control": "no-store" });
+    };
+
     const key = path === "/" ? "/index.html" : path;
     const asset = assets.get(key);
     if (asset) {
-      send(res, method, 200, asset.contentType, asset.bytes);
+      if (key === "/index.html") sendIndex(asset);
+      else send(res, method, 200, asset.contentType, asset.bytes);
       return;
     }
     if (path.startsWith("/assets/")) {
@@ -134,7 +151,7 @@ export function createServer({ port, assets, log }: ServerOptions): Server {
     }
     const index = assets.get("/index.html");
     if (index) {
-      send(res, method, 200, index.contentType, index.bytes);
+      sendIndex(index);
       return;
     }
     sendText(res, method, 404, "Not Found");
@@ -151,5 +168,10 @@ export function createServer({ port, assets, log }: ServerOptions): Server {
       else res.destroy();
     }
   });
+  if (logServer) {
+    server.on("upgrade", (req, socket, head) => {
+      if (!logServer.handleUpgrade(req, socket, head, boundPort(server))) socket.destroy();
+    });
+  }
   return server;
 }
