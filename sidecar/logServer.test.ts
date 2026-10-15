@@ -326,11 +326,24 @@ describe("limits", () => {
       '{"type":"hello","cursors":[]}',
       '{"type":"hello","token":5,"cursors":[]}',
       '{"type":"hello","token":null,"cursors":[]}',
+      '{"type":"hello","token":"stale"}',
+      '{"type":"hello","token":"stale","cursors":"x"}',
     ]) {
       const c = connect(port, null);
       c.ws.onopen = () => c.ws.send(first);
       await until(() => c.state.code !== undefined, 2000);
       expect(c.state.code).toBe(4401);
+    }
+  });
+
+  test("a correct token with malformed cursors closes 4400", async () => {
+    const { port, logServer } = await startServer(freshRoot());
+    for (const cursors of ['"x"', "[1]", "null"]) {
+      const c = connect(port, null);
+      c.ws.onopen = () =>
+        c.ws.send(`{"type":"hello","token":"${logServer.token}","cursors":${cursors}}`);
+      await until(() => c.state.code !== undefined, 2000);
+      expect(c.state.code).toBe(4400);
     }
   });
 

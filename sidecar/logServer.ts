@@ -116,14 +116,18 @@ export function matchCursors(cursors: Cursor[], known: { has(path: string): bool
   return cursors.filter((cursor) => known.has(cursor.path));
 }
 
-/** True for a JSON hello whose token is missing or not a string. */
-function helloWithoutToken(text: string | undefined): boolean {
-  if (text === undefined) return false;
+/**
+ * The token of a first message that is a JSON object of type "hello": its string value, or null
+ * when it is missing or not a string. undefined when the message is not a hello at all.
+ */
+function helloToken(text: string | undefined): string | null | undefined {
+  if (text === undefined) return undefined;
   try {
     const value = JSON.parse(text) as { type?: unknown; token?: unknown } | null;
-    return value?.type === "hello" && typeof value.token !== "string";
+    if (typeof value !== "object" || value === null || value.type !== "hello") return undefined;
+    return typeof value.token === "string" ? value.token : null;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -305,16 +309,13 @@ export function createLogServer(options: LogServerOptions): LogServer {
       clearTimeout(helloTimer);
       pendingSockets.delete(ws);
       const text = isBinary ? undefined : Buffer.from(data as Buffer).toString("utf8");
-      const hello = text === undefined ? undefined : parseClientMessage(text);
-      if (hello === undefined) {
-        // A hello with a missing or non-string token is a token failure; anything else is not a hello.
-        return ws.close(
-          ...((helloWithoutToken(text)
-            ? [4401, "bad token"]
-            : [4400, "the first message must be a hello"]) as [number, string]),
-        );
-      }
-      if (hello.token !== token) return ws.close(4401, "bad token");
+      // One decision path: not a hello is 4400; a hello whose token is not ours is 4401, before
+      // anything else about it is validated; then a malformed rest is 4400.
+      const sent = helloToken(text);
+      if (sent === undefined) return ws.close(4400, "the first message must be a hello");
+      if (sent !== token) return ws.close(4401, "bad token");
+      const hello = parseClientMessage(text!);
+      if (hello === undefined) return ws.close(4400, "malformed hello");
       if (hello.cursors.length > tails.size) return ws.close(4400, "too many cursors");
       const accepted = new Channel(ws, bufferLimit);
       channel = accepted;

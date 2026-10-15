@@ -209,13 +209,19 @@ describe("log server in the binary", () => {
     expect(await upgrade(port, {})).toEqual({ code: 4401 });
     const ok = new WebSocketClient(`ws://127.0.0.1:${port}/api/stream`);
     sockets.push(ok);
-    const first = new Promise<string>((resolve) =>
-      ok.on("message", (data) => resolve((data as Buffer).toString())),
+    const received: unknown[] = [];
+    const roots = new Promise<unknown>((resolve) =>
+      ok.on("message", (data) => {
+        const message = JSON.parse((data as Buffer).toString()) as { type: string };
+        received.push(message);
+        if (message.type === "roots") resolve(message);
+      }),
     );
     ok.on("open", () =>
       ok.send(JSON.stringify({ type: "hello", token: logServer.token, cursors: [] })),
     );
-    expect(JSON.parse(await first)).toEqual({ type: "heartbeat" });
+    expect(await roots).toEqual({ type: "roots", roots: [] });
+    expect(received[0]).toEqual({ type: "heartbeat" });
   });
 
   test("an upgrade for any other path is closed, and /api/session answers the right Host", async () => {
