@@ -547,3 +547,54 @@ test("compacted (ring 2) and uncompacted (ring 1000) runs agree across a model s
   expect(big.c.value).toBeCloseTo(16, 9);
   expect(small.c.basis).toBe(big.c.basis);
 });
+
+test("a reactivated session keeps the model it had, so a model-less event prices at it (compacted = uncompacted)", () => {
+  const back = { now: T0 + 130_000, mark: T0 + 120_000 };
+  const run = (cap: number) => {
+    let s = emptyData(cap);
+    s = applyBatch(s, [
+      ev({ sessionId: "m", model: "claude-opus-4", tokens: tok(ONE_M) }),
+      ev({ sessionId: "m", model: "claude-opus-4", type: "session_end", at: 1 }),
+    ]);
+    s = evict(s, "m", 10);
+    s = applyBatch(
+      s,
+      [ev({ sessionId: "m", model: undefined, tokens: tok(ONE_M), at: 130_000 })],
+      back,
+    );
+    s = applyBatch(
+      s,
+      [ev({ sessionId: "m", model: undefined, type: "session_end", at: 130_001 })],
+      back,
+    );
+    s = evict(s, "m", 140_000);
+    return cost(s);
+  };
+  for (const cap of [2, 1000]) {
+    const c = run(cap);
+    expect(c.value, `ring ${cap}`).toBeCloseTo(30, 9);
+    expect(c.basis).not.toContain("excludes");
+  }
+});
+
+test("applying batches never changes the base state's tombstones", () => {
+  let base = emptyData(2);
+  base = applyBatch(base, [ev({ sessionId: "m", type: "session_end", tokens: tok(5) })]);
+  base = evict(base, "m", 10);
+  const before = [...base.tombstones];
+  expect(before).toHaveLength(1);
+  const revived = applyBatch(base, [ev({ sessionId: "m", at: 130_000 })], {
+    now: T0 + 130_000,
+    mark: T0 + 120_000,
+  });
+  applyBatch(base, [ev({ sessionId: "z", at: 130_000 })]);
+  expect(revived.tombstones.has(rateKey("main", "m"))).toBe(false);
+  expect([...base.tombstones]).toEqual(before);
+  // Eviction copies too.
+  let pre = emptyData(2);
+  pre = applyBatch(pre, [ev({ sessionId: "q", type: "session_end" })]);
+  pre = applyBatch(pre, [ev({ sessionId: "q-x", at: 1 }), ev({ sessionId: "q-x", at: 2 })]);
+  const after = advance(pre, T0 + MIN);
+  expect(after.tombstones.size).toBe(1);
+  expect(pre.tombstones.size).toBe(0);
+});

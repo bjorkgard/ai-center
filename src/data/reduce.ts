@@ -118,8 +118,9 @@ export interface DataState {
   unknownSessions: Set<string>;
   // Jobs per session (authoritative, eng Q1); dropped with their session.
   jobs: Map<string, JobAgg>;
-  // Ids of evicted sessions, oldest first, mutated in place like the ring.
-  tombstones: Set<string>;
+  // Rate keys of evicted sessions, oldest first, with the model each had in effect (null: none),
+  // so a returning session keeps pricing at it. Copied on write.
+  tombstones: Map<string, string | null>;
   // Mutated in place at commit time; ringVersion changes with every commit that touches it.
   ring: Ring;
   ringVersion: number;
@@ -161,7 +162,7 @@ export function emptyData(cap: number = RING_CAP): DataState {
     modelTokens: new Map(),
     unknownSessions: new Set(),
     jobs: new Map(),
-    tombstones: new Set(),
+    tombstones: new Map(),
     ring: createRing(cap),
     ringVersion: 0,
     dataHealth: emptyHealth(),
@@ -342,6 +343,7 @@ export function applyBatch(
       status: "idle",
       statusAt: -Infinity,
       statusId: "",
+      model: state.tombstones.get(key) ?? undefined,
     }));
     const sec = Math.floor(bucketAt / 1000);
     const rate = ownRate(rates, key, ownedRates, () => ({
@@ -422,9 +424,14 @@ export function applyBatch(
   }
 
   for (const e of fresh) pushRing(state.ring, e);
-  for (const key of reactivated) state.tombstones.delete(key);
+  let tombstones = state.tombstones;
+  if (reactivated.length > 0) {
+    tombstones = new Map(tombstones);
+    for (const key of reactivated) tombstones.delete(key);
+  }
   return {
     ...state,
+    tombstones,
     modelTokens,
     unknownSessions,
     sessions,
@@ -578,6 +585,7 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
   const gone = new Set<string>();
   let modelTokens = state.modelTokens;
   let unknownSessions = state.unknownSessions;
+  let tombstones = state.tombstones;
   for (const [kind, map] of [
     ["main", sessions],
     ["sub", subagents],
@@ -596,9 +604,9 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
       (kind === "main" ? sessions : subagents).delete(s.sessionId);
       rates.delete(key);
       gone.add(s.sessionId);
-      state.tombstones.add(key);
-      if (state.tombstones.size > TOMBSTONE_CAP)
-        state.tombstones.delete(state.tombstones.values().next().value!);
+      if (tombstones === state.tombstones) tombstones = new Map(tombstones);
+      tombstones.set(key, s.model ?? null);
+      if (tombstones.size > TOMBSTONE_CAP) tombstones.delete(tombstones.keys().next().value!);
       if (s.pending) {
         // Never named a model: its tokens become unknown-model tokens.
         if (modelTokens === state.modelTokens) modelTokens = new Map(modelTokens);
@@ -623,6 +631,7 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
     jobs,
     modelTokens,
     unknownSessions,
+    tombstones,
   };
 }
 
