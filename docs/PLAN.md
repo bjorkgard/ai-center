@@ -576,7 +576,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 
 ### Phase 4: Data layer
 
-#### [ ] 11. Schema, store, and steady mock source
+#### [x] 11. Schema, store, and steady mock source
 - **Goal:** One store fed by a mock stream, visible in a debug panel.
 - **Depends on:** 04a, for the store module it extends (CEO S-RW1); can run in parallel with 04b-10.
 - **Tasks:** `src/data/schema.ts` with zod types from section 2, using zod 4's `zod/mini` entry; add `zod` to `package.json` (CEO C40). Zustand store: incremental reducers into `projects`, `sessions`, `subagents` and token totals (authoritative; the jobs slice comes in chunk 13, CEO C35), plus a capped ring buffer for the recent timeline only (eng review Q1). Source interface `{ start, stop, onEvents, onStatus }` delivering events in batches; `onStatus(status, detail?)` reports `connecting`, `catching_up`, `live`, `closed` or `error`, the store keeps `source.status`, and `stop()` is idempotent with no event or status delivered after it (CEO C34); reducers apply a whole batch in one store update so subscribers fire once per batch, not once per event (eng review P3). Every event from a source passes `AgentEvent.safeParse` before reducing: invalid events are dropped, counted per source and zod issue path in `dataHealth.invalid`, and the first per path per minute logs one `[data]` warning naming the source, event id, issue path and code (never the field's value, D16); the rest of the batch applies. `applyBatch` builds the next state and commits it with one `set()`; if it throws, nothing commits, one `[data]` error names the source, batch size and first event id, and `source.status` becomes `error`. Later batches still apply, each all-or-nothing; the status stays `error` with the first failure's detail until the next `connect()`, ignoring later `live` reports, and `dataHealth.failedBatches` counts failures (eng E33). `MockSource` ignores a `now()` not later than its last tick (CEO C36). The ring buffer is a fixed-size circular array with a head index (no `Array.shift`), evicting each event's id from the seen-id set as it goes (eng chunk 11 Performance note). Reducers skip an event whose `id` is in a seen-id set bounded to the ring buffer's ids (evicted with them) and count skips in `dataHealth.duplicates`; per-session `lastSeen` and `status` follow the event with the greatest `ts`, not arrival order; an empty batch makes no `set()` (CEO C38). The data slice owns the source lifecycle: `connect(source)` stops any previous source, clears aggregates, ring buffer, seen ids and health, then starts it; `disconnect()` stops and clears; the `App.tsx` effect calls `connect` and returns `disconnect`, so StrictMode's double mount ends in a clean state (eng E30). Each source status change logs one `[data]` line (`[data] mock: catching_up -> live`), as `[scene]` transitions do (CEO S-RW40); the debug panel's header row shows source, status, events applied, batches, last batch size and apply time in ms, invalid and duplicate counts (CEO C41); under `freeze=1` the apply time shows as "—" so frozen captures do not depend on machine load (PR #27 review). Seeded deterministic mock generator, scenario `steady` (3 projects, Claude + Codex mix, a few subagents; project keys, titles and task text from fixed fictional lists such as `/work/orbit-api`, never the machine, `cwd` or env, CEO C37): a pure `mockEvents(seed, scenario, fromMs, toMs)` in `src/data/mock.ts` over sim milliseconds, using `src/sim/rng.ts`, with `ts` = the fixed anchor 2026-01-01T09:00:00Z + sim ms; it never reads `Date.now()` or timers. `MockSource` takes an injected sim clock `now()`, sends the first 10 sim minutes as catch-up on start, then every 250 ms sends the events between its last and current `now()`; under `freeze=1` it sends only the catch-up (CEO C33). Every source delivers batches of at most `MAX_BATCH` = 500 events (`schema.ts`), so the mock splits its catch-up and stays `catching_up` until the last piece (eng E32). Dev menu source switch; `source` accepts `mock` and `scenario` accepts `steady` through the `params.ts` allowlist, other values warn and fall back (CEO S-RW2). Raw debug panel as a collapsed "Data" section in the `dev=1` HUD menu after Network (Geist Mono 12 px, like the Phase 3 sections): the source switch, the C41 health row, and sessions sorted by `lastSeen` newest first, capped at 50 rows with "+N more", or "No sessions yet (source: <status>)" when empty (CEO C42); clicking a session row lists, under it, its last 20 events (time, type, tool name, status) from the ring buffer, `dev=1` only (CEO C32). `vp run mock:dump -- --seed N --scenario steady --minutes M --out <file>` writes the mock's normalised events as JSONL to `<file>` (a file, not stdout, so `vp run` output cannot mix in), one event per line in generator order, covering M sim minutes from sim time 0; an unknown scenario, or a missing or invalid `--seed`, `--minutes` (a whole number above 0) or `--out`, exits non-zero naming the problem (only `steady` until chunk 12); `scripts/mock-dump.ts` runs under plain Node like `scripts/serve.ts`, so the generator and schema import only Node-runnable modules (explicit `.ts` extensions, no Vite aliases), enforced by adding `"src/data"` to `tsconfig.node.json`'s include so `tsc -b` rejects DOM or Vite-only APIs there (eng E31); for chunk 12 and store tests (CEO C30).
@@ -6506,35 +6506,35 @@ System architecture and source state machine (Section 1), data flow with shadow 
 
 Synthesized from this review's findings. Each task derives from a finding above. Checkbox as you ship.
 
-- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — data — Schema with zod/mini, Node-runnable
+- [x] **T1 (P1, human: ~2h / CC: ~10min)** — data — Schema with zod/mini, Node-runnable
   - Surfaced by: Section 7 — C40; 0H — C30 Node imports
   - Files: `package.json`, `pnpm-lock.yaml`, `src/data/schema.ts`, `src/data/schema.test.ts`
   - Verify: `vp test`; PR lists main-bundle gzip before/after within +15 KB
-- [ ] **T2 (P1, human: ~3h / CC: ~15min)** — data — Pure seeded mock with fictional names
+- [x] **T2 (P1, human: ~3h / CC: ~15min)** — data — Pure seeded mock with fictional names
   - Surfaced by: Section 1 — C33 (K-F1, K-F2); Section 3 — C37 (K-F8)
   - Files: `src/data/mock.ts`, `src/data/mock.test.ts`
   - Verify: `vp test`: same seed same events, split ranges concatenate exactly, every `projectKey` under `/work/`
-- [ ] **T3 (P1, human: ~2h / CC: ~15min)** — data — Source interface and MockSource with status
+- [x] **T3 (P1, human: ~2h / CC: ~15min)** — data — Source interface and MockSource with status
   - Surfaced by: Section 1 — C33, C34 (K-F5); Section 2 — C36 clock rule
   - Files: `src/data/schema.ts` (the `Source` type), `src/data/mock.ts`, `src/data/mock.test.ts` (eng EQ1 smaller arrangement)
   - Verify: `vp test` with a fake clock: catch-up then ticks, `catching_up -> live`, stop twice, nothing after stop, non-advancing clock ignored
-- [ ] **T4 (P1, human: ~4h / CC: ~25min)** — store — Data slice: validate, dedupe, order, commit, health
+- [x] **T4 (P1, human: ~4h / CC: ~25min)** — store — Data slice: validate, dedupe, order, commit, health
   - Surfaced by: Section 2 — C36 (K-F7); Section 4 — C38 (K-F4); Section 8 — C41; eng Q1, P3; Section 1 — C35
   - Files: `src/data/reduce.ts`, `src/data/reduce.test.ts`, `src/app/store/data.ts`, `src/app/store/index.ts`
   - Verify: `vp test`: fixture totals; invalid among 499; throw leaves state; same batch twice; shuffled batch; ring eviction; one `[data]` line per transition
-- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — params — Allowlist `source` and `scenario`
+- [x] **T5 (P2, human: ~30min / CC: ~5min)** — params — Allowlist `source` and `scenario`
   - Surfaced by: Section 1 — S-RW2 hardening
   - Files: `src/app/params.ts`, `src/app/params.test.ts`
   - Verify: `vp test`: `mock`, `steady` accepted; one rejected value each warns and falls back
-- [ ] **T6 (P2, human: ~3h / CC: ~20min)** — dev HUD — Data section, health row, capped list, peek, render counter
+- [x] **T6 (P2, human: ~3h / CC: ~20min)** — dev HUD — Data section, health row, capped list, peek, render counter
   - Surfaced by: Section 11 — C42; Section 6 — C39 (K-F6); Section 8 — C41; 0G — C32
   - Files: `src/scene/PerfHud.tsx` (or a `DataSection.tsx` beside it), `src/scene/devHooks.ts`, `src/app/App.tsx`, `src/app/globals.d.ts`, `src/data/reduce.ts` (peek selector), `src/data/reduce.test.ts`, `e2e/data.spec.ts` (eng EQ1)
   - Verify: `vp test` peek selector; Playwright under `dev=1`: at most 25 renders in 5 s, 0 when stopped, 50 rows plus "+10 more", empty text, row click shows events
-- [ ] **T7 (P2, human: ~1h / CC: ~5min)** — scripts — `mock:dump`
+- [x] **T7 (P2, human: ~1h / CC: ~5min)** — scripts — `mock:dump`
   - Surfaced by: 0G — C30
   - Files: `scripts/mock-dump.ts`, `scripts/mock-dump.test.ts`, `package.json`
   - Verify: `vp test`: dump equals generator after `JSON.parse`; bad flags exit non-zero
-- [ ] **T8 (P2, human: ~1h / CC: ~10min)** — docs — Frozen store image and Data sources section
+- [x] **T8 (P2, human: ~1h / CC: ~10min)** — docs — Frozen store image and Data sources section
   - Surfaced by: Section 1 — C33 (K-F1); Section 11 — C42
   - Files: `scripts/shots.config.ts`, `docs/img/11-store-debug.png`, `README.md`
   - Verify: `vp run e2e:local`: two frozen captures of `11-store-debug.png` match
@@ -6806,23 +6806,23 @@ Lane A: schema → mock → reducers/slice → Data section → dump, shots, REA
 
 Adds to the CEO tasks T1-T8 above; each derives from a finding in this record.
 
-- [ ] **T1 (P1, human: ~1h / CC: ~10min)** — store — `connect`/`disconnect` own the source lifecycle
+- [x] **T1 (P1, human: ~1h / CC: ~10min)** — store — `connect`/`disconnect` own the source lifecycle
   - Surfaced by: Architecture — E30, `src/main.tsx:12` StrictMode
   - Files: `src/app/store/data.ts`, `src/app/App.tsx`, `src/data/reduce.test.ts`
   - Verify: `vp test`: connect, disconnect, connect equals one connect with 0 duplicates
-- [ ] **T2 (P2, human: ~10min / CC: ~2min)** — tooling — Type-check `src/data` under Node
+- [x] **T2 (P2, human: ~10min / CC: ~2min)** — tooling — Type-check `src/data` under Node
   - Surfaced by: Architecture — E31, `tsconfig.node.json` include
   - Files: `tsconfig.node.json`
   - Verify: `vp run build` passes; adding `window` to a `src/data` file fails `tsc -b`
-- [ ] **T3 (P2, human: ~30min / CC: ~5min)** — data — `MAX_BATCH` 500 for every source; mock splits catch-up
+- [x] **T3 (P2, human: ~30min / CC: ~5min)** — data — `MAX_BATCH` 500 for every source; mock splits catch-up
   - Surfaced by: Architecture — E32
   - Files: `src/data/schema.ts`, `src/data/mock.ts`, `src/data/mock.test.ts`
   - Verify: `vp test`: 1,200-event catch-up arrives as 500, 500, 200 with `catching_up` until the last
-- [ ] **T4 (P2, human: ~30min / CC: ~5min)** — store — Sticky `error`, later batches apply, `failedBatches`
+- [x] **T4 (P2, human: ~30min / CC: ~5min)** — store — Sticky `error`, later batches apply, `failedBatches`
   - Surfaced by: Test review — E33
   - Files: `src/app/store/data.ts`, `src/data/reduce.ts`, `src/data/reduce.test.ts`
   - Verify: `vp test`: batch 2 of 3 throws; 1 and 3 apply, `failedBatches` 1, status `error`
-- [ ] **T5 (P3, human: ~30min / CC: ~5min)** — data — Circular ring buffer with id eviction
+- [x] **T5 (P3, human: ~30min / CC: ~5min)** — data — Circular ring buffer with id eviction
   - Surfaced by: Performance — ring buffer note
   - Files: `src/data/reduce.ts`, `src/data/reduce.test.ts`
   - Verify: `vp test`: eviction at an injected cap keeps aggregates and drops evicted ids from the seen set

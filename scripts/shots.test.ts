@@ -87,8 +87,11 @@ describe("shots config", () => {
     expect(entry?.setup).toContain("perf-hud");
     expect(entry?.settled).toContain("bloom === false");
     expect(entry?.settled).toContain("frames");
-    // Only this entry has a setup step.
-    expect(views.filter((v) => v.setup !== undefined)).toHaveLength(1);
+    // Only this entry and the Data section shot (chunk 11) have a setup step.
+    expect(views.filter((v) => v.setup !== undefined).map((v) => v.file)).toEqual([
+      "docs/img/08-campus-nobloom.png",
+      "docs/img/11-store-debug.png",
+    ]);
   });
 
   test("the cooling entry is a plain frozen view=cooling shot", () => {

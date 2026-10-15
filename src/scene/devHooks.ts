@@ -8,6 +8,7 @@ import { fibreLines, packetSpeed, setPacketRate } from "./fibre/networkDev.ts";
 import { fanTurnRate, liveDuty, setDuty } from "./plant/plantDev.ts";
 import { signFadeTiming, signOpacity } from "./hall/signVisibility.ts";
 import { guardDisposeEvents } from "./render.ts";
+import { panelRenders } from "./dataPanelStats.ts";
 import { getSceneProbe } from "./stats.ts";
 
 // window.__sceneDev, only with dev=1 (S-RW11): lets Playwright drive the frame
@@ -83,5 +84,17 @@ export function installSceneDev(
   return () => {
     guard.release();
     if (window.__sceneDev === hooks) delete window.__sceneDev;
+  };
+}
+
+// window.__dataDev, only with dev=1: the Data section's render count and a way to feed batches.
+export function installDataDev(): () => void {
+  const hooks: DataDevHooks = {
+    renders: panelRenders,
+    applyBatch: (events) => useStore.getState().ingest("dev", events),
+  };
+  window.__dataDev = hooks;
+  return () => {
+    if (window.__dataDev === hooks) delete window.__dataDev;
   };
 }

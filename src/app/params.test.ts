@@ -109,3 +109,18 @@ test("calm=1 and dev=0 are the defaults and do not warn", () => {
 test("view=hall is accepted", () => {
   expect(parseParams("?view=hall")).toMatchObject({ params: { view: "hall" }, warnings: [] });
 });
+
+test("source=mock and scenario=steady are accepted", () => {
+  expect(parseParams("?source=mock&scenario=steady")).toMatchObject({
+    params: { source: "mock", scenario: "steady" },
+    warnings: [],
+  });
+});
+
+test("an unknown source or scenario warns and falls back to null", () => {
+  const { params, warnings } = parseParams("?source=live&scenario=burst");
+  expect(params).toMatchObject({ source: null, scenario: null });
+  expect(warnings).toHaveLength(2);
+  expect(warnings[0]).toContain("source");
+  expect(warnings[1]).toContain("scenario");
+});

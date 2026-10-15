@@ -16,7 +16,6 @@ export interface ParsedParams {
   warnings: string[];
 }
 
-const NAME = /^[A-Za-z0-9_-]{1,32}$/;
 const SEED = /^\d{1,9}$/;
 
 // Allowlist parser (S-RW2): anything outside it falls back to the default and
@@ -39,14 +38,6 @@ export function parseParams(search: string): ParsedParams {
     return fallback;
   };
 
-  const word = (name: string): string | null => {
-    const raw = q.get(name);
-    if (raw === null) return null;
-    if (NAME.test(raw)) return raw;
-    warnings.push(`${name}="${raw}" is not a short word; ignoring it`);
-    return null;
-  };
-
   const dev = pick("dev", { 0: false, 1: true }, false);
   const webgl = pick("webgl", { 0: false }, true);
   const calm = pick("calm", { 0: false, 1: true }, true);
@@ -63,8 +54,8 @@ export function parseParams(search: string): ParsedParams {
     "home",
   );
   const freeze = pick("freeze", { 1: true }, false);
-  const source = word("source");
-  const scenario = word("scenario");
+  const source = pick<string | null>("source", { mock: "mock" }, null);
+  const scenario = pick<string | null>("scenario", { steady: "steady" }, null);
 
   let seed = 1;
   const rawSeed = q.get("seed");

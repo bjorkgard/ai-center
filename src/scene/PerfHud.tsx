@@ -32,6 +32,7 @@ import {
 import { PACKET } from "./fibre/packets.ts";
 import { SIGN_SLOTS } from "./hall/hallLayout.ts";
 import { RACK_SLOTS } from "./hall/rackLayout.ts";
+import { DataSection } from "./DataSection.tsx";
 import { hudRows } from "./hud.ts";
 import { getSceneProbe, type SceneStats } from "./stats.ts";
 
@@ -43,8 +44,8 @@ const BUTTON =
 // with tabular numerals, solid fill, no blur. It reads the probe on a timer, not per frame.
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
 // projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
-// chunk 06, Racks from chunk 07, Campus from chunk 08, Cooling from chunk 09, Network from chunk 10) each hold one chunk's dev controls (design-review Phase 3 WD14).
-export function PerfHud({ frozen }: { frozen: boolean }) {
+// chunk 06, Racks from chunk 07, Campus from chunk 08, Cooling from chunk 09, Network from chunk 10, Data from chunk 11) each hold one chunk's dev controls (design-review Phase 3 WD14).
+export function PerfHud({ frozen, seed }: { frozen: boolean; seed: number }) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
   const rightPanelOpen = useStore((s) => s.rightPanelOpen);
@@ -54,6 +55,7 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
   const [campusOpen, setCampusOpen] = useState(false);
   const [coolingOpen, setCoolingOpen] = useState(false);
   const [networkOpen, setNetworkOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const [rackHall, setRackHall] = useState(0);
   const placed = useSyncExternalStore(subscribeCampus, placedHalls);
   const waypoints = useSyncExternalStore(subscribeCampus, showWaypoints);
@@ -89,7 +91,7 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
   return (
     <div
       data-testid="perf-hud"
-      className="pointer-events-auto absolute top-2 right-2 rounded-control border border-white/12 bg-bg p-2 font-mono text-caption text-text tabular-nums"
+      className="pointer-events-auto absolute top-2 right-2 max-h-[calc(100%-1rem)] overflow-y-auto rounded-control border border-white/12 bg-bg p-2 font-mono text-caption text-text tabular-nums"
     >
       <dl className="m-0 grid grid-cols-[auto_auto] gap-x-3">
         {rows.map(([label, value]) => (
@@ -300,6 +302,19 @@ export function PerfHud({ frozen }: { frozen: boolean }) {
             </label>
           </div>
         )}
+      </section>
+      <section data-testid="dev-data" className="mt-2 border-t border-white/12 pt-2">
+        <button
+          type="button"
+          aria-expanded={dataOpen}
+          aria-controls="dev-data-body"
+          className="flex w-full items-center justify-between text-caption text-text-2 hover:text-text"
+          onClick={() => setDataOpen(!dataOpen)}
+        >
+          Data
+          <span aria-hidden="true">{dataOpen ? "-" : "+"}</span>
+        </button>
+        {dataOpen && <DataSection frozen={frozen} seed={seed} />}
       </section>
     </div>
   );

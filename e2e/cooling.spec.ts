@@ -117,7 +117,7 @@ test("the Cooling section is collapsed, before Network, and its slider and hook 
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => (s as HTMLElement).dataset.testid));
-  expect(sections.at(-2)).toBe("dev-cooling");
+  expect(sections.at(-3)).toBe("dev-cooling");
   const header = hud.getByRole("button", { name: /^Cooling/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

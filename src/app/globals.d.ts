@@ -58,8 +58,17 @@ interface SceneDevHooks {
   disposeSharedMaterial(): void;
 }
 
+interface DataDevHooks {
+  // Renders of the Data section body since the page loaded (chunk 11, CEO C39).
+  renders(): number;
+  // Feeds a batch to the data slice as the source "dev", through the same validation.
+  applyBatch(events: unknown[]): void;
+}
+
 interface Window {
   __sceneReady?: boolean;
   // Only present with dev=1.
   __sceneDev?: SceneDevHooks;
+  // Only present with dev=1.
+  __dataDev?: DataDevHooks;
 }

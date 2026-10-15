@@ -93,6 +93,14 @@ The power yard stands in the power zone, left of the gate: a fenced substation w
 
 ![The power yard at night: substation, generators, tanks, the vault and the fibre with packets](docs/img/10-power-network.png)
 
+## Data sources (chunk 11)
+
+Agent activity lands in one store (`src/app/store/data.ts`) as batches of normalised events (`src/data/schema.ts`, zod 4 `zod/mini`). Every source implements `{ start, stop, onEvents, onStatus }`, delivers at most 500 events a batch and reports `catching_up`, `live`, `closed` or `error`. Each event is validated; invalid ones are dropped and counted, repeats are skipped by id, and per-session `lastSeen` and status follow the newest `ts`. Totals per project, session and subagent are authoritative; a 50,000-event ring buffer keeps only the recent timeline. Only the mock exists for now: `?source=mock&scenario=steady&seed=1` streams a seeded `steady` scenario (3 fictional projects under `/work/`, Claude and Codex, a few subagents) on a sim clock: the first 10 sim minutes arrive as catch-up, then it runs in real time; with `freeze=1` only the catch-up is sent. `?dev=1` adds a collapsed Data section with a source switch, a health row (applied, batches, last batch, invalid, duplicates), the 50 newest sessions and, under a clicked session, its last 20 events.
+
+`vp run mock:dump -- --seed 1 --scenario steady --minutes 10 --out events.jsonl` writes the mock's events as JSONL, one per line.
+
+![The Data section open over the frozen mock catch-up](docs/img/11-store-debug.png)
+
 ## Controls
 
 Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground (a road, a pad or open ground, not a hall) flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` frames the placed campus, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.
