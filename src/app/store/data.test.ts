@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import { CATCHUP_MS, MockSource, mockEvents } from "../../data/mock.ts";
-import { aggregatesOf, totalInvalid } from "../../data/reduce.ts";
+import { createSimClock } from "../../data/clock.ts";
+import {
+  ANCHOR_MS,
+  CATCHUP_MS,
+  MockSource,
+  createMockSource,
+  mockEvents,
+} from "../../data/mock.ts";
+import { aggregatesOf, ringEvents, totalInvalid } from "../../data/reduce.ts";
+import { SCENARIO_NAMES } from "../../data/scenarios.ts";
 import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
 import { resetStore, useStore } from "./index.ts";
 import { setWarnClock } from "./data.ts";
@@ -203,7 +211,12 @@ test("under freeze the store holds exactly the catch-up events and no timer runs
       seed: 1,
       scenario: "steady",
       freeze: true,
-      now: () => CATCHUP_MS,
+      clock: createSimClock({
+        realNow: () => 0,
+        startMs: ANCHOR_MS + CATCHUP_MS,
+        paused: true,
+        locked: true,
+      }),
       schedule: () => {
         timers++;
         return () => {};
@@ -221,3 +234,226 @@ test("under freeze the store holds exactly the catch-up events and no timer runs
   store().ingest("ref", caught);
   expect(aggregatesOf(ref)).toEqual(aggregatesOf(store()));
 });
+
+const createMockSourceLocked = () =>
+  createMockSource({ seed: 1, scenario: "steady", freeze: true });
+
+// A mock on a fake real clock and timer: `tick(ms)` advances real time and fires one tick.
+function mockOn(options: { speed?: 1 | 10 | 60; scenario?: string } = {}) {
+  let real = 0;
+  let fire: () => void = () => {};
+  const ranges: [number, number][] = [];
+  const clock = createSimClock({
+    realNow: () => real,
+    startMs: ANCHOR_MS + CATCHUP_MS,
+    speed: options.speed,
+  });
+  const source = new MockSource({
+    seed: 1,
+    scenario: options.scenario ?? "steady",
+    clock,
+    schedule: (fn) => {
+      fire = fn;
+      return () => {};
+    },
+    generate: (seed, scenario, from, to) => (
+      ranges.push([from, to]),
+      mockEvents(seed, scenario, from, to)
+    ),
+  });
+  return {
+    source,
+    clock,
+    ranges,
+    tick: (ms = 250) => {
+      real += ms;
+      fire();
+    },
+  };
+}
+
+test("play, pause and setSpeed drive the source clock and the store mirror equals its getters after each", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const m = mockOn();
+  store().connect(m.source);
+  const same = () =>
+    expect([store().speed, store().paused, store().locked]).toEqual([
+      m.clock.speed,
+      m.clock.paused,
+      m.clock.locked,
+    ]);
+  same();
+  expect(store().clock).toBe(m.clock);
+  store().setSpeed(10);
+  same();
+  expect(store().speed).toBe(10);
+  store().pause();
+  same();
+  expect(store().paused).toBe(true);
+  store().setSpeed(60);
+  same();
+  expect([store().speed, store().paused]).toEqual([60, true]);
+  store().play();
+  same();
+  expect(store().paused).toBe(false);
+  store().setSpeed(7);
+  same();
+  expect(store().speed).toBe(60);
+  expect(warn).toHaveBeenCalledTimes(1);
+});
+
+test("play, pause and setSpeed that change nothing make no store commit", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  store().connect(mockOn().source);
+  const calls = vi.fn();
+  const unsub = useStore.subscribe(calls);
+  store().play();
+  store().setSpeed(1);
+  store().setSpeed(7);
+  expect(calls).not.toHaveBeenCalled();
+  store().pause();
+  expect(calls).toHaveBeenCalledTimes(1);
+  store().pause();
+  store().setSpeed(10);
+  store().setSpeed(10);
+  expect(calls).toHaveBeenCalledTimes(2);
+  store().play();
+  store().play();
+  expect(calls).toHaveBeenCalledTimes(3);
+  unsub();
+  const locked = createMockSourceLocked();
+  store().connect(locked);
+  const lockedCalls = vi.fn();
+  const unsubLocked = useStore.subscribe(lockedCalls);
+  store().play();
+  store().pause();
+  store().setSpeed(10);
+  unsubLocked();
+  expect(lockedCalls).not.toHaveBeenCalled();
+});
+
+test("a source without a clock gets a locked 1x live clock, and the actions change nothing", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  store().connect(new FakeSource());
+  expect([store().speed, store().paused, store().locked]).toEqual([1, false, true]);
+  expect(store().clock?.locked).toBe(true);
+  store().pause();
+  store().play();
+  store().setSpeed(10);
+  expect([store().speed, store().paused]).toEqual([1, false]);
+  expect(warn).toHaveBeenCalledTimes(3);
+  store().disconnect();
+  expect(store().clock).toBeNull();
+  store().pause();
+});
+
+test("paused and caught up, N ticks deliver nothing and make no store commit", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const m = mockOn();
+  store().connect(m.source);
+  m.tick();
+  store().pause();
+  const before = store();
+  const calls = vi.fn();
+  const unsub = useStore.subscribe(calls);
+  const ranges = m.ranges.length;
+  for (let i = 0; i < 20; i++) m.tick();
+  unsub();
+  expect(calls).not.toHaveBeenCalled();
+  expect(store()).toBe(before);
+  expect(m.ranges.length).toBe(ranges);
+  store().play();
+  m.tick();
+  expect(m.ranges.length).toBe(ranges + 1);
+});
+
+test("G18: 10x delivers 10 times the sim range of 1x per tick, and the actions change it as expected", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const m = mockOn();
+  store().connect(m.source);
+  const range = () => {
+    const before = m.ranges.length;
+    m.tick();
+    if (m.ranges.length === before) return 0;
+    const [from, to] = m.ranges.at(-1)!;
+    return to - from;
+  };
+  const at1 = range();
+  expect(at1).toBe(250);
+  store().setSpeed(10);
+  expect(range()).toBe(10 * at1);
+  store().setSpeed(60);
+  expect(range()).toBe(60 * at1);
+  store().pause();
+  expect(range()).toBe(0);
+  store().setSpeed(1);
+  expect(range()).toBe(0);
+  store().play();
+  expect(range()).toBe(at1);
+});
+
+test("G12: live fake, then the mock, then the live fake again equals the live fake alone, 0 duplicates", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const live = () => {
+    const source = new FakeSource();
+    source.name = "live";
+    store().connect(source);
+    source.emit(batch(300));
+  };
+  live();
+  const alone = aggregatesOf(store());
+  const aloneApplied = store().dataHealth.applied;
+  store().connect(mockOn().source);
+  expect(store().dataHealth.applied).toBeGreaterThan(300);
+  live();
+  expect(aggregatesOf(store())).toEqual(alone);
+  expect(store().dataHealth.applied).toBe(aloneApplied);
+  expect(store().dataHealth.duplicates).toBe(0);
+});
+
+test("sourceEpoch increments on every connect, a same-type scenario switch included, and on disconnect", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const start = store().sourceEpoch;
+  store().connect(mockOn({ scenario: "steady" }).source);
+  expect(store().sourceEpoch).toBe(start + 1);
+  store().connect(mockOn({ scenario: "burst" }).source);
+  expect(store().sourceEpoch).toBe(start + 2);
+  store().connect(new FakeSource());
+  expect(store().sourceEpoch).toBe(start + 3);
+  store().disconnect();
+  expect(store().sourceEpoch).toBe(start + 4);
+  store().disconnect();
+  expect(store().sourceEpoch).toBe(start + 5);
+});
+
+test.each(SCENARIO_NAMES)(
+  "%s speed equivalence at T = 1,200 s: aggregates and ring contents match at 1x, 10x and 60x",
+  (scenario) => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const run = (speed: 1 | 10 | 60) => {
+      store().disconnect();
+      resetStore();
+      const m = mockOn({ speed, scenario });
+      store().connect(m.source);
+      for (let sim = CATCHUP_MS; sim < 1_200_000; sim += 250 * speed) m.tick();
+      expect(m.ranges.at(-1)![1]).toBe(1_200_000);
+      return {
+        agg: aggregatesOf(store()),
+        ring: ringEvents(store().ring),
+        applied: store().dataHealth.applied,
+      };
+    };
+    const one = run(1);
+    expect(one.ring.length).toBeGreaterThan(1000);
+    for (const speed of [10, 60] as const) {
+      const other = run(speed);
+      expect(other.agg).toEqual(one.agg);
+      expect(other.ring).toEqual(one.ring);
+      expect(other.applied).toBe(one.applied);
+    }
+  },
+  60_000,
+);

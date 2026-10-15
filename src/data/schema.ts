@@ -1,4 +1,5 @@
 import * as z from "zod/mini";
+import type { SimClock } from "./clock.ts";
 
 // The normalised event model of PLAN section 2, shared by the log server (Node), the browser
 // store and the mock. Only Node-runnable imports here (CEO C30, eng E31).
@@ -44,6 +45,8 @@ export type SourceStatus = "connecting" | "catching_up" | "live" | "closed" | "e
 // status is delivered. Callbacks are set before start().
 export interface Source {
   readonly name: string;
+  // The source's time base (C48); the store makes a locked 1x live clock when it is absent.
+  readonly clock?: SimClock;
   start(): void;
   stop(): void;
   onEvents(callback: (events: unknown[]) => void): void;

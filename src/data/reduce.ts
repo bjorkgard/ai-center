@@ -298,6 +298,14 @@ export function peekEvents(
   return out.reverse();
 }
 
+// Project keys with at least one main session that is not done, sorted (C46). Reducers never
+// remove projects, so this is what tells a live project from a finished one.
+export function activeProjects(state: Pick<DataState, "sessions">): string[] {
+  const keys = new Set<string>();
+  for (const s of state.sessions.values()) if (s.status !== "done") keys.add(s.projectKey);
+  return [...keys].sort();
+}
+
 // Sessions newest first, capped (C42).
 export function sessionList(
   sessions: ReadonlyMap<string, SessionAgg>,

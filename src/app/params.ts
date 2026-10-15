@@ -1,3 +1,6 @@
+import type { Speed } from "../data/clock.ts";
+import { isScenario, scenarioList } from "../data/scenarios.ts";
+
 export type ViewName = "home" | "lookdev" | "hall" | "racks" | "cooling" | "power";
 
 export interface AppParams {
@@ -7,6 +10,7 @@ export interface AppParams {
   view: ViewName;
   source: string | null;
   scenario: string | null;
+  speed: Speed;
   seed: number;
   freeze: boolean;
 }
@@ -55,7 +59,22 @@ export function parseParams(search: string): ParsedParams {
   );
   const freeze = pick("freeze", { 1: true }, false);
   const source = pick<string | null>("source", { mock: "mock" }, null);
-  const scenario = pick<string | null>("scenario", { steady: "steady" }, null);
+  const speed = pick<Speed>("speed", { 1: 1, 10: 10, 60: 60 }, 1);
+  let scenario: string | null = null;
+  const rawScenario = q.get("scenario");
+  if (rawScenario !== null) {
+    if (isScenario(rawScenario)) scenario = rawScenario;
+    else {
+      warnings.push(
+        `scenario="${rawScenario}" is not allowed (use ${scenarioList()}); using steady`,
+      );
+      scenario = "steady";
+    }
+  }
+  // Both only mean something to the mock (C52).
+  for (const name of ["scenario", "speed"]) {
+    if (q.has(name) && source !== "mock") warnings.push(`${name} is ignored without source=mock`);
+  }
 
   let seed = 1;
   const rawSeed = q.get("seed");
@@ -64,7 +83,7 @@ export function parseParams(search: string): ParsedParams {
     else warnings.push(`seed="${rawSeed}" is not a whole number; using 1`);
   }
 
-  return { params: { dev, webgl, calm, view, source, scenario, seed, freeze }, warnings };
+  return { params: { dev, webgl, calm, view, source, scenario, speed, seed, freeze }, warnings };
 }
 
 export function loadParams(search: string): AppParams {

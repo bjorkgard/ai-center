@@ -1,5 +1,16 @@
+import { createHash } from "node:crypto";
 import { expect, test, vi } from "vite-plus/test";
-import { ANCHOR_MS, CATCHUP_MS, MockSource, mockEvents, type MockSourceOptions } from "./mock.ts";
+import { createSimClock, type SimClock } from "./clock.ts";
+import {
+  ANCHOR_MS,
+  CATCHUP_MS,
+  MAX_TICK_SIM_MS,
+  MockSource,
+  createMockSource,
+  mockEvents,
+  type MockSourceOptions,
+} from "./mock.ts";
+import { applyBatch, emptyData, aggregatesOf } from "./reduce.ts";
 import { AgentEvent, MAX_BATCH, type SourceStatus } from "./schema.ts";
 
 const MIN = 60_000;
@@ -66,8 +77,17 @@ test("every mock projectKey starts with /work/ and no field holds a path of this
   expect(JSON.stringify(events)).not.toContain(process.cwd());
 });
 
-test("an unknown scenario throws", () => {
-  expect(() => mockEvents(1, "burst", 0, 1000)).toThrow("unknown scenario");
+test("an unknown scenario throws naming the valid ones", () => {
+  expect(() => mockEvents(1, "nope", 0, 1000)).toThrow(/unknown scenario "nope".*steady.*waiting/);
+});
+
+test("the steady stream over [0, 1,200 s) keeps its chunk 11 SHA-256 digests (E36)", () => {
+  const digest = (seed: number) =>
+    createHash("sha256")
+      .update(JSON.stringify(mockEvents(seed, "steady", 0, 1_200_000)))
+      .digest("hex");
+  expect(digest(1)).toBe("04b76c18f74fcf0a4c3cebc7d54cc05e459e62c28b0164de3234466fd83dd46a");
+  expect(digest(42)).toBe("6cc9c1b793e636f33500fddcc48f25567ee204fc3df6b55d258fbb901fbc62c2");
 });
 
 test("every event of a session is strictly after its session_start, over seeds 1-50", () => {
@@ -104,7 +124,9 @@ test("seed 23 lane 8: the tool call in the sub's first slot comes after its sess
 
 // A fake sim clock and timer: nothing here waits for real time.
 function harness(options: Partial<MockSourceOptions> = {}) {
-  let clock = CATCHUP_MS;
+  // Fake real time, in ms since the harness began; the clock runs at 1x unless a test changes it.
+  let real = 0;
+  const clock = createSimClock({ realNow: () => real, startMs: ANCHOR_MS + CATCHUP_MS });
   let tick: (() => void) | null = null;
   let lastFn: (() => void) | null = null;
   let cancelled = 0;
@@ -116,7 +138,7 @@ function harness(options: Partial<MockSourceOptions> = {}) {
   const source = new MockSource({
     seed: 1,
     scenario: "steady",
-    now: () => clock,
+    clock,
     schedule: (fn) => {
       tick = fn;
       lastFn = fn;
@@ -143,7 +165,10 @@ function harness(options: Partial<MockSourceOptions> = {}) {
     batches,
     statusAtBatch,
     events,
-    setClock: (ms: number) => (clock = ms),
+    clock,
+    // Sets the sim ms of a 1x clock that has never been paused or re-sped.
+    setClock: (ms: number) => (real = ms - CATCHUP_MS),
+    advance: (ms: number) => (real += ms),
     fire: () => lastFn?.(),
     hasTimer: () => tick !== null,
     cancelled: () => cancelled,
@@ -196,6 +221,279 @@ test("a tick of 1,200 events arrives as 500, 500 and 200", () => {
   h.setClock(CATCHUP_MS + 250);
   h.fire();
   expect(h.batches).toEqual([500, 500, 200]);
+});
+
+test("paused and behind, ticks drain the backlog under the cap; after play the stream has no gap or duplicate", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const ranges: [number, number][] = [];
+  const h = harness({
+    generate: (seed, scenario, from, to) => (
+      ranges.push([from, to]),
+      mockEvents(seed, scenario, from, to)
+    ),
+  });
+  h.source.start();
+  h.advance(130_000);
+  h.clock.pause();
+  h.advance(500_000);
+  for (let i = 0; i < 6; i++) h.fire();
+  const drained = ranges.slice(1);
+  expect(drained).toEqual([
+    [CATCHUP_MS, CATCHUP_MS + 60_000],
+    [CATCHUP_MS + 60_000, CATCHUP_MS + 120_000],
+    [CATCHUP_MS + 120_000, CATCHUP_MS + 130_000],
+  ]);
+  const count = h.events.length;
+  h.clock.play();
+  h.advance(10_000);
+  h.fire();
+  expect(ranges.at(-1)).toEqual([CATCHUP_MS + 130_000, CATCHUP_MS + 140_000]);
+  expect(h.events.length).toBeGreaterThan(count);
+  expect(h.events).toEqual(mockEvents(1, "steady", 0, CATCHUP_MS + 140_000));
+});
+
+test("10 real minutes at 60x in one step: no tick over 60 sim s, catching_up then live, aggregates equal an uncapped run", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const ranges: [number, number][] = [];
+  const h = harness({
+    generate: (seed, scenario, from, to) => (
+      ranges.push([from, to]),
+      mockEvents(seed, scenario, from, to)
+    ),
+  });
+  h.clock.setSpeed(60);
+  h.source.start();
+  expect(h.log.at(-1)).toBe("live");
+  h.log.length = 0;
+  h.advance(10 * MIN);
+  const target = CATCHUP_MS + 600 * MIN;
+  for (let i = 0; i < 700; i++) h.fire();
+  const ticks = ranges.slice(1);
+  expect(Math.max(...ticks.map(([a, b]) => b - a))).toBeLessThanOrEqual(MAX_TICK_SIM_MS);
+  expect(ticks.at(-1)![1]).toBe(target);
+  expect(h.log.filter((l) => !l.startsWith("events"))).toEqual(["catching_up", "live"]);
+  const uncapped = mockEvents(1, "steady", 0, target);
+  expect(h.events).toEqual(uncapped);
+  const reduce = (events: unknown[]) => {
+    let state = emptyData();
+    for (let i = 0; i < events.length; i += MAX_BATCH)
+      state = applyBatch(state, events.slice(i, i + MAX_BATCH) as AgentEvent[]);
+    return aggregatesOf(state);
+  };
+  expect(reduce(h.events)).toEqual(reduce(uncapped));
+}, 60_000);
+
+test("1 Hz ticks at 60x, exactly one cap each, cause no status change", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const h = harness();
+  h.clock.setSpeed(60);
+  h.source.start();
+  h.log.length = 0;
+  for (let i = 0; i < 60; i++) {
+    h.advance(1000);
+    h.fire();
+  }
+  expect(h.log.filter((l) => !l.startsWith("events"))).toEqual([]);
+  expect(h.events).toEqual(mockEvents(1, "steady", 0, CATCHUP_MS + 3_600_000));
+});
+
+test("hidden then visible delivers a continuous stream; a user pause survives the tab returning", () => {
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  let setHidden: (hidden: boolean) => void = () => {};
+  let unwatched = 0;
+  const h = harness({
+    visibility: (cb) => {
+      setHidden = cb;
+      return () => unwatched++;
+    },
+  });
+  h.source.start();
+  h.advance(5000);
+  h.fire();
+  setHidden(true);
+  h.advance(600_000);
+  h.fire();
+  h.fire();
+  expect(h.events).toEqual(mockEvents(1, "steady", 0, CATCHUP_MS + 5000));
+  setHidden(false);
+  h.advance(3000);
+  h.fire();
+  expect(h.events).toEqual(mockEvents(1, "steady", 0, CATCHUP_MS + 8000));
+  h.clock.pause();
+  setHidden(true);
+  setHidden(false);
+  expect(h.clock.paused).toBe(true);
+  h.advance(60_000);
+  h.fire();
+  expect(h.events).toEqual(mockEvents(1, "steady", 0, CATCHUP_MS + 8000));
+  h.source.stop();
+  expect(unwatched).toBe(1);
+});
+
+test("a generator that throws during the catch-up reports error once and schedules no timer", () => {
+  const h = harness({
+    scenario: "burst",
+    generate: () => {
+      throw new RangeError("SECRET-VALUE");
+    },
+  });
+  let detail = "";
+  h.source.onStatus((s, d) => {
+    if (s === "error") detail = d ?? "";
+    h.log.push(`status ${s}`);
+  });
+  h.source.start();
+  expect(h.log.filter((l) => l === "status error")).toHaveLength(1);
+  expect(h.log).not.toContain("status live");
+  expect(h.hasTimer()).toBe(false);
+  expect(detail).toContain("burst");
+  expect(detail).toContain("0-600000");
+  expect(detail).not.toContain("SECRET-VALUE");
+});
+
+test("a generator that throws on a tick reports error once, cancels the timer and stops ticking", () => {
+  let fail = false;
+  const h = harness({
+    generate: (seed, scenario, from, to) => {
+      if (fail) throw new TypeError("boom");
+      return mockEvents(seed, scenario, from, to);
+    },
+  });
+  let errors = 0;
+  let detail = "";
+  h.source.onStatus((s, d) => {
+    if (s === "error") {
+      errors++;
+      detail = d ?? "";
+    }
+  });
+  h.source.start();
+  fail = true;
+  h.advance(250);
+  h.fire();
+  const seen = h.events.length;
+  h.advance(250);
+  h.fire();
+  h.fire();
+  expect(errors).toBe(1);
+  expect(detail).toContain("steady");
+  expect(detail).toContain(`${CATCHUP_MS}-${CATCHUP_MS + 250}`);
+  expect(h.hasTimer()).toBe(false);
+  expect(h.cancelled()).toBe(1);
+  expect(h.events.length).toBe(seen);
+});
+
+test("a batch callback that throws is rescued the same way", () => {
+  const h = harness();
+  let calls = 0;
+  let errors = 0;
+  h.source.onEvents(() => {
+    if (++calls > 5) throw new Error("sink");
+  });
+  h.source.onStatus((s) => {
+    if (s === "error") errors++;
+  });
+  h.source.start();
+  expect(errors).toBe(1);
+  expect(h.hasTimer()).toBe(false);
+});
+
+test("a failure leaves the source not running, unwatches the tab and lets it start again", () => {
+  let unwatched = 0;
+  let fail = false;
+  const h = harness({
+    visibility: () => () => unwatched++,
+    generate: (seed, scenario, from, to) => {
+      if (fail) throw new TypeError("boom");
+      return mockEvents(seed, scenario, from, to);
+    },
+  });
+  h.source.start();
+  fail = true;
+  h.advance(250);
+  h.fire();
+  expect(h.log.filter((l) => l === "closed")).toHaveLength(0);
+  expect(unwatched).toBe(1);
+  h.source.stop();
+  expect(h.log.filter((l) => l === "closed")).toHaveLength(0);
+  fail = false;
+  h.log.length = 0;
+  h.source.start();
+  expect(h.log[0]).toBe("catching_up");
+  expect(h.log.at(-1)).toBe("live");
+  h.source.stop();
+  expect(unwatched).toBe(2);
+});
+
+test("a batch callback that throws during a tick reports error once and stops ticking", () => {
+  let unwatched = 0;
+  const h = harness({ visibility: () => () => unwatched++ });
+  let throwing = false;
+  let errors = 0;
+  let detail = "";
+  h.source.onEvents(() => {
+    if (throwing) throw new Error("SECRET-VALUE");
+  });
+  h.source.onStatus((s, d) => {
+    if (s === "error") {
+      errors++;
+      detail = d ?? "";
+    }
+  });
+  h.source.start();
+  throwing = true;
+  h.advance(2000);
+  h.fire();
+  h.advance(250);
+  h.fire();
+  h.fire();
+  expect(errors).toBe(1);
+  expect(detail).toContain("steady");
+  expect(detail).not.toContain("SECRET-VALUE");
+  expect(h.hasTimer()).toBe(false);
+  expect(h.cancelled()).toBe(1);
+  expect(unwatched).toBe(1);
+});
+
+test("createMockSource makes a fresh clock at the catch-up end and never reads performance.now itself", () => {
+  const perf = vi.spyOn(performance, "now").mockImplementation(() => {
+    throw new Error("performance.now read");
+  });
+  let real = 100;
+  const a = createMockSource({
+    seed: 1,
+    scenario: "steady",
+    freeze: false,
+    speed: 10,
+    realNow: () => real,
+  });
+  const b = createMockSource({ seed: 1, scenario: "steady", freeze: false, realNow: () => real });
+  expect(a.clock).not.toBe(b.clock);
+  expect(a.clock.now()).toBe(ANCHOR_MS + CATCHUP_MS);
+  expect(a.clock.speed).toBe(10);
+  expect(a.clock.paused).toBe(false);
+  expect(a.clock.locked).toBe(false);
+  real += 1000;
+  expect(a.clock.now()).toBe(ANCHOR_MS + CATCHUP_MS + 10_000);
+  expect(perf).not.toHaveBeenCalled();
+});
+
+test("under freeze the clock starts paused and locked at the catch-up end with speed 1 whatever the URL says", () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  let real = 0;
+  const source = createMockSource({
+    seed: 1,
+    scenario: "steady",
+    freeze: true,
+    speed: 60,
+    realNow: () => real,
+  });
+  const clock: SimClock = source.clock;
+  expect([clock.paused, clock.locked, clock.speed]).toEqual([true, true, 1]);
+  real += 60_000;
+  expect(clock.now()).toBe(ANCHOR_MS + CATCHUP_MS);
+  clock.play();
+  expect(clock.paused).toBe(true);
 });
 
 test("a clock that repeats or goes back sends no events", () => {

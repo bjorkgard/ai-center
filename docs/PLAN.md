@@ -583,7 +583,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Acceptance:** Unit tests: same seed gives same event sequence; `mockEvents` over [0, 10 min) equals the concatenation over [0, 4 min) and [4 min, 10 min) (no event lost or doubled at a tick boundary); a fake clock drives `MockSource` with no real timers; under `freeze=1` the store holds exactly the catch-up events and two frozen captures of `11-store-debug.png` match (C33); the mock reports `catching_up` then `live`, calling `stop()` twice is safe, and with a fake clock advanced past several ticks after `stop()` no batch or status arrives (C34); a batch with one invalid event among 499 valid ones applies the 499, raises `dataHealth.invalid` by 1 and logs one warning without the value; a reducer forced to throw leaves the state unchanged and sets status `error`; a clock that repeats or goes back sends no events (C36); every mock `projectKey` starts with `/work/` (C37); applying the same batch twice leaves every total unchanged and raises `dataHealth.duplicates` by its size, and a shuffled batch gives the same aggregates and per-session `lastSeen` and `status` as the `ts`-sorted one, while the ring buffer keeps arrival order, tested separately (C38; PR #27 review); each status transition logs exactly one `[data]` line (C41); connect, disconnect, connect gives the same state as one connect, with 0 duplicates (E30); a catch-up of 1,200 events arrives as batches of 500, 500 and 200, with status `catching_up` until the last (E32); when batch 2 of 3 throws, batches 1 and 3 apply, `failedBatches` is 1 and the status stays `error` (E33); with 60 sessions the list shows 50 rows and "+10 more", and with none it shows the empty text (C42); the mock dump for a seed equals the generator's events, compared after `JSON.parse` of each line (C30); a pure selector unit test shows the peek lists that session's events only, in arrival order (newest last), at most 20, and that with a small ring cap injected by the test a session whose events were all evicted gives the empty state "No recent events (older than the buffer)"; one Playwright check under `dev=1` clicks a row and sees its events (the repo has no DOM test environment in `vp test`) (C32); reducers produce expected session counts and token totals for a fixed fixture. Debug panel updates live. No React re-render storm: the panel reads the store through selectors throttled to one update per 250 ms, and a Playwright test under `dev=1` reads the dev-only counter `__dataDev.renders()`: with the mock at 4 batches/s for 5 s the panel renders at most 25 times, and with the mock stopped 0 times over 2 s (CEO C39, replacing the manual Profiler check). Evicting from the ring buffer leaves every aggregate unchanged (eng Q1; test with a small injected cap). The PR records the main bundle's gzip size from `vp build` before and after; the increase stays within 15 KB gzip [estimated budget] (C40). `parseParams` tests cover `source=mock`, `scenario=steady` and one rejected value of each (S-RW2).
 - **README:** "Data sources" section (mock only for now). Image `11-store-debug.png` (`dev=1&source=mock&freeze=1`, the Data section open; C33, C42).
 
-#### [ ] 12. Mock scenarios and replay clock
+#### [x] 12. Mock scenarios and replay clock
 - **Goal:** Every later behaviour can be triggered on demand.
 - **Depends on:** 11.
 - **Tasks:** Scenarios: `steady`, `burst` (one parent spawns 10 subagents), `churn` (projects appear and vanish every 20 s), `overflow` (one project grows to 40 sessions), `errors` (error storm and recovery), `codex-only`, `waiting` (sessions waiting on user). Replay clock with 1x/10x/60x and pause, shared by mock and file replay. Scenario and speed in URL params. Switching source (live / replay / mock) clears aggregates, ring buffer and seen ids before the new source starts (already done by chunk 11's `connect`, eng E30), and the store keeps a `sourceEpoch` that increments on every `connect` (a scenario switch on the same source type included) and on `disconnect`; scene halls are torn down when the epoch changes, in chunk 20 through its dispose path (eng re-review E3; chunk 12 UC1, approved 2026-10-15). Replay bar play/pause and 1x/10x/60x drive the store clock (G18): chunk 12 builds the clock and its store actions, chunk 27 builds the top-bar mode chip and replay bar (section 4b, design D8) on the same actions.
@@ -7190,35 +7190,35 @@ PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=0 verdict=complete
 ## Implementation Tasks (CEO review, chunk 12)
 Synthesized from this review's findings. Effort ratios: features ~30x, tests ~50x.
 
-- [ ] **T1 (P1, human: ~3h / CC: ~10min)** — data — `SimClock` contract, store clock actions, live 1x clock
+- [x] **T1 (P1, human: ~3h / CC: ~10min)** — data — `SimClock` contract, store clock actions, live 1x clock
   - Surfaced by: Step 0 premise 7, spec review 2 (time base), V7
   - Files: src/data/clock.ts, src/app/store/data.ts, src/app/App.tsx
   - Verify: `vp test` clock transition, invalid speed, freeze no-op, live-controls-disabled tests
-- [ ] **T2 (P1, human: ~2h / CC: ~10min)** — data — MockSource on the clock with per-tick cap and tick-error rescue
+- [x] **T2 (P1, human: ~2h / CC: ~10min)** — data — MockSource on the clock with per-tick cap and tick-error rescue
   - Surfaced by: Section 2 and 4 (hidden tab, tick throw)
   - Files: src/data/mock.ts
   - Verify: `vp test` cap test (10 real min at 60x), throw test, pause zero-commit, speed equivalence at 1,200 s
-- [ ] **T3 (P1, human: ~6h / CC: ~25min)** — data — Scenario registry, lane transforms, 7 scenarios
+- [x] **T3 (P1, human: ~6h / CC: ~25min)** — data — Scenario registry, lane transforms, 7 scenarios
   - Surfaced by: Step 0 rows 8-9, spec reviews, V1
   - Files: src/data/scenarios.ts (new), src/data/mock.ts, src/data/reduce.ts (`activeProjects`)
   - Verify: `vp test` split invariance per scenario, shapes at 600 s and over [0, 1,200 s), steady fixture unchanged
-- [ ] **T4 (P1, human: ~1h / CC: ~5min)** — app — params `scenario`/`speed`, mock:dump scenarios
+- [x] **T4 (P1, human: ~1h / CC: ~5min)** — app — params `scenario`/`speed`, mock:dump scenarios
   - Surfaced by: chunk text, Section 3
   - Files: src/app/params.ts, scripts/mock-dump.ts
   - Verify: `vp test` params and dump tests
-- [ ] **T5 (P1, human: ~2h / CC: ~10min)** — store — G12 and G18 store halves
+- [x] **T5 (P1, human: ~2h / CC: ~10min)** — store — G12 and G18 store halves
   - Surfaced by: premises 2-3
   - Files: src/app/store/data.test.ts
   - Verify: `vp test`
-- [ ] **T6 (P2, human: ~2h / CC: ~10min)** — dev HUD — interim controls, clock health row, clock log lines
+- [x] **T6 (P2, human: ~2h / CC: ~10min)** — dev HUD — interim controls, clock health row, clock log lines
   - Surfaced by: TASTE 6, X2, Section 8
   - Files: src/scene/DataSection.tsx
   - Verify: Playwright pause/play check under dev=1; re-captured `11-store-debug.png`
-- [ ] **T7 (P2, human: ~1h / CC: ~5min)** — docs — README scenarios table and its test; TODOS entries
+- [x] **T7 (P2, human: ~1h / CC: ~5min)** — docs — README scenarios table and its test; TODOS entries
   - Surfaced by: chunk README line, X1, X4, V9, Section 7
   - Files: README.md, TODOS.md, a unit test reading README.md
   - Verify: `vp test` README table check
-- [ ] **T8 (P1, blocked on UC1)** — store/scene — source-switch scene half: `sourceEpoch` now (UC1 approved) or chunk 20 dispose path (UC1 rejected)
+- [x] **T8 (P1, blocked on UC1)** — store/scene — source-switch scene half: `sourceEpoch` now (UC1 approved) or chunk 20 dispose path (UC1 rejected)
   - Surfaced by: premise 1
   - Files: src/app/store/data.ts
   - Verify: epoch test (UC1) or chunk 20 test
@@ -7432,35 +7432,35 @@ Critical gaps: 0.
 Sequential implementation, no parallelization opportunity: every step touches src/data or depends on the clock contract.
 
 ## Implementation Tasks (eng review, chunk 12)
-- [ ] **E1 (P1, human: ~2h / CC: ~10min)** — data — Clock locked flag, live wall clock, edge-case tests
+- [x] **E1 (P1, human: ~2h / CC: ~10min)** — data — Clock locked flag, live wall clock, edge-case tests
   - Surfaced by: Section 1, eng voice 5, 6, 11
   - Files: src/data/clock.ts
   - Verify: `vp test src/data/clock.test.ts`
-- [ ] **E2 (P1, human: ~2h / CC: ~10min)** — data — Guard catch-up throw, pause-drains-backlog, hysteresis, visibility auto-pause
+- [x] **E2 (P1, human: ~2h / CC: ~10min)** — data — Guard catch-up throw, pause-drains-backlog, hysteresis, visibility auto-pause
   - Surfaced by: eng voice 2, 3, 4
   - Files: src/data/mock.ts, src/app/App.tsx
   - Verify: `vp test src/data/mock.test.ts`
-- [ ] **E3 (P1, human: ~1h / CC: ~5min)** — store — `source.clock` single owner; mirror from getters
+- [x] **E3 (P1, human: ~1h / CC: ~5min)** — store — `source.clock` single owner; mirror from getters
   - Surfaced by: eng voice 6, 7, 14
   - Files: src/data/schema.ts (Source.clock), src/app/store/data.ts, src/app/App.tsx
   - Verify: `vp test src/app/store/data.test.ts`
-- [ ] **E4 (P1, human: ~1h / CC: ~5min)** — data — Steady digests before refactor; per-scenario lane lists
+- [x] **E4 (P1, human: ~1h / CC: ~5min)** — data — Steady digests before refactor; per-scenario lane lists
   - Surfaced by: eng voice 8, 9
   - Files: src/data/mock.test.ts, src/data/mock.ts
   - Verify: digests unchanged after refactor
-- [ ] **E5 (P1, human: ~30min / CC: ~5min)** — data — Frozen-frame assertions from the catch-up range
+- [x] **E5 (P1, human: ~30min / CC: ~5min)** — data — Frozen-frame assertions from the catch-up range
   - Surfaced by: eng voice 1
   - Files: src/data/mock.test.ts
   - Verify: overflow frozen = 8
-- [ ] **E6 (P2, human: ~1h / CC: ~5min)** — app — Names leaf module; DataSection uses selected scenario
+- [x] **E6 (P2, human: ~1h / CC: ~5min)** — app — Names leaf module; DataSection uses selected scenario
   - Surfaced by: Section 2, eng voice 12
   - Files: src/data/scenarios.ts, src/app/params.ts, src/scene/DataSection.tsx
   - Verify: `vp check` (no cycle), params tests
-- [ ] **E7 (P2, human: ~30min / CC: ~5min)** — e2e — Pause check waits for live and rising count
+- [x] **E7 (P2, human: ~30min / CC: ~5min)** — e2e — Pause check waits for live and rising count
   - Surfaced by: eng voice 13
   - Files: e2e/data.spec.ts
   - Verify: `vp run e2e:local`
-- [ ] **E8 (P3)** — docs — TODOS entries incl. chunk 13 waiting/churn re-check
+- [x] **E8 (P3)** — docs — TODOS entries incl. chunk 13 waiting/churn re-check
   - Surfaced by: eng voice 10, Section 4
   - Files: TODOS.md
   - Verify: entries present

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { useStore } from "../app/store/index.ts";
-import { createMockSource } from "../data/mock.ts";
+import { SPEEDS } from "../data/clock.ts";
+import { ANCHOR_MS, createMockSource } from "../data/mock.ts";
 import {
   NO_EVENTS,
   noSessionsText,
@@ -8,21 +9,26 @@ import {
   sessionList,
   totalInvalid,
 } from "../data/reduce.ts";
+import { SCENARIOS } from "../data/scenarios.ts";
 import { countPanelRender } from "./dataPanelStats.ts";
 
 const SAMPLE_MS = 250;
 const BUTTON =
   "mt-2 w-full rounded-control border border-white/12 px-2 py-1 text-caption text-text-2 hover:text-text";
 
-// The slice parts the panel shows. Refs only change when a batch commits.
+// The slice parts the panel shows. Refs only change when a batch commits; `time` is the mock
+// clock's whole sim second, which moves on its own between batches.
 function pick() {
   const s = useStore.getState();
+  const now = s.source.name === "mock" ? s.clock?.now() : undefined;
   return {
     source: s.source,
     health: s.dataHealth,
     sessions: s.sessions,
     ring: s.ring,
     version: s.ringVersion,
+    time: now === undefined ? ANCHOR_MS : Math.floor(now / 1000) * 1000,
+    clock: { speed: s.speed, paused: s.paused, locked: s.locked },
   };
 }
 type Snapshot = ReturnType<typeof pick>;
@@ -30,10 +36,15 @@ const same = (a: Snapshot, b: Snapshot) =>
   a.source === b.source &&
   a.health === b.health &&
   a.sessions === b.sessions &&
-  a.version === b.version;
+  a.version === b.version &&
+  a.time === b.time &&
+  a.clock.speed === b.clock.speed &&
+  a.clock.paused === b.clock.paused &&
+  a.clock.locked === b.clock.locked;
 
 // The panel reads the store at most once per SAMPLE_MS, and only when a part it shows changed
-// (CEO C39), so a busy source cannot make it re-render per batch.
+// (CEO C39), so a busy source cannot make it re-render per batch. A timer re-checks every
+// SAMPLE_MS so the clock time moves while no batch arrives; a paused clock changes nothing.
 function useThrottledData(): Snapshot {
   const [snap, setSnap] = useState(pick);
   const shownRef = useRef(snap);
@@ -50,30 +61,50 @@ function useThrottledData(): Snapshot {
       }, SAMPLE_MS);
     };
     const unsubscribe = useStore.subscribe(schedule);
+    const poll = setInterval(schedule, SAMPLE_MS);
     schedule();
     return () => {
       unsubscribe();
+      clearInterval(poll);
       if (timer !== null) clearTimeout(timer);
     };
   }, []);
   return snap;
 }
 
+// Source time as +HH:MM:SS since the sim start: no time zone, so frozen captures match on every
+// machine (C56).
+function sinceAnchor(ms: number): string {
+  const total = Math.max(0, Math.floor((ms - ANCHOR_MS) / 1000));
+  const part = (n: number) => String(n).padStart(2, "0");
+  return `+${part(Math.floor(total / 3600))}:${part(Math.floor(total / 60) % 60)}:${part(total % 60)}`;
+}
+
 interface Props {
   frozen: boolean;
   seed: number;
+  // The scenario the URL asked for; the select starts there.
+  scenario: string;
 }
 
 // Body of the dev Data section (CEO C42): source switch, health row, newest sessions, and under
 // a clicked row its last 20 events from the ring buffer (C32).
-export const DataSection = memo(function DataSection({ frozen, seed }: Props) {
+export const DataSection = memo(function DataSection({ frozen, seed, scenario }: Props) {
   countPanelRender();
-  const { source, health, sessions, ring } = useThrottledData();
+  const { source, health, sessions, ring, time, clock } = useThrottledData();
   const [peekId, setPeekId] = useState<string | null>(null);
+  const [chosen, setChosen] = useState(scenario);
   const list = sessionList(sessions);
   const on = source.name === "mock";
   // Under freeze the apply time would differ by machine load, so it is not shown.
   const applyMs = frozen ? "—" : health.lastApplyMs.toFixed(1);
+  // A new mock with a fresh clock at the catch-up end, at the speed now in force (C55); the URL
+  // is left as it was.
+  const connectMock = (name: string) => {
+    const { speed } = useStore.getState();
+    useStore.getState().connect(createMockSource({ seed, scenario: name, freeze: frozen, speed }));
+  };
+  const timeText = on ? ` · ${sinceAnchor(time)}` : "";
   return (
     <div id="dev-data-body" data-testid="dev-data-body">
       <div className="mt-2 flex gap-2">
@@ -91,19 +122,60 @@ export const DataSection = memo(function DataSection({ frozen, seed }: Props) {
           aria-pressed={on}
           data-testid="data-source-mock"
           className={BUTTON.replace("mt-2 ", "")}
-          onClick={() =>
-            useStore
-              .getState()
-              .connect(createMockSource({ seed, scenario: "steady", freeze: frozen }))
-          }
+          onClick={() => connectMock(chosen)}
         >
           Mock
         </button>
+      </div>
+      <label className="mt-2 flex items-center justify-between gap-2 text-text-2">
+        Scenario
+        <select
+          data-testid="data-scenario"
+          value={chosen}
+          disabled={source.name !== null && !on}
+          className="rounded-control border border-white/12 bg-transparent px-1 text-text-2"
+          onChange={(event) => {
+            setChosen(event.target.value);
+            connectMock(event.target.value);
+          }}
+        >
+          {SCENARIOS.map((s) => (
+            <option key={s.name} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          data-testid="data-playpause"
+          disabled={clock.locked}
+          className={BUTTON.replace("mt-2 ", "")}
+          onClick={() => (clock.paused ? useStore.getState().play() : useStore.getState().pause())}
+        >
+          {clock.paused ? "Play" : "Pause"}
+        </button>
+        {SPEEDS.map((speed) => (
+          <button
+            key={speed}
+            type="button"
+            data-testid={`data-speed-${speed}`}
+            aria-pressed={clock.speed === speed}
+            disabled={clock.locked}
+            className={BUTTON.replace("mt-2 ", "")}
+            onClick={() => useStore.getState().setSpeed(speed)}
+          >
+            {speed}x
+          </button>
+        ))}
       </div>
       <p className="mt-2 text-text-2" data-testid="data-health">
         source {source.name ?? "off"} · {source.status} · applied {health.applied} · batches{" "}
         {health.batches} · last {health.lastBatchSize} / {applyMs} ms · invalid{" "}
         {totalInvalid(health)} · dup {health.duplicates}
+        {timeText}
+        {on ? ` · ${clock.speed}x · ${clock.paused ? "paused" : "running"}` : ""}
         {health.failedBatches > 0 ? ` · failed ${health.failedBatches}` : ""}
       </p>
       {list.rows.length === 0 ? (
