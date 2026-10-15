@@ -675,7 +675,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 
 #### [ ] 14b. Downloadable builds for 4 platforms
 - **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1). It follows chunk 15 so the first public binary shows real Claude Code sessions, not only line counts (UC2).
-- **Depends on:** 02b, 14a, 15.
+- **Depends on:** 02b, 14a, 14c, 15 (14c owns `LiveSource` and the live-by-default page, so without it the binary would still show no sessions).
 - **Tasks:**
   - **Reusable workflow (E54):** the build, smoke, attest and upload matrix lives in `.github/workflows/binaries.yml` (`workflow_call` inputs `version`, `ref`, `upload`; `workflow_dispatch` runs it with `upload: false`, so the 14b PR proves all 4 runners before merge, CEO Section 9). `release.yml` calls it after `release` with `upload: true`: `needs: release`, `if: needs.release.outputs.published == 'true'`, and the ref is the new tag `v${{ needs.release.outputs.version }}` (not the merge SHA, whose `package.json` still has the old version). `binaries.yml` opens with `permissions: {}` and uses job-level grants. `scripts/check-workflows.ts` covers the new file.
   - **Build matrix:** runners macos-15 (arm64; `macos-14` is removed on 2026-11-02), macos-15-intel (x64; `macos-13` was retired 2025-12-04, and GitHub drops x64 macOS when the macOS 15 image retires in fall 2027), ubuntu-latest (x64), windows-latest (x64). Each runner builds with its own official Node binary (no cross-compiling) via `vp run build:bin`. Output names `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows). Uploads use `gh release upload --clobber` (eng voice L1).
@@ -683,7 +683,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
   - **Smoke (X5, pass-3 3.2, spec 3.3):** each matrix smoke starts the binary with `--no-open --port 4400 --log-root <fixture dir>`, reads the port from the `listening on http://127.0.0.1:<port>/` line and the token from the served HTML, appends one line to a fixture file, and runs the committed `scripts/smoke-ws.mjs` (the runner's Node 24 from setup-vp, on all 4 runners), which sends the `hello` and waits up to 5 s for a heartbeat and a `lines` message for the appended line. Windows steps use `shell: bash`.
   - **Partial failure (C78):** the matrix sets `fail-fast: false`, so one failed OS does not cancel the others. A `report` job with `needs: [release, build]` and `if: always() && needs.build.result != 'success' && needs.release.outputs.published == 'true'` builds the missing-OS list from `gh release view --json assets` and edits the release notes to start with "Incomplete: builds missing for <os list>". Re-running the failed job fills it in.
   - **Checksums job** after the matrix (runs only when the matrix succeeded): downloads all 4 binaries from the release, writes `SHA256SUMS.txt`, uploads it, and removes the "Incomplete" prefix once all 4 binaries exist.
-  - **Permissions (pass-3 1.3):** the `report` and `checksums` jobs each get job-level `contents: write`. **Provenance (02b CEO X1, attestation):** each binary gets `actions/attest-build-provenance` (job-level permissions on the matrix jobs: `contents: write`, `id-token: write`, `attestations: write`; set per job, because workflow-level permissions would replace `contents: write` and the upload would fail with 403). Repo is public, so this is free.
+  - **Permissions (pass-3 1.3):** the `report` and `checksums` jobs each get job-level `contents: write`. A called workflow can only keep or reduce its caller's token scopes, so the `release.yml` job that calls `binaries.yml` grants `contents: write`, `id-token: write` and `attestations: write` at job level (`release.yml` keeps top-level `permissions: {}`); `release-workflow.test.ts` asserts these caller-job scopes. **Provenance (02b CEO X1, attestation):** each binary gets `actions/attest-build-provenance` (job-level permissions on the matrix jobs: `contents: write`, `id-token: write`, `attestations: write`; set per job, because workflow-level permissions would replace `contents: write` and the upload would fail with 403). Repo is public, so this is free.
 - **Acceptance:**
   - A `feat:` PR merges and produces a GitHub Release with 4 binaries and `SHA256SUMS.txt`. A `workflow_dispatch` run of `binaries.yml` builds and smokes all 4 runners and uploads nothing.
   - `scripts/release-workflow.test.ts` asserts the job graph and conditions (including the `report` job's `if`), the `binaries.yml` call with its inputs, that a dispatch never uploads, every job's permissions, and `--clobber`.
@@ -878,7 +878,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
                                                                    08 → 10
 04a → 04c → 06                           (look, parallel to 04b and 05; CEO C22)
 04a → 11 → 12 → 13 → 15 → 16 → 17       (data track, parallel to 04b-10; CEO S-RW1)
-     11 → 14a → 14c ; 02b → 14a ; 14a → 15 ; 14c → 17 ; 14a + 15 → 14b (downloads)
+     11 → 14a → 14c ; 02b → 14a ; 14a → 15 ; 14c → 17 ; 14a + 14c + 15 → 14b (downloads)
 08 + 13 → 18;  13 → 19;  18 + 19 + 10 → 20 → 21;  21 + 09 → 22 → 23   (CEO C26)
 23 → 24 → 25, 26;  25 → 27 → 28, 29(+26), 30, 31 → 32(+29), 33
 27 → 34 → 35 → 36 → 37
@@ -8486,6 +8486,8 @@ Approval readiness (eng): PASS. Checked E50-E58 and eng voice items (autoplan P1
 ### Final gate (2026-10-15)
 
 APPROVED. User reply `all` (gate_rev 1): UC1 a (runtime deps `fix(deps)`, restore C8), UC2 a (14b depends on 02b, 14 and 15), UC3 a (split chunk 14 into 14a Node log server and 14c client; 14b depends on 14a), d1-d4 a (T1 `/api/session` refresh, T2 Node `fs.watch` + rescan, T3 exact lag integration, T4 tombstones), p1 a (approve as-is).
+
+PR #31 review (2026-10-15): 14b also depends on 14c, which owns the browser live path; the `release.yml` job calling `binaries.yml` grants `contents: write`, `id-token: write` and `attestations: write`, because a called workflow cannot raise its caller's token scopes.
 
 <!-- AUTONOMOUS DECISION LOG -->
 ## Decision Audit Trail
