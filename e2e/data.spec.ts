@@ -188,3 +188,39 @@ test("burst at 10x: the applied count rises, Pause stops it over 1 s, Play resum
   await expect(playPause).toHaveText("Pause");
   await expect.poll(() => applied(page), { timeout: 20_000 }).toBeGreaterThan(frozen);
 });
+
+const sourceTime = async (page: Page) =>
+  /\+(\d\d:\d\d:\d\d)/.exec(await health(page).innerText())?.[1] ?? "";
+const batches = async (page: Page) =>
+  Number(/batches (\d+)/.exec(await health(page).innerText())?.[1] ?? NaN);
+
+test("the source time advances while running with no batch, and holds while paused", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  // Intervals created while the flag is set never fire: the mock's tick timer is made after the
+  // click, so no batch follows the catch-up while its clock still runs. The panel's own timer is
+  // made at mount, before the flag.
+  await page.addInitScript(() => {
+    const real = window.setInterval.bind(window);
+    const w = window as unknown as { __muteNew?: boolean };
+    window.setInterval = ((fn: TimerHandler, ms?: number, ...args: unknown[]) =>
+      real(w.__muteNew ? () => {} : fn, ms, ...args)) as typeof window.setInterval;
+  });
+  await openData(page, "dev=1&webgl=0");
+  await settle(page);
+  await page.evaluate(() => ((window as unknown as { __muteNew: boolean }).__muteNew = true));
+  await page.locator("[data-testid=data-source-mock]").click();
+  await expect(health(page)).toContainText("running");
+  await page.waitForTimeout(600);
+  const [t0, b0] = [await sourceTime(page), await batches(page)];
+  await page.waitForTimeout(2500);
+  expect(await batches(page)).toBe(b0);
+  expect(await sourceTime(page)).not.toBe(t0);
+  await page.locator("[data-testid=data-playpause]").click();
+  await expect(health(page)).toContainText("paused");
+  await page.waitForTimeout(600);
+  const held = await sourceTime(page);
+  await page.waitForTimeout(2500);
+  expect(await sourceTime(page)).toBe(held);
+});

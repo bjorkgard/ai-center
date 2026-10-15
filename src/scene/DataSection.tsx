@@ -16,15 +16,18 @@ const SAMPLE_MS = 250;
 const BUTTON =
   "mt-2 w-full rounded-control border border-white/12 px-2 py-1 text-caption text-text-2 hover:text-text";
 
-// The slice parts the panel shows. Refs only change when a batch commits.
+// The slice parts the panel shows. Refs only change when a batch commits; `time` is the mock
+// clock's whole sim second, which moves on its own between batches.
 function pick() {
   const s = useStore.getState();
+  const now = s.source.name === "mock" ? s.clock?.now() : undefined;
   return {
     source: s.source,
     health: s.dataHealth,
     sessions: s.sessions,
     ring: s.ring,
     version: s.ringVersion,
+    time: now === undefined ? ANCHOR_MS : Math.floor(now / 1000) * 1000,
     clock: { speed: s.speed, paused: s.paused, locked: s.locked },
   };
 }
@@ -34,12 +37,14 @@ const same = (a: Snapshot, b: Snapshot) =>
   a.health === b.health &&
   a.sessions === b.sessions &&
   a.version === b.version &&
+  a.time === b.time &&
   a.clock.speed === b.clock.speed &&
   a.clock.paused === b.clock.paused &&
   a.clock.locked === b.clock.locked;
 
 // The panel reads the store at most once per SAMPLE_MS, and only when a part it shows changed
-// (CEO C39), so a busy source cannot make it re-render per batch.
+// (CEO C39), so a busy source cannot make it re-render per batch. A timer re-checks every
+// SAMPLE_MS so the clock time moves while no batch arrives; a paused clock changes nothing.
 function useThrottledData(): Snapshot {
   const [snap, setSnap] = useState(pick);
   const shownRef = useRef(snap);
@@ -56,9 +61,11 @@ function useThrottledData(): Snapshot {
       }, SAMPLE_MS);
     };
     const unsubscribe = useStore.subscribe(schedule);
+    const poll = setInterval(schedule, SAMPLE_MS);
     schedule();
     return () => {
       unsubscribe();
+      clearInterval(poll);
       if (timer !== null) clearTimeout(timer);
     };
   }, []);
@@ -84,7 +91,7 @@ interface Props {
 // a clicked row its last 20 events from the ring buffer (C32).
 export const DataSection = memo(function DataSection({ frozen, seed, scenario }: Props) {
   countPanelRender();
-  const { source, health, sessions, ring, clock } = useThrottledData();
+  const { source, health, sessions, ring, time, clock } = useThrottledData();
   const [peekId, setPeekId] = useState<string | null>(null);
   const [chosen, setChosen] = useState(scenario);
   const list = sessionList(sessions);
@@ -97,7 +104,7 @@ export const DataSection = memo(function DataSection({ frozen, seed, scenario }:
     const { speed } = useStore.getState();
     useStore.getState().connect(createMockSource({ seed, scenario: name, freeze: frozen, speed }));
   };
-  const timeText = on ? ` · ${sinceAnchor(useStore.getState().clock?.now() ?? ANCHOR_MS)}` : "";
+  const timeText = on ? ` · ${sinceAnchor(time)}` : "";
   return (
     <div id="dev-data-body" data-testid="dev-data-body">
       <div className="mt-2 flex gap-2">
