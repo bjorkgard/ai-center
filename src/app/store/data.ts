@@ -212,7 +212,11 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       if (!get().logSeen) set({ logSeen: true });
       if (message.type === "lines") {
         const { path, fileId, total } = message;
-        set({ logLines: { ...get().logLines, [path + fileId]: { path, fileId, total } } });
+        // One row per path: a new identity (rotation, or an id that moves) replaces the old one.
+        const kept = Object.entries(get().logLines).filter(([, line]) => line.path !== path);
+        set({
+          logLines: { ...Object.fromEntries(kept), [path + fileId]: { path, fileId, total } },
+        });
       } else if (message.type === "progress") {
         set({ logProgress: { done: message.done, total: message.total } });
       } else {

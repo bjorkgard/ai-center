@@ -139,7 +139,7 @@ export function createLiveSource(options: LiveOptions = {}): Source {
   const onMessage = (message: ServerMessage) => {
     if (message.type === "heartbeat") return;
     if (message.type === "lines") {
-      cursors.set(message.path + message.fileId, {
+      cursors.set(message.path, {
         path: message.path,
         fileId: message.fileId,
         offset: 0,

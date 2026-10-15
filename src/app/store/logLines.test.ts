@@ -51,16 +51,28 @@ test("line totals land in logLines keyed by path and fileId, and a re-read repla
   expect(store().logSeen).toBe(false);
   source.say(lines("/a.jsonl", 3));
   expect(store().logSeen).toBe(true);
-  source.say(lines("/a.jsonl", 3, "1:2"));
+  source.say(lines("/c.jsonl", 3, "1:2"));
   source.say(lines("/b.jsonl", 7));
   expect(Object.keys(store().logLines).toSorted()).toEqual([
     "/a.jsonl1:1",
-    "/a.jsonl1:2",
     "/b.jsonl1:1",
+    "/c.jsonl1:2",
   ]);
   source.say(lines("/a.jsonl", 4));
   expect(store().logLines["/a.jsonl1:1"]).toEqual({ path: "/a.jsonl", fileId: "1:1", total: 4 });
   expect(Object.keys(store().logLines)).toHaveLength(3);
+});
+
+test("a new fileId for a path replaces its row: rotation and repeated id changes", () => {
+  const source = new LogSource();
+  store().connect(source);
+  source.say(lines("/a.jsonl", 3));
+  source.say(lines("/b.jsonl", 7));
+  source.say(lines("/a.jsonl", 1, "2:2"));
+  expect(Object.keys(store().logLines).toSorted()).toEqual(["/a.jsonl2:2", "/b.jsonl1:1"]);
+  for (let size = 10; size < 15; size++) source.say(lines("/a.jsonl", size, `w:${size}`));
+  expect(Object.keys(store().logLines).toSorted()).toEqual(["/a.jsonlw:14", "/b.jsonl1:1"]);
+  expect(store().logLines["/a.jsonlw:14"].total).toBe(14);
 });
 
 test("log messages never go through applyBatch", () => {

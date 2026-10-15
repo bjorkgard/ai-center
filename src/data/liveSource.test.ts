@@ -184,6 +184,27 @@ test("kill and restart: the totals equal an uninterrupted run and the cursors ar
   expect(killed.statuses.at(-1)).toBe("live");
 });
 
+test("a new fileId for a path replaces its cursor: hello never has more cursors than paths", () => {
+  const r = rig();
+  r.source.start();
+  r.last().open();
+  // A rotation, then an id that changes with every append (the Windows fallback id).
+  r.last().say(lines("/a.jsonl", 3));
+  r.last().say({ type: "lines", path: "/a.jsonl", fileId: "2:2", total: 1 });
+  for (let size = 10; size < 15; size++) {
+    r.last().say({ type: "lines", path: "/a.jsonl", fileId: `w:${size}`, total: size });
+  }
+  r.last().say(lines("/b.jsonl", 5));
+  r.last().drop();
+  r.fire();
+  r.last().open();
+  const hello = r.last().sent[0] as { cursors: { path: string; fileId: string }[] };
+  expect(hello.cursors).toEqual([
+    { path: "/a.jsonl", fileId: "w:14", offset: 0 },
+    { path: "/b.jsonl", fileId: "1:1", offset: 0 },
+  ]);
+});
+
 test("dropping and restoring the socket three times returns to live each time", () => {
   const r = rig();
   r.source.start();
