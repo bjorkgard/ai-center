@@ -20,6 +20,7 @@ import {
   BUFFER_LIMIT,
   Channel,
   checkGate,
+  matchCursors,
   createLogServer,
   HELLO_TIMEOUT_MS,
   MAX_PAYLOAD,
@@ -142,7 +143,7 @@ describe("streaming line totals", () => {
     await logServer.backfilled();
     const c = connect(port, logServer.token);
     await until(() => c.messages.filter((m) => m.type === "heartbeat").length >= 3, 2000);
-    expect(c.messages[0]).toMatchObject({
+    expect(c.messages.find((m) => m.type === "roots")).toMatchObject({
       type: "roots",
       roots: [{ path: root, files: 1, source: "flag" }],
     });
@@ -210,8 +211,8 @@ describe("streaming line totals", () => {
     const missing = join(base, "does-not-exist");
     const { port, logServer } = await startServer(missing);
     const c = connect(port, logServer.token);
-    await until(() => c.messages[0], 2000);
-    const roots = (c.messages[0] as Extract<ServerMessage, { type: "roots" }>).roots;
+    const message = await until(() => c.messages.find((m) => m.type === "roots"), 2000);
+    const roots = (message as Extract<ServerMessage, { type: "roots" }>).roots;
     expect(roots[0].reason).toMatch(/root not found: .*does-not-exist.*--log-root.*#configuration/);
   });
 
@@ -306,7 +307,7 @@ describe("backfill", () => {
 describe("limits", () => {
   test("a first message other than hello closes with 4400", async () => {
     const { port } = await startServer(freshRoot());
-    for (const first of ['{"type":"heartbeat"}', "not json", '{"type":"hello"}']) {
+    for (const first of ['{"type":"heartbeat"}', "not json", "[]", '{"token":"x"}']) {
       const c = connect(port, null);
       c.ws.onopen = () => c.ws.send(first);
       await until(() => c.state.code !== undefined, 2000);
@@ -316,6 +317,21 @@ describe("limits", () => {
     binary.ws.onopen = () => binary.ws.send(new Uint8Array([1, 2, 3]));
     await until(() => binary.state.code !== undefined, 2000);
     expect(binary.state.code).toBe(4400);
+  });
+
+  test("a hello without a usable token closes 4401, not 4400", async () => {
+    const { port } = await startServer(freshRoot());
+    for (const first of [
+      '{"type":"hello"}',
+      '{"type":"hello","cursors":[]}',
+      '{"type":"hello","token":5,"cursors":[]}',
+      '{"type":"hello","token":null,"cursors":[]}',
+    ]) {
+      const c = connect(port, null);
+      c.ws.onopen = () => c.ws.send(first);
+      await until(() => c.state.code !== undefined, 2000);
+      expect(c.state.code).toBe(4401);
+    }
   });
 
   test("a wrong token closes 4401 and a missing hello closes 4401 after the timeout", async () => {
@@ -376,6 +392,20 @@ describe("limits", () => {
     await until(() => c.messages.some((m) => m.type === "heartbeat"), 2000);
     expect(c.state.code).toBeUndefined();
     expect(reads.every((p) => p.startsWith(root))).toBe(true);
+  });
+
+  test("matchCursors keeps cursors for known files and drops the rest", () => {
+    const known = new Set(["/r/a.jsonl"]);
+    const kept = { path: "/r/a.jsonl", fileId: "1:1", offset: 3 };
+    const forged = { path: "../../etc/passwd", fileId: "1:1", offset: 0 };
+    expect(matchCursors([forged, kept], known)).toEqual([kept]);
+  });
+
+  test("the first message after an accepted hello is the heartbeat, then roots", async () => {
+    const { port, logServer } = await startServer(freshRoot());
+    const c = connect(port, logServer.token);
+    await until(() => c.messages.length >= 3, 2000);
+    expect(c.messages.slice(0, 3).map((m) => m.type)).toEqual(["heartbeat", "roots", "progress"]);
   });
 });
 

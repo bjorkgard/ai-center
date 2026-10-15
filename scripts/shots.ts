@@ -77,7 +77,12 @@ async function main(): Promise<void> {
   const server = spawn(
     "vp",
     ["preview", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
-    { stdio: ["ignore", "ignore", "pipe"], detached: true },
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+      detached: true,
+      // The log server must not watch the real home directory.
+      env: { ...process.env, SYNAPSE_LOG_ROOTS: "none" },
+    },
   );
   let stderr = "";
   let exitMsg: string | undefined;

@@ -5,6 +5,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import {
   parseClientMessage,
   STREAM_PATH,
+  type Cursor,
   type RootInfoMessage,
   type ServerMessage,
 } from "../src/data/wire.ts";
@@ -107,6 +108,22 @@ export class Channel {
     const messages = [...this.#pending.values()];
     this.#pending.clear();
     for (const message of messages) this.#socket.send(JSON.stringify(message));
+  }
+}
+
+/** Client cursors are matched against the server's own known files; unknown paths are dropped. */
+export function matchCursors(cursors: Cursor[], known: { has(path: string): boolean }): Cursor[] {
+  return cursors.filter((cursor) => known.has(cursor.path));
+}
+
+/** True for a JSON hello whose token is missing or not a string. */
+function helloWithoutToken(text: string | undefined): boolean {
+  if (text === undefined) return false;
+  try {
+    const value = JSON.parse(text) as { type?: unknown; token?: unknown } | null;
+    return value?.type === "hello" && typeof value.token !== "string";
+  } catch {
+    return false;
   }
 }
 
@@ -254,11 +271,15 @@ export function createLogServer(options: LogServerOptions): LogServer {
     }));
   }
 
-  function greet(channel: Channel): void {
-    channel.send({ type: "roots", roots: rootsMessage() });
+  function greet(channel: Channel, matched: Cursor[]): void {
     channel.send({ type: "heartbeat" });
+    channel.send({ type: "roots", roots: rootsMessage() });
     channel.send({ type: "progress", ...progress });
-    for (const tail of tails.values()) {
+    const first = new Set(matched.map((cursor) => cursor.path));
+    const ordered = [...tails.values()].sort(
+      (a, b) => Number(first.has(b.path)) - Number(first.has(a.path)),
+    );
+    for (const tail of ordered) {
       if (tail.fileId !== "") {
         channel.send({ type: "lines", path: tail.path, fileId: tail.fileId, total: tail.lines });
       }
@@ -283,18 +304,24 @@ export function createLogServer(options: LogServerOptions): LogServer {
       if (channel !== undefined || !pendingSockets.has(ws)) return;
       clearTimeout(helloTimer);
       pendingSockets.delete(ws);
-      const hello = isBinary
-        ? undefined
-        : parseClientMessage(Buffer.from(data as Buffer).toString("utf8"));
-      if (hello === undefined) return ws.close(4400, "the first message must be a hello");
+      const text = isBinary ? undefined : Buffer.from(data as Buffer).toString("utf8");
+      const hello = text === undefined ? undefined : parseClientMessage(text);
+      if (hello === undefined) {
+        // A hello with a missing or non-string token is a token failure; anything else is not a hello.
+        return ws.close(
+          ...((helloWithoutToken(text)
+            ? [4401, "bad token"]
+            : [4400, "the first message must be a hello"]) as [number, string]),
+        );
+      }
       if (hello.token !== token) return ws.close(4401, "bad token");
-      // Cursors only skip re-sent events from chunk 15 on; here totals are always absolute and
-      // no client path is ever opened, so only the count is checked.
       if (hello.cursors.length > tails.size) return ws.close(4400, "too many cursors");
       const accepted = new Channel(ws, bufferLimit);
       channel = accepted;
       channels.add(accepted);
-      greet(accepted);
+      // Totals are always absolute, so cursors only decide which known files are sent first;
+      // a client path is never opened.
+      greet(accepted, matchCursors(hello.cursors, tails));
       heartbeat = setInterval(() => accepted.send({ type: "heartbeat" }), heartbeatMs);
       drain = setInterval(() => accepted.drain(), DRAIN_CHECK_MS);
     });

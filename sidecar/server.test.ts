@@ -215,7 +215,7 @@ describe("log server in the binary", () => {
     ok.on("open", () =>
       ok.send(JSON.stringify({ type: "hello", token: logServer.token, cursors: [] })),
     );
-    expect(JSON.parse(await first)).toEqual({ type: "roots", roots: [] });
+    expect(JSON.parse(await first)).toEqual({ type: "heartbeat" });
   });
 
   test("an upgrade for any other path is closed, and /api/session answers the right Host", async () => {
