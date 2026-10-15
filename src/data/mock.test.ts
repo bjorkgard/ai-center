@@ -24,6 +24,21 @@ test("[0, 10 min) equals [0, 4 min) plus [4 min, 10 min), and so does any odd sp
   expect(new Set(whole.map((e) => e.id)).size).toBe(whole.length);
 });
 
+test("any split of [0, 10 min), mid-slot cuts included, joins to the unsplit output in order", () => {
+  const cuts = [88_010, 123_456, 1, 999, 1001, 5_555, 17_321, 30_001, 44_444, 61_999, 77_777];
+  for (let i = 0; i < 12; i++) cuts.push(100_003 + i * 41_117);
+  for (let seed = 1; seed <= 5; seed++) {
+    const whole = mockEvents(seed, "steady", 0, 10 * MIN);
+    for (const cut of cuts) {
+      const joined = [
+        ...mockEvents(seed, "steady", 0, cut),
+        ...mockEvents(seed, "steady", cut, 10 * MIN),
+      ];
+      expect(joined, `seed ${seed} cut ${cut}`).toEqual(whole);
+    }
+  }
+}, 20_000);
+
 test("it never reads the real clock, and every event is valid with ts at the anchor plus sim ms", () => {
   const now = vi.spyOn(Date, "now").mockImplementation(() => {
     throw new Error("Date.now read");
@@ -56,20 +71,24 @@ test("an unknown scenario throws", () => {
 });
 
 test("every event of a session is strictly after its session_start, over seeds 1-50", () => {
+  // One expect per seed over a collected list of violations, not one per event.
   const check = (seed: number, from: number, to: number) => {
     const starts = new Map<string, number>();
+    const bad: string[] = [];
     for (const e of mockEvents(seed, "steady", 0, to)) {
       const ms = Date.parse(e.ts) - ANCHOR_MS;
       if (e.type === "session_start") starts.set(e.sessionId, ms);
       else if (ms >= from) {
         const start = starts.get(e.sessionId);
-        expect(start, `${e.sessionId} ${e.type} before its start`).toBeDefined();
-        expect(ms).toBeGreaterThan(start!);
+        if (start === undefined) bad.push(`${e.sessionId} ${e.type} before its start`);
+        else if (ms <= start) bad.push(`${e.sessionId} ${e.type} at ${ms} <= start ${start}`);
       }
     }
+    return bad;
   };
-  for (let seed = 1; seed <= 50; seed++) check(seed, 0, 12 * MIN);
-  check(3, 0, 90 * 1000);
+  for (let seed = 1; seed <= 50; seed++)
+    expect(check(seed, 0, 12 * MIN), `seed ${seed}`).toEqual([]);
+  expect(check(3, 0, 90 * 1000)).toEqual([]);
 });
 
 test("seed 23 lane 8: the tool call in the sub's first slot comes after its session_start", () => {

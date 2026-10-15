@@ -28,6 +28,7 @@ test.each([
     ["--seed", "1", "--scenario", "steady", "--minutes", "99999999999999999999", "--out", "o"],
     "--minutes",
   ],
+  [["--seed", "1", "--scenario", "steady", "--minutes", "1441", "--out", "o"], "1440"],
   [["--seed", "1", "--scenario", "steady", "--minutes", "1"], "--out"],
   [
     ["--seed", "1", "--scenario", "steady", "--minutes", "1", "--out", "/nonexistent-dir/x"],

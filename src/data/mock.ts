@@ -165,8 +165,8 @@ function laneEvents(seed: number, lanes: Lane[], lane: Lane, slot: number): Agen
   });
 }
 
-// The events with sim ms in [fromMs, toMs), in generator order: by one-second slot, then lane,
-// then time (C33).
+// The events with sim ms in [fromMs, toMs), ordered by ts, ties by id, so any split of a range
+// joins to the whole in order (C33).
 export function mockEvents(
   seed: number,
   scenario: string,
@@ -184,7 +184,7 @@ export function mockEvents(
       }
     }
   }
-  return out;
+  return out.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.id < b.id ? -1 : 1));
 }
 
 export interface MockSourceOptions {

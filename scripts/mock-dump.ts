@@ -3,8 +3,9 @@ import { mockEvents } from "../src/data/mock.ts";
 import { AgentEvent } from "../src/data/schema.ts";
 
 // `vp run mock:dump -- --seed N --scenario steady --minutes M --out <file>` writes the mock's
-// normalised events as JSONL, one per line in generator order, covering M sim minutes from sim
+// normalised events as JSONL, one per line ordered by ts, ties by id, covering M sim minutes from sim
 // time 0 (CEO C30). A file, not stdout, so `vp run` output cannot mix in.
+const MAX_MINUTES = 1440;
 const FLAGS = ["--seed", "--scenario", "--minutes", "--out"] as const;
 
 function fail(message: string): never {
@@ -30,6 +31,8 @@ const minutes = Number(minutesText);
 if (!/^\d+$/.test(minutesText) || !Number.isSafeInteger(minutes * 60_000) || minutes < 1) {
   fail(`--minutes must be a whole number above 0, got "${minutesText}"`);
 }
+if (minutes > MAX_MINUTES)
+  fail(`--minutes must be at most ${MAX_MINUTES} (one sim day), got ${minutes}`);
 const scenario = value("--scenario");
 if (scenario !== "steady") fail(`unknown scenario "${scenario}" (only steady)`);
 const out = value("--out");
