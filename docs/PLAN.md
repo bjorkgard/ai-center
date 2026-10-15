@@ -674,8 +674,8 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **README:** Quick start (DX voice M4): `vp dev` for development, `vp run serve` for the built app; the log server runs under `vp dev`, `vp preview` (used by Playwright) and the binary alike. "Data sources and privacy" section (CEO F10, spec 5.3): what is read, localhost only; what reaches the browser now (per-file line counts and root paths only) and what chunk 15 will add (session ids, model, token counts, tool names, `currentTask` truncated to 120 chars and redacted, D16); the token is defence in depth for browsers (Origin checks stop cross-origin pages, the Host gate stops DNS rebinding), and any local process can read `/api/session` or the page, so it does not defend against local processes, which can read the log files directly. Links to the "Configuration" section from 14a.
 
 #### [ ] 14b. Downloadable builds for 4 platforms
-- **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1). It follows chunk 15 so the first public binary shows real Claude Code sessions, not only line counts (UC2).
-- **Depends on:** 02b, 14a, 14c, 15 (14c owns `LiveSource` and the live-by-default page, so without it the binary would still show no sessions).
+- **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1). It follows chunk 15 (now 15a and 15b) so the first public binary shows real Claude Code sessions, not only line counts (UC2).
+- **Depends on:** 02b, 14a, 14c, 15b (14c owns `LiveSource` and the live-by-default page, so without it the binary would still show no sessions).
 - **Tasks:**
   - **Reusable workflow (E54):** the build, smoke, attest and upload matrix lives in `.github/workflows/binaries.yml` (`workflow_call` inputs `version`, `ref`, `upload`; `workflow_dispatch` runs it with `upload: false`, so the 14b PR proves all 4 runners before merge, CEO Section 9). `release.yml` calls it after `release` with `upload: true`: `needs: release`, `if: needs.release.outputs.published == 'true'`, and the ref is the new tag `v${{ needs.release.outputs.version }}` (not the merge SHA, whose `package.json` still has the old version). `binaries.yml` opens with `permissions: {}` and uses job-level grants. `scripts/check-workflows.ts` covers the new file.
   - **Build matrix:** runners macos-15 (arm64; `macos-14` is removed on 2026-11-02), macos-15-intel (x64; `macos-13` was retired 2025-12-04, and GitHub drops x64 macOS when the macOS 15 image retires in fall 2027), ubuntu-latest (x64), windows-latest (x64). Each runner builds with its own official Node binary (no cross-compiling) via `vp run build:bin`. Output names `synapse-horizon-<version>-<os>-<arch>` (`.exe` on Windows). Uploads use `gh release upload --clobber` (eng voice L1).
@@ -692,19 +692,44 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
   - On your Mac, the downloaded arm64 binary starts after the Gatekeeper first-run step (macOS 15+: System Settings > Privacy & Security > Open Anyway, or `xattr -d com.apple.quarantine <file>`) and serves the app. A machine with no Node installed runs it (checked once on a clean VM or a user account without Node).
 - **README:** Add "Download and run" (DX1, DX voice H1, M7): per-OS copy-paste blocks, each starting with `chmod +x synapse-horizon-<version>-<os>-<arch>` for macOS and Linux (release assets lose the exec bit), then the first-run bypass, then the run command and the expected first output line (`listening on http://127.0.0.1:7317/`). Unsigned-binary first-run notes: macOS 15 and later removed the right-click > Open bypass, so use System Settings > Privacy & Security > Open Anyway after the first blocked launch, or `xattr -d com.apple.quarantine <file>`; Windows SmartScreen "More info > Run anyway"; flags (`--port`, `--no-open`, `--version`, `--log-root`, `--no-logs`). Copy-paste checksum commands next to `gh attestation verify`: `shasum -a 256 -c SHA256SUMS.txt --ignore-missing` (macOS, Linux) and `Get-FileHash <file> -Algorithm SHA256` (Windows). Image: `14b-release.png` (screenshot of the first GitHub Release page with the 4 assets), captured manually and stored in `docs/img/`.
 
-#### [ ] 15. Claude Code parser
-- **Goal:** Claude JSONL lines become AgentEvents.
-- **Depends on:** 13, 14a.
-- **Tasks:** Inspect your real files first and record the observed format in `docs/log-formats/claude.md` (versions seen). Parser as a pure Node module in `sidecar/parsers/`. Map: session start, turns, tool calls/results, usage tokens, model, cwd, sidechain/subagent links to parent, TodoWrite to currentTask, Edit/Write paths to filesTouched. Parsers emit only facts from lines; session end, status and waiting inference live in the store and use the store clock (eng review A3). Redaction (120-char task, paths outside project, secret patterns from `sidecar/parsers/redact.ts`: key prefixes, bearer tokens, 32+ char high-entropy strings, eng review D2). Unknown line types counted, not fatal. Redacted fixtures committed.
-- **Acceptance:** Fixture tests cover: plain session, session with subagents, tool error, malformed line, unknown type, each secret pattern redacted, and a long git SHA in task text that is NOT redacted. Pointing the log server at your real folder shows your actual sessions with correct projects and token totals that match a manual count on one file within 1%.
-- **README:** "Supported logs" with Claude format notes and known gaps.
+#### [ ] 15a. Claude Code parser: format, mapping and redaction
+- **Goal:** Claude Code JSONL lines become `AgentEvent`s through a pure, fixture-tested parser; nothing reaches the app until 15b (UC1, split from chunk 15).
+- **Depends on:** 13 (merged first: the parser imports its `todo`/`toolClass` fields, E20).
+- **Tasks:**
+  - **Format first (X2, C94, DX3, DX10, DX20):** before parser code, `vp run logs:probe -- [--log-root <dir>] [--file <path>] [--json]` prints line types, payload types, key sets and versions over the 14a-resolved roots, never values (`--file` prints that file's health counters and token totals). Record in `docs/log-formats/claude.md`: types and versions seen (Claude Code 2.1.260-2.1.295 on one machine, n=1), `TESTED_VERSIONS`, the mapped/ignored lists, every rule below, the `jq` reference command (DX17), a "When a vendor updates" section (DX6), toolClass v1 limits (`bash -c`, `$(...)`, heredocs) and fixed v1 limits (24 h backfill, 32 MiB line cap, tested range).
+  - **Parser contract (spec review, DX16):** `sidecar/parsers/claude.ts` is a synchronous function of `(line, byteOffset, fileState, deps)` returning events and the next file state, with no I/O; `deps` (`resolveProjectKey`, `readMeta`, `rootProjectKey`) are injected, and fixture tests pass stubs. `sidecar/parsers/README.md` documents the signature, ids and file state with a stub-resolver test.
+  - **Types (C90):** mapped `user`, `assistant`, `system` (`api_error` gives an `error` event with `status: "error"`; `stop_hook_summary`, `turn_duration`, `away_summary`, `local_command`, `compact_boundary`, `informational`, `scheduled_task_fire` ignored). Known-ignored: `attachment`, `custom-title`, `ai-title`, `last-prompt`, `agent-name`, `queue-operation`, `atis-latch`, `bridge-session`, `mode`, `permission-mode`, `pr-link`, `cost-state`, `file-history-snapshot`, `file-history-delta`; in-file `isSidechain` lines ignored (known gap). Any other type is counted unknown; a JSON parse error is counted malformed; a line over 32 MiB is skipped and counted oversize (C99).
+  - **Usage and turns (C80, measured 1.8x overcount per line):** usage once per `message.id` on its first line (`in` = `input_tokens`, `cacheRead` = `cache_read_input_tokens`, `cacheWrite` = `cache_creation_input_tokens`, `out` = `output_tokens`); a later differing usage keeps the first and flags drift. `turn_start` = a real user prompt; `turn_end` once per `message.id` with `stop_reason` `end_turn`; `session_start` once per file on the first line with `sessionId`, `timestamp` and `cwd`. Lines without `timestamp` take the previous line's ts (E19).
+  - **Tool calls and errors (E1):** `tool_use` blocks give `tool_call` with `toolName` (unknown names cut to 64 chars and redacted, E14); a `tool_result` with `is_error: true` gives `tool_result` with the new optional schema field `toolError: true` and no `status` (measured 206 of 13,109 tool results fail; a session never turns `error` for them).
+  - **Subagents (C83):** `<session>/subagents/agent-<id>.jsonl` maps to `sessionId` = `agentId`, `parentSessionId` = the line's `sessionId`, `agentKind` `sub`, `parentKnown` true; nested subagents name the root session; `.meta.json` read once via `readMeta` for `agentType`.
+  - **Plan tools and currentTask (C82, X5, E12):** one table maps `TodoWrite` (`todos[]`) and the best-effort `mcp__ccd_turn__update_plan` (`items` replaces the list; `advance`; `done`/`start`) to `todo` items; each change is one `status` event (no `status` value) carrying `todo`; `todo.id` = hash(sessionId, tool, normalised text, occurrence); items dropped from a new full list emit `todo.status: "cancelled"` (additive enum value). `currentTask` = the newest of the in-progress plan item and the latest real user prompt (string/text content, not `tool_result`, `isMeta`, `isCompactSummary` or an injected tag: `<task-notification`, `<command-message`, `<command-name`, `<ci-monitor-event`, `<bash-input`, `<system-reminder`, `<local-command-stdout`, `<bash-stdout`).
+  - **toolClass (DX18):** `sidecar/parsers/toolClass.ts`: `Edit`, `Write`, `MultiEdit`, `NotebookEdit` (and Codex `apply_patch`) are `edit`; shell commands are split on `&&`, `||`, `;`, `|`, env assignments and wrappers (`npx`, `bunx`, `pnpm exec`, `pnpm`, `yarn`, `npm run`, `uv run`, `poetry run`) stripped, then `git commit` is `git_commit`, test runners (`vp test`, `vitest`, `jest`, `pytest`, `go test`, `cargo test`, `playwright test`, `npm`/`pnpm`/`yarn`/`bun`/`deno`/`make`/`just test`) `test`, checkers (`vp check`, `eslint`, `tsc`, `ruff`, `biome`, `prettier --check`) `lint`, else `other`; quoted words never match; command text never leaves Node. One tool-to-path table (`file_path`, `notebook_path`, `apply_patch` headers) also feeds `filesTouched`.
+  - **Redaction (R2, D16, C101, E10, E11):** `sidecar/parsers/redact.ts`: key prefixes, bearer tokens, 32+ char mixed letter-digit strings with entropy at least 4.0 bits/char, and hex strings of 32+ chars except exactly 40 or 64 chars (git SHA lengths; residual risk documented) become `[redacted]`; absolute paths outside the session's working root become `[outside project]`, inside it relative; linear patterns on the first 4 KiB, then the 120-char cut. `filesTouched` uses the same path rule.
+  - **Ids (E4):** `id` = sha256 of (vendor, `fileId` or the path when 14a falls back from `ino` 0, line byte offset, sha256 of the line bytes, index in the line); stable across restarts and renames, new for rewritten content.
+  - **Golden fixtures (X4, C93, DX11, DX15):** `vp run logs:fixture -- --vendor claude --file <path> --out <fixture>` cuts one real session, replaces text, paths (`/repo/...`, `/home/user/...`), URLs, branch and repo names, keeps ids, timestamps, types and usage, and prints what it replaced; a privacy test fails on the home dir, username, hostname, `/Users/`, `github.com`, `http://`, `https://`, printing file, line and token.
+- **Acceptance:** Vitest fixtures for: plain session; two subagents, one nested; tool error (session status unchanged); `api_error`; malformed, unknown and oversize lines; each ignored type; a message over 3 content-block lines counting tokens once; `end_turn` over 2 lines giving one `turn_end`; each plan-tool shape, insert at index 0 keeping ids, a reworded item giving one `cancelled`; prompt fallback, newer prompt over older plan, injected tags ignored; each toolClass class and wrapper, a quoted runner (`other`); each secret pattern, 40/64 hex kept, 32/48 hex redacted, a 1 MiB adversarial string under 50 ms, a path outside the root; ids stable on re-parse, two events from one line distinct; no command text or patch body in any event; probe output with no fixture values. The golden fixture total equals an independent reference counter exactly.
+- **README:** "Supported logs" (C97, DX7): what the parsers feed, run-this-see-that lines, versions, known gaps (n=1, monorepo, in-file sidechains, desktop plan tool best-effort), the 40-hex residual risk.
+
+#### [ ] 15b. Claude Code parser in the log server
+- **Goal:** the log server parses real Claude Code logs and the app shows the user's own sessions with exact tokens, one hall per repository (UC1, split from chunk 15).
+- **Depends on:** 15a, 14a, 14c.
+- **Tasks:**
+  - **Registry (C91):** the log server picks a parser by root and path; only `*.jsonl` is tailed. Parser state is built by reading each file from 0 on start and for any file first seen later; events from lines older than 24 h at that moment are suppressed (C80). A file's parser state is dropped 2 h after its last append and rebuilt on the next append (E17).
+  - **Session keys (C81, C95, E5, E8):** `sidecar/sessionKeys.ts` owns the session-to-key map: key = git toplevel of the session's first cwd (a worktree `.git` file followed to the main root, T1), else the first cwd; one upgrade if the first cwd has no git root and a later one does; subagents always read their root session's current key (measured 84 of 300 subagents start in another cwd); a parent not parsed yet is resolved from its file head, at most 256 KiB, else `W-PARENT-MISSING`; the `.git` walk stops at the root or 32 levels; results cached by session id.
+  - **Store (C100, E7):** `applyBatch` moves a session whose event carries a new `projectKey`, with its subagents and every per-project aggregate (counts, tokens, jobs slice derived from the session's current key); totals stay exact; ring events keep their original key.
+  - **Wire and delivery (C89, E2, E3, E9):** `src/data/wire.ts` gains `{ type: "events", path, fileId, cursor, backfill, events }` (at most `MAX_BATCH`); `cursor` = start of the first line not fully sent; `LiveSource` advances a file's cursor only after `onEvents` returns. The server keeps a per-file event log of the 24 h window (cap 250,000 events, `W-LOG-CAP`, T8) and serves any client from any cursor; a slow client is paused per file at its cursor (nothing dropped). Events are validated before send (`W-INVALID-EVENT`); a batch whose apply throws twice is quarantined, counted invalid and its cursor advanced.
+  - **Health and drift (X1, DX8, DX9, DX14, C92, DX5, DX13):** per file `{ lines, events, ignored, unknown, malformed, oversize, newestVersion, firstMalformedOffset, firstOversizeOffset }` ride the 14a `lines` message, which keeps `total`; the 14c `logLines` slice holds them and the `dev=1` HUD row is labelled "Parser health". A version above `TESTED_VERSIONS` or an unknown type shows in the pill tooltip, one line per vendor: "Log format changed: <vendor> <version> is newer than tested (<range>); counts may be incomplete. Run vp run logs:probe and report its output."
+  - **Log lines (DX12, DX1, DX2, C96):** every parser `[logs]` line is `[logs] <CODE> <vendor> <file> @<offset>: <problem>. <cause>. <fix>. See README#supported-logs` with codes `I-SUMMARY`, `W-STALE-ROOT`, `W-UNKNOWN-TYPE`, `W-NEW-VERSION`, `W-MALFORMED`, `W-OVERSIZE`, `W-INVALID-EVENT`, `W-USAGE-DRIFT`, `W-BASELINE-RESET`, `W-CODEX-FACT`, `W-PARENT-MISSING`, `W-LOG-CAP`. After backfill one `I-SUMMARY` per vendor: files, sessions, projects in the last 24 h and duration. A root with files but none in 24 h: `<vendor>: <n> files, none in the last 24 h (newest <age> ago); start a <vendor> session to see it here.`
+  - **Plan text (spec review):** PLAN.md section 2 states the per-session repo-rooted `projectKey` (D5 now reads "repository root of the session's first working directory"), the E4 id and the `toolError` field; the `src/data/schema.ts` comment matches.
+- **Acceptance:** drop the socket after send and before apply, and split a line's events across two batches with a drop between: totals equal an uninterrupted run, 0 duplicates; two clients (reconnecting and fresh) give identical totals; the cap path re-parses; a stalled client in a 10,000-event backfill stays bounded and gets every event once; truncate and rewrite then restart the server with the tab open: new events arrive; rename a file: no double count; more than 50,000 backfill events then a resend applies nothing twice; a throwing apply is quarantined. `sessionKeys` unit tests (subdirectory, worktree, missing path, upgrade from `~`, subagent before and after the parent's upgrade ends in one hall, head cap). `reduce.test.ts`: move with subagents and every aggregate; a no-status event leaves status unchanged; existing reduce, steady-digest and scenario tests pass unchanged. One test per log code; `I-SUMMARY` on a synthetic 200-file root; drift tooltip once per version; parser-state eviction with a fake clock. Manual on the Mac: own sessions in the `dev=1` HUD with correct halls; one file's HUD total within 1% of the `jq` reference; backfill of the last 24 h under 15 s (measured 2026-10-15: 175 files, 186 MB), recorded in the format doc.
+- **README:** codes table in "Supported logs"; Quick start points to it.
 
 #### [ ] 16. Codex CLI parser
-- **Goal:** Codex rollout JSONL becomes AgentEvents.
-- **Depends on:** 15.
-- **Tasks:** Same as 15 for Codex: record observed format in `docs/log-formats/codex.md`, map session meta, cumulative token counts to deltas, function/shell calls, model, cwd. Subagents with no recoverable parent get `parentKnown=false`. Update the feasibility table in this plan with what was actually found.
-- **Acceptance:** Fixture tests as in 15, plus: restart mid-file gives the same token totals as one uninterrupted read (eng review Q4). Real Codex sessions appear in the same hall as Claude sessions for the same repo (D5).
-- **README:** Codex notes, updated feasibility table.
+- **Goal:** Codex rollout JSONL becomes AgentEvents in the same halls as Claude sessions.
+- **Depends on:** 15b.
+- **Tasks:** Record the observed format in `docs/log-formats/codex.md` (Codex 0.145-0.160 on this Mac), first settling with recorded sample values whether `input_tokens` includes `cached_input_tokens` and whether subagent lines before `subagent_history_start_ordinal` repeat parent history; implement only the evidenced branch and log `W-CODEX-FACT` on a contradiction (C98). Map `session_meta` (sessionId, cwd, `session_start`), `turn_context.model`, `event_msg` `task_started`/`task_complete` (turns), `function_call`/`custom_tool_call` (`exec_command`, `exec`, `apply_patch`, `update_plan`) and their outputs (failures give `toolError`, E1), `apply_patch` headers to `filesTouched`, Codex `update_plan` (`plan[]` of `{step, status}`) through the 15a plan-tool table, and user messages not starting with an injected tag (`<recommended_plugins`, `<user_action`, `<environment_context`) to `currentTask`. Usage per `token_count` from `info.last_token_usage`, skipping a total equal to the immediately preceding one; `info: null` ignored; missing fields count 0; `in` = input minus cached when evidenced, clamped at 0; a lower total starts a new baseline (`W-BASELINE-RESET`) (C84). Subagents: `parentSessionId` = `parent_thread_id` with `parentKnown` true, else false; they take the parent's key through `sessionKeys` (rollout found by its thread-id file name); inherited history emits nothing when evidenced (C85). Ignored: `world_state`, `token_usage_record`, `reasoning`, other `event_msg` payloads. Golden fixture via `vp run logs:fixture -- --vendor codex`. Update the section 2 feasibility table with what was found.
+- **Acceptance:** fixtures as in 15a plus: repeated `token_count` (A, B, A after a reset) counts as pinned; null `info`; class mapping on recorded samples; restart mid-file equals one uninterrupted read (eng review Q4); subagent with and without `parent_thread_id`; subagent parsed before its parent shares its hall. Manual: run one `codex exec` in this repo (no Codex file was modified in the last 24 h on 2026-10-15), then its session appears in the same hall as this repo's Claude sessions (D5).
+- **README:** Codex notes in "Supported logs", updated feasibility table.
 
 #### [ ] 17. Drag-and-drop file import replay
 - **Goal:** Drop log files on the page and replay them through the local log server (eng review D1).
@@ -877,8 +902,8 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 01 → 02 → 02b (release) ; 02 → 03 (gate) → 04a → 04b → 05 → 06 → 07 → 08 → 09
                                                                    08 → 10
 04a → 04c → 06                           (look, parallel to 04b and 05; CEO C22)
-04a → 11 → 12 → 13 → 15 → 16 → 17       (data track, parallel to 04b-10; CEO S-RW1)
-     11 → 14a → 14c ; 02b → 14a ; 14a → 15 ; 14c → 17 ; 14a + 14c + 15 → 14b (downloads)
+04a → 11 → 12 → 13 → 15a → 15b → 16 → 17   (data track, parallel to 04b-10; CEO S-RW1)
+     11 → 14a → 14c ; 02b → 14a ; 14a + 14c → 15b ; 14c → 17 ; 14a + 14c + 15b → 14b (downloads)
 08 + 13 → 18;  13 → 19;  18 + 19 + 10 → 20 → 21;  21 + 09 → 22 → 23   (CEO C26)
 23 → 24 → 25, 26;  25 → 27 → 28, 29(+26), 30, 31 → 32(+29), 33
 27 → 34 → 35 → 36 → 37
@@ -7597,21 +7622,6 @@ After the gate (user request, 2026-10-15): the folded plan showed chunk 20's acc
 
 PR #29 review (Codex, 2026-10-15), applied by Auto-fix: churn's fast lanes ended at offset 900 ms of their last slot while the replacement started at 10 ms of the next, so `[0, 600 s)` and every pre-boundary sample held 2 active projects, not 3; ends now sit at offset 5 ms of the boundary slot (C66). Churn's 60 s idle gaps were shorter than chunk 19's 10-minute retire grace, so no hall ever retired and chunk 20's leak and G10 tests had no data; two slow lanes now outlast the grace, one returning mid-sink at 10x and 60x (C67). The fast lanes keep the chunk's "every 20 s" cadence.
 
-## GSTACK REVIEW REPORT
-
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` (via /autoplan for chunk 12) | Scope & strategy | 2 | CLEAR | 4 proposals, 2 accepted, 2 deferred (chunk 12, 2026-10-15) |
-| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` and /autoplan | Independent 2nd opinion | 6 | disabled | `codex_reviews` disabled; no completed external review |
-| Eng Review | `/plan-eng-review` (via /autoplan for chunk 12) | Architecture & tests (required) | 4 | ISSUES OPEN | 20 issues, 0 critical gaps (this run: chunk 12; all accepted as E34-E46 or chunk 12 obligations, 0 unresolved) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (2026-10-12); skipped for chunk 12 (no UI scope) |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | skipped for chunk 12 (no developer-facing scope) |
-
-- **OUTSIDE COVERAGE:** codex disabled for the chunk 12 CEO and eng phases; design and DX phases skipped. The CEO and eng voices and the three 0H spec reviews were same-harness Claude subagents, not outside coverage.
-- **VERDICT:** CEO CLEARED for chunk 12. Eng Review ISSUES OPEN means 20 found issues, all accepted into the chunk 12 entry with 0 unresolved decisions and 0 critical gaps; chunk 12 is ready to implement. eng review required.
-
-NO UNRESOLVED DECISIONS
-
 ## CEO review record: Chunks 13, 14 and 14b (/autoplan, 2026-10-15)
 
 Approved at the final gate 2026-10-15 (reply `all`); chunk 14 is split into 14a and 14c (UC3) and 14b follows chunk 15 (UC2).
@@ -8523,3 +8533,1027 @@ PR #31 review (2026-10-15): 14b also depends on 14c, which owns the browser live
 | 26 | Eng | E50-E58 accepted | Mechanical | P1/P5 | code-grounded findings | - |
 | 27 | Eng | Eng voice H1-H3, M2-M7, M9, L1-L5 accepted | Mechanical | P1/P5 | voice findings in blast radius | - |
 | 28 | Eng | UC3 split chunk 14 | User challenge | - | changes chunk structure | auto-decide |
+
+## CEO review record: Chunks 15, 16 (/autoplan, 2026-10-15)
+
+Approved at the final gate 2026-10-15 (reply `all`): chunk 15 is split into 15a and 15b (UC1); taste decisions T1-T8 kept their defaults. The chunk entries above are the consolidated accepted requirements; the accepted-obligation lists below are the review history they came from (later items replace earlier ones where stated).
+
+Mode: SELECTIVE EXPANSION (autoplan override). The 0E rule would also pick SELECTIVE EXPANSION: added capability, about 22 changed files across two PRs [estimated: 15 about 14, 16 about 8], each under 15. Codex outside voice disabled (`codex_reviews` disabled); Claude subagents only.
+
+### System audit (pre-review)
+
+- main at a52e2bc, clean, no stashes, no open PRs (`gh pr list`). Last merges: chunk 12 code (#30), chunks 13/14/14b review decisions (#31). `git log origin/main --since=2026-10-12 -- sidecar/parsers docs/log-formats` is empty: no parser work exists. `sidecar/` holds only `cli.ts`, `server.ts`, `assets.ts` and tests; chunks 13, 14a, 14c are approved plans, not code.
+- `src/data/schema.ts:6-36` `AgentEvent` (zod/mini object, so unknown keys are stripped on parse). `src/data/reduce.ts:59-66,198` dedupes by `seen`, which holds only the ids still in the ring buffer: an id that has left the ring is not deduped.
+- Real logs on this Mac [measured: `find`, `du`, `jq` over keys only, no content printed]: Claude Code `~/.claude/projects` 3,188 JSONL files (204 main, 2,984 subagent), 2.0 GB; files modified in the last 24 h: 175, 186 MB, 45,659 lines; largest file 32.8 MB. Claude Code 2.1.292 installed; versions in the last 204 main files 2.1.260 to 2.1.295. Codex `~/.codex/sessions` 533 files, 693 MB, 0 modified in the last 24 h (newest 2026-10-12); `codex-cli 0.162.1`, files from 0.145.0-alpha.30 to 0.160.0.
+- TODOS P3 "Retire the `logLines` slice" and P2 "vertical slice after chunk 15" both trigger on chunk 15; P3 OTel ingest triggers on the first format break.
+- Taste references: good: `src/data/clock.ts` (pure, injected time, one-line `[data]` logs), `sidecar/server.ts` (gate as a pure tested function), chunk 11 mock (`src/data/mock.ts`, seeded, Node-runnable). Avoid: parse logic in the browser; per-line regex soup without a format doc.
+- Landscape: no web search used; format facts come from the real files above, which beat vendor docs for this product (the plan already calls the section 2 table unverified).
+
+### 0A. Premise table
+
+| # | Premise | Claim | Receipt | Verdict |
+|---|---|---|---|---|
+| PR1 | Each Claude line maps to events | "Claude JSONL lines become AgentEvents" | 11 top-level types in one file: `assistant`, `user`, `attachment`, `custom-title`, `last-prompt`, `agent-name`, `queue-operation`, `atis-latch`, `bridge-session`, `mode`, `file-history-*` [measured] | finding: most types carry no agent event; need a known-ignored list so "unknown" means new |
+| PR2 | `message.usage` per line gives token totals | "usage tokens", "token totals ... within 1%" | newest file: 49 `assistant` lines, 27 distinct `message.id`; every content block (thinking, text, tool_use) repeats the same usage; 0 of 60 recent files have differing usage inside one id [measured] | finding (critical): summing per line overcounts about 1.8x; count usage once per `message.id` |
+| PR3 | `projectKey` = cwd per line | section 2 "Yes (`cwd` per line)", D5 | last 100 main files: cwd moves inside sessions to `.claude/scratch`, `docs/planering`, `test-results/...`; worktree sessions under `.claude/worktrees/<name>` and Claude desktop scratch workspaces [measured] | finding: per-line cwd splits one session over many halls; key must be per session and repo-rooted |
+| PR4 | TodoWrite drives `currentTask` and jobs | "TodoWrite to currentTask"; section 2 job model | last 204 main files: `TodoWrite` 20 calls, `TaskCreate` 0, `mcp__ccd_turn__update_plan` 64, `Agent` 2,509, `Bash` dominant [measured] | finding: the active-todo path is rare; the last user prompt is the common case |
+| PR5 | Subagent links exist | "sidechain/subagent links to parent" | subagents are separate files `<session>/subagents/agent-<id>.jsonl`, every line `isSidechain: true`, `sessionId` = parent session, `agentId` = own id; sibling `agent-<id>.meta.json` has `agentType`, `toolUseId`, `spawnDepth` [measured] | pass, with an exact mapping rule; `.meta.json`/`.prefix.json` are not JSONL logs |
+| PR6 | Spawn tool is `Task` | section 2 implicit | spawn tool name is `Agent` [measured] | pass (tool names pass through; nothing keys on `Task`) |
+| PR7 | Codex tokens are cumulative and need deltas | chunk 16, eng Q4 | `token_count` payload has `info.total_token_usage` and `info.last_token_usage`; after dropping repeated totals, sum of `last` equals `total` in 80/80 files; 5/80 files repeat a `token_count` [measured] | finding: use `last_token_usage`, skip a repeated total; Q4 restart test stays |
+| PR8 | Codex token classes map 1:1 | `tokens {in, out, cacheRead, cacheWrite}` | sample: `input_tokens` 27,743 with `cached_input_tokens` 17,792 [measured]; OpenAI counts cached input inside input [unverified: vendor convention] | finding: `in` = input minus cached, else cache tokens count twice in cost |
+| PR9 | Codex subagent parent "often missing" | section 2, chunk 16 | subagent rollouts have `parent_thread_id`, `thread_source: "subagent"`, `source: {"subagent": "review"}` and `subagent_history_start_ordinal` [measured] | finding: parent is known; inherited history before the start ordinal may double count [unverified mechanism] |
+| PR10 | Real Codex sessions show up | chunk 16 acceptance | 0 Codex files modified in the last 24 h, so 24 h backfill shows none [measured] | finding: acceptance needs a fresh Codex run in this repo |
+| PR11 | Codex `token_count` present in all versions | chunk 16 | 484 of 533 files have `token_count`; 134 also have `token_usage_record`; the 49 others have no token record at all [measured] | pass: `token_count` is the source |
+| PR12 | Event `id` = hash(vendor + file + line offset) | section 2 | one assistant line can yield `tool_call` plus `usage`; one user line can hold several `tool_result` blocks | finding: id needs an index within the line |
+| PR13 | Chunk 15 depends on 13, 14a | chunk 15 | "Pointing the log server at your real folder shows your actual sessions" needs `LiveSource` and the live default (14c) | finding: add 14c |
+| PR14 | 14a streams lines only | 14a wire | `wire.ts` has no events message; 14a eng H2: "client cursors only skip re-sending events from chunk 15 on" | finding: chunk 15 owns the `events` message and per-file cursor advance |
+| PR15 | 24 h backfill volume is fine | 14a P3 | 45,659 lines in 24 h, about 21k `assistant`+`user` lines [measured]; MAX_BATCH 500 gives about 50-100 messages | pass |
+| PR16 | Compaction or synthetic lines need handling | none | 0 `"model":"<synthetic>"`, 0 compact-summary markers in the last 204 files [measured] | pass for now; parser must not crash if they return |
+
+unverified=2 (PR8 cached-inside-input convention; PR9 inherited-history mechanism). Both get a check in the format doc step before code.
+
+0A verdict: the chunks solve the right problem: real sessions instead of a mock. Do-nothing cost: the product never shows the user's own agents. No premise is wrong enough to stop. PR2, PR3, PR7, PR8, PR12, PR13, PR14 are required fixes inside accepted contracts (token totals, D5, Q4, cost); PR4 and PR9 change details of approved text and are recorded as decisions below.
+
+### 0B. Existing code leverage
+
+| Sub-problem | Existing code | Plan |
+|---|---|---|
+| Event schema and validation | `src/data/schema.ts` `AgentEvent` (zod/mini) | parsers emit through it; additive fields only (chunk 13 adds `todo`, `toolClass`) |
+| Dedupe and status | `src/data/reduce.ts` `applyBatch`, `seen`, newest-ts status | unchanged; parsers must not rely on ring dedupe for usage (PR2) |
+| Batching | `MAX_BATCH` 500 | server batches parser output |
+| Tailer, cursors, backfill | chunk 14a `sidecar/tail.ts`, `watch.ts`, `logServer.ts` (planned) | parsers plug in per file; cursor = byte after last complete line |
+| Wire schema | chunk 14a `src/data/wire.ts` (planned) | add `events` message |
+| Live source | chunk 14c `LiveSource` (planned) | `onEvents` path, reconnect resume |
+| Lifecycle inference | chunk 13 `advanceTo` (planned) | parsers emit facts only (eng A3) |
+| Mock fixtures style | `src/data/mock.ts`, `scripts/mock-dump.ts` | `logs:probe` script follows the dump script pattern |
+
+### Reality rows
+
+REALITY: premise-table finding 16 premises, 10 findings, unverified=2 .gstack/tmp/autoplan/chunks-15-16-plan.md:40
+REALITY: already-done pass `git log origin/main --since=2026-10-12 -- sidecar/parsers docs/log-formats` empty; `ls sidecar` shows no parsers sidecar/cli.ts:1
+REALITY: surface-check finding `vp run build:bin`, `vp dev`, `vp run e2e:local` exist; `wire.ts`, `LiveSource`, `sidecar/tail.ts`, `advanceTo` are planned in 13/14a/14c and do not exist yet; `vp run logs:probe` is new (X2) src/data/schema.ts:6
+REALITY: binding-decisions pass honours eng A3 (inference in store), D2/R2 redaction, D5, D16, Q4, 14a cursor contract and 14b-after-15 (UC2); PR3 and PR4 refine approved text without reversing it docs/PLAN.md:18
+REALITY: numbers pass every number above is `[measured]` from local files on 2026-10-15 (re-measure before gate not needed: plan-time facts) or plan-chosen (120 chars, 32+ chars, 1%) docs/PLAN.md:698
+REALITY: deferred-asks pass TODOS P3 logLines (closed by X1), P2 vertical slice (trigger is chunk 15 merged; stays a TODO), P3 OTel (no format break yet) TODOS.md:98
+REALITY: pr-count pass two PRs, one per chunk (D18); 16 after 15 docs/PLAN.md:704
+PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=2 verdict=complete
+
+### 0C. Dream state
+
+```
+  CURRENT STATE                   THIS PLAN                              12-MONTH IDEAL
+  mock events only; log server    Claude + Codex logs parsed in Node,    every local agent session visible,
+  (14a) counts lines; no parser   exact tokens, one hall per repo,       trusted numbers, survives vendor
+                                  redacted text, format docs + probe     format changes with a clear signal
+```
+The plan moves straight at the ideal. The remaining gap after it: scene binding (18+), dashboard (27+), and a format-break signal path (X1 helps; OTel stays a TODO).
+
+### 0E. Mode
+
+Mode: SELECTIVE EXPANSION; approved decisions: none. Autoplan fixes the mode; cherry-picks below are auto-decided by P1/P2 (in blast radius, under 1 day CC) or deferred by P3.
+
+### 0F/0G. HOLD checks and cherry-picks
+
+HOLD checks: (1) complexity: chunk 15 is about 14 files and adds 3 units (Claude parser, redaction, project-key resolver); kept, each is a pure tested module. (2) Minimum change: nothing deferrable without breaking an acceptance line. (3) Invariants kept: eng A3, R2/D2, D5, D16, Q4, 14a cursor contract, chunk 13 `todo`/`toolClass` fields.
+
+10x check: the 10x version tells you the moment a vendor changes its format (instead of silently zero tokens) and names every session by what you were doing. Delight scan below.
+
+| ID | Proposal | Effort | Decision | Principle |
+|---|---|---|---|---|
+| X1 | Per-file parser health: counts of lines, events, ignored, unknown types, malformed, plus newest format version seen; one `[logs]` line the first time a file shows an unknown type or a version newer than the tested range; the `dev=1` HUD row shows these counts and replaces the `logLines` slice (closes TODOS P3) | S | ACCEPTED into 15 (16 adds Codex) | P1, Prime Directive 5 |
+| X2 | `vp run logs:probe [--root <dir>]`: prints a histogram of line types, payload types, key sets and versions over the real roots, never values; used to write `docs/log-formats/*.md` and to re-check after an upgrade | S | ACCEPTED into 15 (16 adds Codex) | P1, privacy-safe evidence |
+| X3 | Session title from Claude `custom-title` (and `agent-name` for subagents) as a redacted `title?` field for rack labels | S | DEFERRED to TODOS (TASTE T3) | P3: label UI is chunk 24's call |
+| X4 | Golden fixtures cut from one real session per vendor by a redacting fixture script, with totals checked by an independent reference counter in the test | S | ACCEPTED into 15/16 | P1, makes the 1% check automatic |
+| X5 | Plan-tool table: TodoWrite and the Claude desktop `mcp__ccd_turn__update_plan` both feed `todo`/`currentTask` | S | ACCEPTED into 15 (TASTE T2) | P1 completeness (PR4) |
+
+### Decision ledger (CEO, chunks 15-16)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C80 PR2 (CEO 0A) | token totals within 1%; usage repeats per content block | per-line usage | usage emitted once per `message.id`, on its first line; later lines with the same id emit no usage | approved | autoplan P1 mechanical; chunk 15 |
+| C81 PR3 (CEO 0A) | D5 "same repo shares one hall" | `projectKey` = per-line cwd | per-session key fixed at the session's first line: git toplevel of the first cwd found by walking up for `.git`; a `.git` file (worktree) resolves through its `gitdir` to the main repo root; no `.git` found or path gone: the first cwd as is; never changes mid-session; Codex uses `session_meta.cwd` the same way | approved (worktree merge is TASTE T1) | autoplan P1; chunks 15, 16 |
+| C82 PR4 (CEO 0A) | section 2 currentTask heuristic | TodoWrite only | `currentTask` = the in-progress item of the latest plan-tool call (X5 table), else the latest real user prompt (`user` line with string or text content, not `tool_result`, not `isMeta`); redacted and cut to 120 chars | approved | autoplan P1; chunk 15 |
+| C83 PR5 (CEO 0A) | D7, section 2 subagent link | "sidechain links" | Claude subagent file: `sessionId` = `agentId`, `parentSessionId` = the line's `sessionId`, `agentKind` sub, `parentKnown` true; nested subagents (`spawnDepth` > 1) attach to the root session; `.meta.json` read once per subagent file for `agentType` only | approved | autoplan P1 mechanical; chunk 15 |
+| C84 PR7, PR8 (CEO 0A) | eng Q4, cost | cumulative to deltas | Codex usage from `info.last_token_usage` per `token_count`, skipped when `total_token_usage` equals the previous total; `in` = `input_tokens` - `cached_input_tokens`, `cacheRead` = `cached_input_tokens`, `cacheWrite` = `cache_write_input_tokens`, `out` = `output_tokens`; Q4 restart test kept; a total lower than the previous one starts a new baseline and logs once | approved | autoplan P1; chunk 16 |
+| C85 PR9 (CEO 0A) | section 2 "often missing" | `parentKnown=false` often | `parentSessionId` = `parent_thread_id` when present (`parentKnown` true), else `parentKnown` false; the format doc step checks whether lines before `subagent_history_start_ordinal` repeat parent history and, if so, the parser skips their usage | approved | autoplan P1; chunk 16 |
+| C86 PR10 | chunk 16 acceptance | real Codex sessions appear | acceptance adds the step: run one `codex exec` in this repo, then check the hall | approved | autoplan P5 mechanical; chunk 16 |
+| C87 PR12 | section 2 id | hash(vendor, file, offset) | hash(vendor, file path, line offset, index within line) | approved | autoplan P5 mechanical; chunks 15, 16 |
+| C88 PR13 | chunk 15 acceptance | Depends on 13, 14a | Depends on 13, 14a, 14c | approved | autoplan P5 mechanical |
+| C89 PR14 | 14a eng H2 | lines only | `wire.ts` gains `{ type: "events", path, fileId, cursor, backfill, events }` (at most `MAX_BATCH` events); the client advances that file's cursor only after `onEvents` returns; resume sends the cursors | approved | autoplan P1 mechanical; chunk 15 |
+| C90 PR1 | "unknown line types counted" | unknown = anything unmapped | each parser has a known-ignored type list (Claude: `attachment`, `custom-title`, `last-prompt`, `agent-name`, `queue-operation`, `atis-latch`, `bridge-session`, `mode`, `file-history-snapshot`, `file-history-delta`); only other types count as unknown | approved | autoplan P5 mechanical; chunks 15, 16 |
+| C91 PR5 | 14a tails every file | all files | the parser registry picks a parser by root and path (`*.jsonl` only); other files under the roots are not tailed | approved | autoplan P5 mechanical; chunk 15 |
+| X1, X2, X4, X5 | cherry-picks | - | accepted | approved | autoplan P1/P2; per table above |
+| X3 | session title | - | deferred | deferred | autoplan P3; TODOS |
+
+### 0H. CEO plan and spec review
+
+CEO summary: `~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-15-chunks-15-16-parsers.md`. Spec Review Loop: 3 launches (cap), scores 6, 6, 7 out of 10; 45 issues reported (23, 14, 8), 37 fixed and not repeated by later passes, 8 from pass 3 applied and checked in the exported input but not re-reviewed (issues verified: 8 of 8 applied edits; decision: spec not re-verified for those 8). Reviewer inferences were checked on real files before applying: `mcp__ccd_turn__update_plan` partial shapes, Codex `token_count` with null `info`, subagent cwd drift (84/300), five more Claude types and `system` subtypes, injected prompt tags, `end_turn` spanning lines. Metrics appended to `~/.gstack/analytics/spec-review.jsonl`. Document approval: auto-decided A (approve and continue to 0I) under /autoplan; both documents carry the decisions above.
+
+### 0I. Temporal interrogation
+
+```
+  HOUR 1 (foundations):   15: logs:probe, format doc, event id + file state shape, wire `events` message, parser registry; 16: Codex format doc (cached-input and inherited-history facts settled first)
+  HOUR 2-3 (core logic):  15: Claude parser (types, usage once per message.id, turns, tools, plan tools, currentTask), redact.ts, toolClass.ts, project-key resolver + rootProjectKey; 16: Codex parser (session_meta, turn_context, token_count deltas, apply_patch paths, parent link)
+  HOUR 4-5 (integration): 15: log server feeds parsers per file, health counters, LiveSource onEvents + cursor advance after apply, HUD row; 16: same hall check with a fresh `codex exec`
+  HOUR 6+ (polish/tests): 15: golden fixture script + reference counter, drop-before-apply and split-line reconnect tests, PLAN.md section 2 updates, README "Supported logs"; 16: Q4 restart test, feasibility table, README Codex notes
+```
+Effort [estimated]: chunk 15 human ~4 days / CC ~2 h; chunk 16 human ~2 days / CC ~1 h. Feasibility blockers: none open; chunks 13, 14a and 14c must merge first (planned order). Surprises to expect: vendor formats drift between versions (2.1.260 to 2.1.295 in two weeks), so the probe and `TESTED_VERSIONS` will need a refresh during implementation; a 32.8 MB file and multi-MB single lines (tool results) go through the 64 KiB tailer, so the parser must not copy whole lines into events.
+
+### CEO dual voices
+
+Claude CEO subagent: completed, INPUT ceo d9bc1eb1476390cf3221582baf4bc071468303e767dab650b8bb17063b8ebe63 (matches the snapshot), full read of 68/68 lines. Codex: disabled (`codex_reviews` disabled), no outside process. Tag: [subagent-only].
+
+Verdict "approve with changes", 10 findings: (1) HIGH JSONL is undocumented, no stable source alongside, drift fix is a release; (2) HIGH chunk 15 is several chunks in one PR, split 15a pure parser / 15b server integration; (3) HIGH TODOS P2 vertical slice unresolved, do 18 before 16; (4) HIGH golden fixtures may leak personal data (home path, user, host, repo names, URLs); (5) MED format rules come from one machine; (6) MED first cwd in `~` locks a session to home; (7) MED re-reading 24 h of files from 0 on every start, no startup budget; (8) MED competitors already count tokens, the hall is the differentiator; (9) MED prompts reach the browser with only pattern redaction; (10) MED unsettled Codex facts coded both ways.
+
+Dispositions:
+- F1: partly accepted (C92): drift must be visible to the user, not only in `[logs]`: when any file reports an unknown type or a version above `TESTED_VERSIONS`, the connection pill tooltip and the HUD health row show "Log format changed: Claude Code <version> is newer than tested; counts may be incomplete" with the README anchor. Moving OTel/hooks ahead of 14b changes D3: kept deferred (TASTE T4).
+- F2: User Challenge UC1 (split chunk 15 into 15a and 15b); the primary review agrees with the subagent. Not auto-decided.
+- F3: TASTE T5: keep 16 after 15; TODOS P2 stays at its trigger "chunk 15 merged" (same disposition as the chunks 13-14b run, F9).
+- F4: accepted (C93): fixture privacy test.
+- F5: accepted (C94): the format doc states the rules come from one machine (n=1, versions listed); `mcp__ccd_turn__update_plan` is best-effort and not acceptance-critical; probe output from 2-3 other machines before 14b goes to TODOS (X7, needs other people).
+- F6: accepted (C95): one-time key upgrade from a non-git first cwd.
+- F7: accepted (C96): measured startup budget; persisted parser state deferred (X8) with a measured trigger.
+- F8: accepted (C97): README "Supported logs" opens with what the parsers are for (the live hall view across vendors); X6 already deferred.
+- F9: TASTE T6: keep D16 (prompt text redacted and cut to 120 chars, user-approved A12); an off switch for prompt text goes to TODOS (X9); README already states what is and is not redacted (14c).
+- F10: accepted (C98): implement only the evidenced branch with a drift assertion.
+
+```
+CEO DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Premises valid?                   mostly  N/A    N/A (Codex disabled)
+  2. Right problem to solve?           yes     N/A    N/A
+  3. Scope calibration correct?        no (15 too big, 16 early)  N/A  N/A
+  4. Alternatives sufficiently explored? no (hooks/OTel)  N/A  N/A
+  5. Competitive/market risks covered? partly  N/A    N/A
+  6. 6-month trajectory sound?         at risk (format drift)  N/A  N/A
+CONFIRMED = completed subagent + outside; outside disabled, so every Consensus cell is N/A.
+```
+Single-voice criticals: none rated critical; F1-F4 HIGH are single-voice and handled above.
+
+### Current scope (before Section 1)
+
+Mode SELECTIVE EXPANSION (autoplan). Accepted: C80-C98, X1, X2, X4, X5 and spec-review fixes (passes 1-3), all autoplan auto-decisions recorded in the ledger and the Decision Audit Trail. Deferred to TODOS: X3, X6, X7, X8, X9. Taste (auto-decided, surfaced at the gate): T1 worktree sessions join the main repo hall, T2 desktop plan tool, T3 session title deferred, T4 OTel stays deferred, T5 16 stays after 15, T6 prompt text kept per D16. Pending for the user: UC1 split chunk 15.
+
+### Section 1: Architecture
+
+```
+  ~/.claude/projects/**.jsonl   ~/.codex/sessions/**.jsonl
+            |                              |
+     [14a watch.ts + tail.ts: per-file serial queue, cursor, fileId, gen]
+            |  (line, offset)              |
+     [registry: root + path -> parser, *.jsonl only]            (C91)
+            |                              |
+   [parsers/claude.ts]            [parsers/codex.ts]     pure sync fns
+     uses: redact.ts, toolClass.ts, planTools.ts, ids.ts           (C87)
+            |  deps (injected, sync, cached)
+            +--> projectKey.ts  (git walk, worktree gitdir)         (C81, C95)
+            +--> readMeta(agent-*.meta.json)                        (C83)
+            +--> rootProjectKey(parent) -> session map / parent head (spec 2)
+            |
+     [logServer.ts: batch <= 500, health counters, [logs] lines]   (X1, C92, C96)
+            |  wire.ts { type:"events", path, fileId, cursor, backfill, events }  (C89)
+            v
+     [browser LiveSource (14c)] --onEvents--> store applyBatch (seen-id dedupe, ring)
+            |                                  --> advanceTo (13): idle end, status
+            v
+     HUD health row + pill tooltip (drift)                          (X1, C92)
+```
+
+Data flow, four paths for the new parser flow:
+- Happy: line -> JSON.parse -> type dispatch -> events (ids, redacted text, project key) -> batch -> `events` message -> `onEvents` -> cursor advanced.
+- Nil: line missing `sessionId`/`cwd`/`timestamp` on a mapped type: no event, counted `ignored` with reason; a file whose first lines lack cwd gets its key from the first line that has one (session_start waits for it).
+- Empty: empty line or empty file: counted as a line, no event; a file with zero mapped lines sends only health counts.
+- Error: JSON parse error -> `malformed`; an emitted event failing `AgentEvent` validation -> counted `invalid`, one `[logs]` line per file naming the type (parser bug), event dropped; resolver I/O error -> fallback key (C81); parent head unreadable -> subagent keeps its own resolved cwd key and logs once.
+
+State machine, per-file parser state:
+```
+  NEW --first line--> SCANNING --line with sessionId+cwd+ts--> KEYED --(C95 non-git first cwd, git cwd later)--> KEYED(upgraded, final)
+   |                     |                                     |
+   |                     +--malformed/unknown: stay, count ----+
+   +--truncation (size < offset): gen++ , state reset --> NEW
+  Invalid: KEYED(upgraded) -> another upgrade (prevented: one-shot flag); state carried across files (prevented: state keyed by path+fileId+gen).
+```
+Plan-tool list per session: EMPTY --full list--> LIST --advance/done/start--> LIST; --full list--> LIST' plus `completed` events for dropped items. `advance` on EMPTY: ignored, counted.
+
+Coupling: new: server -> `src/data/wire.ts` and `schema.ts` (existing Node-runnable rule, E31); parsers -> nothing but injected deps. Justified.
+
+Scaling: 10x (1.9 GB/24 h): startup parse about 10x the C96 budget; X8 trigger fires. 100x: needs persisted state (X8) and per-file lazy parse. First break: startup time, not memory (state per file is small: id sets of message ids, about 30 bytes each).
+
+Single points of failure: one file's queue stalls only that file; a parser throw is caught per line (counted `invalid`), never per server. The key resolver cache is shared but read-only after fill.
+
+Security architecture: no new endpoint; the `events` message rides the 14a gated socket (Origin, Host, token). Who can call: the page with the token. What they get: redacted events only.
+
+Production failure scenarios: vendor renames a type (unknown counted, drift tooltip C92); a 1.36 MB line (measured max in 100 files) goes through the 64 KiB tailer, fine; a session started in `~` (C95).
+
+Rollback: revert the chunk PR; `source=mock` and `--no-logs` stay; no stored data to migrate. Time: one revert PR.
+
+Value test for artifacts about the work: `logs:probe` (X2) is consumed by the format docs and by X7; it retires never (re-run after vendor upgrades). Health counters (X1) are product observability, not a process artifact.
+
+Findings: S1-1 a JSONL line of any size is buffered whole (measured max 1.36 MB; 13 lines over 1 MB in 60 files): accepted (C99) a 32 MiB per-line cap, lines over it are skipped without parsing and counted `oversize` with one `[logs]` line; P1, bounds memory. S1-2 the store keeps the session's first `projectKey` (`src/data/reduce.ts:224`) while project totals follow each event's key (`:248`), so C95's upgrade would split totals: accepted (C100) `applyBatch` moves a session whose event carries a different `projectKey`: the session and its per-session token totals move from the old project to the new one, project and global totals stay exact; test in `reduce.test.ts`.
+
+### Section 2: Error & Rescue Map
+
+```
+  METHOD/CODEPATH                    | WHAT CAN GO WRONG                          | EXCEPTION CLASS
+  -----------------------------------|--------------------------------------------|-----------------
+  parser.parseLine (claude/codex)    | invalid JSON, truncated write              | SyntaxError
+                                     | unknown type / subtype                     | (none, counted)
+                                     | line > 32 MiB                              | OversizeLine (counted)
+                                     | emitted event fails AgentEvent             | ZodError (zod/mini)
+                                     | bug in mapping (undefined access)          | TypeError
+  redact.redact                      | slow regex on huge text                    | (time) guarded by linear patterns
+  projectKey.resolve (deps)          | path gone / permission                     | ENOENT / EACCES
+                                     | `.git` file unreadable or bad gitdir       | ENOENT / parse
+  readMeta (deps)                    | missing or invalid meta.json               | ENOENT / SyntaxError
+  rootProjectKey (deps)              | parent file missing / no cwd line          | ENOENT / NotFound
+  codex token delta                  | total lower than previous                  | (state reset)
+                                     | `info: null`                               | (ignored)
+  logServer batch send               | socket closed mid-batch                    | ws close
+  LiveSource onEvents                | store throws on a batch                    | Error (chunk 11 sticky error)
+
+  EXCEPTION CLASS        | RESCUED? | RESCUE ACTION                                   | USER SEES
+  -----------------------|----------|-------------------------------------------------|------------------------------
+  SyntaxError            | Y        | count malformed, skip line                      | HUD health count
+  unknown type           | Y        | count unknown, one [logs], drift tooltip (C92)  | pill tooltip "Log format changed"
+  OversizeLine           | Y        | skip, count oversize, one [logs] (C99)          | HUD count
+  ZodError (emitted)     | Y        | drop event, count invalid, one [logs] per file  | HUD count; tokens may be low
+  TypeError in parser    | Y        | per-line try/catch, count invalid, one [logs] with type and offset (no content) | HUD count
+  ENOENT/EACCES resolver | Y        | fall back to first cwd (C81)                    | session in its own hall
+  meta.json errors       | Y        | agentType absent                                | nothing
+  parent not found       | Y        | own key, one [logs]                             | subagent may sit in another hall
+  Codex total decrease   | Y        | new baseline, one [logs] (C84)                  | nothing
+  ws close mid-batch     | Y        | cursor not advanced, resend (C89)               | "Reconnecting" pill (14c)
+  store throw            | Y        | chunk 11 sticky error, later batches applied    | status error in HUD
+```
+No catch-all without a counter: the per-line `try/catch` is the one broad catch, and it records the error class, file and offset (never line content) and increments `invalid`. No GAP rows. Logging names the file path, offset and type, never values.
+
+### Section 3: Security & Threat Model
+
+| Threat | Likelihood | Impact | Mitigated? |
+|---|---|---|---|
+| Secret in a prompt reaches the browser or a screenshot | Med | High | yes: R2 patterns at parse time; fixture per pattern; git SHA not redacted |
+| Personal data in prompt text (names, internal URLs) | Med | Med | partly: 120-char cut (D16); off switch deferred (X9, T6) |
+| Personal data in committed fixtures | Med | High | yes: C93 test on homedir, username, hostname, URLs |
+| Paths outside the project | High | Low | yes: `[outside project]` (D16) |
+| Raw shell commands in events | High | Med | yes: only `toolClass` leaves Node |
+| ReDoS in redaction regexes | Low | Med | accepted (C101): patterns have no nested quantifiers; a test runs `redact` on a 1 MiB adversarial string in under 50 ms |
+| Malicious log line (crafted JSON) | Low | Low | parse into plain objects only, no `eval`, zod validates output; prototype keys (`__proto__`) are ignored because the parser reads named fields only |
+| Symlink in a root pointing elsewhere | Low | Med | 14a watches roots; the resolver follows `.git` files only inside the cwd's ancestors; no file is opened from client input (14a) |
+| `projectKey` exposes the home path | High | Low | accepted: same data the D9 card already shows; hall labels use the basename (chunk 24) |
+No new dependency. No new endpoint. Audit logging: `[logs]` lines record counts, never content.
+
+### Section 4: Data Flow & Interaction Edge Cases
+
+```
+  LINE -> JSON.parse -> TYPE DISPATCH -> MAP + REDACT -> KEY (deps) -> ID -> VALIDATE -> BATCH -> WIRE -> onEvents -> STORE
+   |nil/empty: count   |error: malformed |unknown: count  |huge text: cut |ENOENT: fallback |dup: same id |invalid: count |close: resend |dup: seen-id drop
+   |oversize: skip     |encoding: malformed               |secret: [redacted]                                                     |throw: sticky error
+```
+Async ordering (shared mutable state: the server session-key map and the client cursor):
+1. Invariant: a subagent's events carry its root session's key, whatever order files are parsed in.
+   Schedule A: parent parsed first -> map has key -> subagent resolves from map. Schedule B: subagent first -> map miss -> `rootProjectKey` reads the parent head synchronously -> caches -> later parent parse writes the same key. Both give the same key because both use the parent's first-cwd rule; the C95 upgrade is the exception: if the parent upgrades after the subagent resolved, the subagent's earlier events carry the pre-upgrade key and C100 moves them in the store (sessions are keyed by session id; the subagent's later events carry the new key once the map updates). Regression test: subagent-first and parent-first orders, plus a parent upgrade between them, give the same final store state.
+2. Invariant: every event is applied once. Cursor advances after `onEvents` (C89); a drop between send and apply resends from the line start; ids dedupe. Test with a controlled pause between send and apply (C89 tests).
+Interaction edge cases (no new UI beyond the HUD row and tooltip): HUD row with 0 files (shows nothing), with hundreds of files (14c list), drift tooltip shown once per version (not flapping).
+
+### Section 5: Code Quality
+
+Layout: `sidecar/parsers/claude.ts`, `codex.ts`, `redact.ts`, `toolClass.ts`, `planTools.ts`, `ids.ts`, `types.ts` (pure), `sidecar/projectKey.ts` (I/O), `scripts/logs-probe.ts`, `scripts/make-fixture.ts`. Fits the repo's pure-core, thin-I/O pattern (`src/data/clock.ts`, `sidecar/server.ts`). Complexity: the Claude parser dispatches per line type through a table (one small function per type), so no function branches more than 5 times. No duplicated behavior: toolClass and the tool-to-path table are shared by both parsers; redaction is one module. Over-engineering check: no plugin system for parsers beyond a two-entry registry. No issues beyond the accepted rules.
+
+### Section 6: Test Review
+
+```
+  NEW THING                          | TEST TYPE    | HAPPY                         | FAILURE                         | EDGE
+  -----------------------------------|--------------|-------------------------------|---------------------------------|-------------------------------
+  logs:probe                         | unit         | histogram on fixture          | unreadable root reported        | output has no fixture values
+  Claude type dispatch               | unit         | each mapped type              | malformed, unknown, oversize    | system subtypes, sidechain line
+  usage once per message.id (C80)    | unit+golden  | 3-line message counts once    | differing usage logs once       | reference counter equals total
+  turn_end once per id               | unit         | end_turn over 2 lines -> 1    | -                               | stop_sequence not a turn end
+  ids (C87)                          | unit         | stable across re-parse        | -                               | truncation gen gives new ids
+  projectKey (C81, C95)              | unit (tmp)   | subdir -> root                | missing path -> cwd             | worktree, home->repo upgrade once
+  rootProjectKey                     | unit         | parent first                  | parent missing -> own key       | subagent first, parent upgrade
+  plan tools (C82)                   | unit         | each shape                    | advance on empty list           | insert keeps ids, dropped closes
+  currentTask                        | unit         | prompt                        | injected tag ignored            | newer prompt beats older plan
+  toolClass                          | unit         | each class                    | -                               | runner name inside a string
+  redaction                          | unit         | each pattern                  | 1 MiB adversarial < 50 ms       | 40-char git SHA kept
+  fixture privacy (C93)              | unit         | committed fixtures clean      | planted homedir fails           | -
+  health + drift (X1, C92)           | unit         | counts on mixed fixture       | -                               | one log line per file
+  wire events + cursor (C89)         | integration  | uninterrupted                 | drop before apply               | split line across batches
+  store move (C100)                  | unit         | key change moves session      | -                               | totals exact
+  Codex usage (C84, C98)             | unit         | last_token_usage              | null info, total decrease       | repeated total, Q4 restart
+  Codex parent (C85)                 | unit         | parent_thread_id              | missing parent                  | inherited history (if evidenced)
+  startup budget (C96)               | manual       | < 15 s on the Mac             | -                               | -
+  real-folder 1% (C80) and Codex hall (C86) | manual | measured                     | -                               | -
+```
+2am Friday test: the golden fixture with the independent reference counter plus the drop-before-apply reconnect test. Hostile QA: a subagent file parsed before its parent while the parent's first cwd is `~`. Chaos test: truncate and rewrite a file mid-stream while the socket drops. Pyramid: mostly unit, two integration, two manual measured checks. Flakiness: the resolver tests use temp dirs (no real home); the reconnect tests use controlled pause points, no timers. No LLM prompts touched.
+
+### Section 7: Performance
+
+Memory: per-file state holds message-id sets (about 27 ids per 49 lines measured; 24 h about 13k assistant lines, under 1 MB of ids), the plan list and counters. Session-key map: one entry per session in 24 h (hundreds). Slow paths: (1) startup parse of 186 MB [measured volume], JSON.parse dominates [estimated about 2-5 s]; budget 15 s (C96). (2) The git walk per new cwd: cached, at most one `stat` chain per distinct cwd. (3) Redaction on long prompts: cut to a bounded window before regex (redact the first 4 KiB, then cut to 120 chars) [accepted as part of C101]. Browser side: about 30k events per 24 h [estimated from 21k user+assistant lines], in batches of 500, under the 50,000 ring. No DB, no network.
+
+### Section 8: Observability
+
+Logs: one `[logs]` line per file for first unknown type, newer version, invalid event, oversize line, total decrease, parent not found; one startup line with files, bytes, duration (C96). Metrics: per-file health counters (X1) in the HUD. User-visible signal: drift tooltip (C92). Debuggability: every `[logs]` line names file path, byte offset and type, so a report three weeks later can be reproduced with `logs:probe` and the file. Runbook: README "Supported logs" known gaps plus "if counts look wrong, run `vp run logs:probe` and attach the output". No dashboards or alerts apply (local tool).
+
+### Section 9: Deployment & Rollout
+
+No migration, no stored state. Rollout order: 13, 14a, 14c, then 15, then 16 (14b after 15). Feature flag: `--no-logs` and `source=mock` already switch the live path off. Old and new code at once: not applicable (single local process). Rollback: revert the PR; the 14c line counts come back. Post-deploy check: `vp dev`, open `dev=1`, compare one file's total with the format doc's `jq` command, check the startup line. Smoke: the 14b matrix smoke reads `lines.total`, which C92/X1 keep unchanged.
+
+### Section 10: Long-Term Trajectory
+
+Debt: rules from one machine (C94, X7); desktop plan tool is an internal tool name (best-effort); in-file sidechains unsupported (known gap); monorepos map to one hall. Path dependency: event ids and `projectKey` semantics become store keys, a one-way door for saved replays (chunk 17); C87 includes `fileId` and gen, so replays from imported files need their own id namespace (chunk 17 decides). Reversibility: 4/5. Ecosystem fit: Node-only parsers, zod/mini, Vitest. 1-year question: the format docs and probe make the parsers explainable to a new engineer. What comes next: vertical slice decision (TODOS P2), 17 replay through the same parsers, OTel as a second source (T4). Retrospective on cherry-picks: X1 and X2 are what makes F1's risk survivable; X3/X6 deferrals are not needed by accepted work.
+
+### Section 11: Design & UX
+
+SKIPPED (no UI scope): the only visible changes are a HUD row and a tooltip string on the 14c pill, both specified above.
+
+### NOT in scope
+
+- Deferred to TODOS: X3 session title (chunk 24), X6 vendor cost cross-check (chunk 28), X7 probe on other machines (before 14b), X8 persisted parser state (measured trigger), X9 prompt-text off switch, OTel/hooks source (T4, existing TODO).
+- Rejected: none.
+- Pending the user: UC1 split chunk 15.
+
+### What already exists
+
+`src/data/schema.ts` (event shape, reused), `src/data/reduce.ts` (dedupe and aggregates, extended by C100), `MAX_BATCH`, `scripts/mock-dump.ts` (pattern for `logs:probe`), planned 14a tailer/watch/wire and 14c `LiveSource` (extended by C89, X1), planned chunk 13 `todo`/`toolClass` fields (filled here).
+
+### Dream state delta
+
+After 15 and 16 the store holds real Claude Code and Codex sessions with exact tokens, repo-rooted halls and redacted text, and a format change is visible within one session. Still missing for the 12-month ideal: scene binding (18+), dashboard (27+), a documented second source (OTel/hooks), and rules checked on more than one machine.
+
+### Error & Rescue Registry
+
+As in Section 2: 13 failure rows, all rescued, 0 CRITICAL GAPS.
+
+### Failure Modes Registry
+
+```
+  CODEPATH                 | FAILURE MODE                  | RESCUED? | TEST? | USER SEES?               | LOGGED?
+  -------------------------|-------------------------------|----------|-------|--------------------------|--------
+  claude parseLine         | per-line usage double count   | Y (C80)  | Y     | correct totals           | drift Y
+  claude parseLine         | turn_end double count         | Y        | Y     | correct turns            | -
+  claude parseLine         | unknown type after upgrade    | Y        | Y     | pill tooltip             | Y
+  claude parseLine         | oversize line                 | Y (C99)  | Y     | HUD count                | Y
+  projectKey               | cwd drift splits halls        | Y (C81)  | Y     | one hall                 | -
+  projectKey               | session starts in ~           | Y (C95)  | Y     | moves once               | -
+  rootProjectKey           | subagent before parent        | Y        | Y     | same hall                | -
+  codex usage              | repeated token_count          | Y (C84)  | Y     | correct totals           | -
+  codex usage              | cached input counted twice    | Y (C98)  | Y     | correct cost             | Y
+  wire/cursor              | drop before apply             | Y (C89)  | Y     | reconnecting, no dupes   | -
+  ids                      | truncation reuses offsets     | Y (C87)  | Y     | new lines shown          | -
+  redact                   | ReDoS                         | Y (C101) | Y     | -                        | -
+  fixtures                 | personal data committed       | Y (C93)  | Y     | -                        | -
+  startup                  | slow backfill                 | Y (C96)  | manual| delay, then data         | Y
+```
+0 CRITICAL GAPS (no row is unrescued, untested and silent).
+
+### Stale diagram audit
+
+PLAN.md section 2 field feasibility table (lines 70-90) is stale on four rows (Codex subagent parent, Codex tokens, currentTask, projectKey); chunk 16 replaces it (accepted). No other diagrams in touched files.
+
+### Taste decisions (CEO)
+
+- T1 worktree sessions: chosen to join the main repository's hall (D5 "same repo shares one hall"). Alternative: a hall per worktree; shows parallel agent work apart but multiplies halls (cap of 3 per project, D8).
+- T2 Claude desktop plan tool: chosen to read `mcp__ccd_turn__update_plan` (64 calls vs 20 TodoWrite in 204 sessions). Alternative: TodoWrite only; simpler, but most sessions on this Mac would show only prompts.
+- T3 session title: deferred to chunk 24. Alternative: add `title?` now; better rack labels sooner, one more redacted text field.
+- T4 OTel/hooks: kept deferred (TODOS P3) per D3. Alternative (CEO voice F1): spike it before 14b; a documented source before the public binary, about one extra chunk.
+- T5 order: 16 stays after 15; TODOS P2 decides the vertical slice when 15 merges. Alternative (CEO voice F3): 18 before 16; real racks sooner, Codex later.
+- T6 prompt text: kept per D16 (redacted, 120 chars). Alternative (CEO voice F9): default to plan items only; safer, but most sessions would show no task text.
+
+### User challenges (CEO)
+
+- UC1 Split chunk 15. You said (PLAN.md chunk 15, D18 one PR per chunk): chunk 15 is one chunk. Both reviews here (primary and independent CEO voice, both Claude; Codex disabled) recommend splitting it into 15a (format doc and probe, pure Claude parser, redaction, toolClass, plan tools, golden fixtures, tested with stub deps) and 15b (server integration: registry, deps and project-key resolver, ids with truncation generation, wire `events` and cursor, health counters and drift tooltip, store move, real-folder acceptance). Why: after the review chunk 15 is about 18 files and two layers; the chunk 14 split (14a/14c) worked the same way. Blind spot: you may prefer one PR so the parser is never merged without being visible in the app; 15a alone shows nothing in the app. Cost if wrong: one large PR that is hard to review (keep), or one extra PR and a dependency hop (split).
+
+### Decision ledger additions (CEO sections and voice)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C92 voice F1 | Prime Directive 1 | drift only in `[logs]` | pill tooltip and HUD | approved | autoplan P1; chunk 15/16 |
+| C93 voice F4 | D16 | text values replaced | synthetic paths, privacy test | approved | autoplan P1; X4 |
+| C94 voice F5 | evidence n=1 | implicit | stated, desktop tool best-effort | approved | autoplan P5 |
+| C95 voice F6 | D5 | first cwd fixed | one-time upgrade to a git root | approved | autoplan P1 |
+| C96 voice F7 | perf | none | 15 s measured budget | approved | autoplan P1 |
+| C97 voice F8 | README | format notes | purpose sentence first | approved | autoplan P5 |
+| C98 voice F10 | evidence | both branches | evidenced branch + drift log | approved | autoplan P5 |
+| C99 S1-1 | memory | unbounded line | 32 MiB cap, `oversize` | approved | autoplan P1 |
+| C100 S1-2 | `reduce.ts:224,248` | session key fixed | store moves session on key change | approved | autoplan P1; touches `src/data/reduce.ts` |
+| C101 S3 | ReDoS | unspecified | linear patterns, 4 KiB window, 1 MiB < 50 ms test | approved | autoplan P1 |
+| UC1 | D18 | one chunk | split 15a/15b | user challenge | Phase 4 gate |
+| T1-T6 | taste | - | as above | approved (taste) | gate |
+
+Approval readiness: PASS (C80-C101, X1, X2, X4, X5 cite autoplan auto-decisions under the 6 principles; T1-T6 are taste auto-decisions surfaced at the gate; UC1 is pending the user and is not in accepted work; X3, X6-X9 deferred).
+
+### Completion Summary (CEO)
+
+```
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | no parser code; 2.0 GB Claude / 693 MB Codex logs; 0 Codex files in 24 h |
+  | Step 0               | 16 premises, 10 findings; 5 cherry-picks (4 accepted, 1 deferred) |
+  | Section 1  (Arch)    | 2 issues found (C99, C100)                  |
+  | Section 2  (Errors)  | 13 error paths mapped, 0 GAPS               |
+  | Section 3  (Security)| 1 issue found (C101), 0 High unmitigated    |
+  | Section 4  (Data/UX) | 2 orderings mapped, 0 unhandled             |
+  | Section 5  (Quality) | 0 issues found                              |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps                    |
+  | Section 7  (Perf)    | 0 new issues (budget C96)                   |
+  | Section 8  (Observ)  | 0 gaps found                                |
+  | Section 9  (Deploy)  | 0 risks flagged                             |
+  | Section 10 (Future)  | Reversibility: 4/5, debt items: 4           |
+  | Section 11 (Design)  | SKIPPED (no UI scope)                       |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (6 deferred items)                  |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 13 rows, 0 CRITICAL GAPS                    |
+  | Failure modes        | 14 total, 0 CRITICAL GAPS                   |
+  | TODOS.md updates     | 5 items proposed (X3, X6, X7, X8, X9)       |
+  | Scope proposals      | 5 proposed, 4 accepted (EXP + SEL)          |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex disabled; Claude subagent completed   |
+  | Lake Score           | N/A (no scored user questions)              |
+  | Diagrams produced    | 5 (architecture, data flow, state machine, error map, failure modes) |
+  | Stale diagrams found | 1 (section 2 feasibility table)             |
+  | Unresolved decisions | 1 (UC1, at the gate)                        |
+  | Reality rows         | 7/7 rows (PLAN_REALITY), 2 unverified       |
+  +====================================================================+
+```
+
+
+- Format first (both chunks): before parser code, run `vp run logs:probe` (X2) over the real roots and record in `docs/log-formats/claude.md` and `docs/log-formats/codex.md` the line types, payload types, key sets and versions seen (Claude Code 2.1.260-2.1.295; Codex 0.145-0.160 on this Mac), the ignored-type lists and every rule below. `logs:probe [--root <dir>]` prints counts and key names only, never values; a test asserts its output on a fixture contains no value from the fixture. Two facts are settled in this step before the rules that use them are coded: whether Codex `input_tokens` includes `cached_input_tokens` (C84) and whether Codex subagent lines before `subagent_history_start_ordinal` repeat parent history (C85).
+- Plan text updates in the same PRs: the chunk 15/16 text in `docs/PLAN.md` (lines 697, 698, 705) takes the amended wording in this plan; section 2 states the per-session repo-rooted `projectKey` (C81, D5 wording "working directory path" becomes "repository root of the session's first working directory"), the event id with line index and file identity (C87) and the observed feasibility table (chunk 16); the comment in `src/data/schema.ts` matches.
+- Chunk 15 depends on 13, 14a and 14c (C88).
+- Parsers with injected I/O (spec review): each parser is a synchronous function of `(line, byteOffset, fileState, deps)` returning events and the next file state, with no I/O of its own; `deps` injects synchronous, cached `resolveProjectKey(cwd)`, `readMeta(path)` and `rootProjectKey(parentSessionId)`, which the server implements with bounded `fs` sync reads (one `stat` walk, one small JSON file, or the head of one file up to its first cwd line), so the per-file serial read queue (14a) keeps its order. Only the log server touches the filesystem. Fixture tests pass a stub resolver, so expected keys are the same on every machine.
+- Parser registry (C91): the log server picks a parser by root and path; only `*.jsonl` files are tailed; `.meta.json` and `.prefix.json` are never tailed as logs. Test: a `.meta.json` in a watched root yields no lines and no events.
+- Event ids (C87): `id` = stable hash of (vendor, file path, `fileId`, truncation generation, line byte offset, index of the event within that line), where the truncation generation is a per-file counter in the server's file state that increments each time the tailer re-reads a file from 0 because it became shorter than its offset (14a `fileId` is `dev:ino`, which a truncation keeps), so content written at old offsets after a truncation or rotation gets new ids and is not dropped by the store's seen-id dedupe. Tests: a line yielding two events gives two distinct ids; re-parsing the same file gives identical ids; a truncated-then-rewritten file yields new ids.
+- Claude turns, errors and usage classes: `turn_start` is a real user prompt; `turn_end` is emitted once per `message.id` whose `stop_reason` is `end_turn`, on its first such line (measured: `tool_use` 42,433, `end_turn` 2,600, `stop_sequence` 34, null 2 in 204 files; in 100 files 215 of 1,368 `end_turn` ids span more than one line, so a per-line rule would double count turns); `session_start` is emitted once per file, on the first line that carries `sessionId`, `timestamp` and `cwd` (main and subagent files alike); a `tool_result` block with `is_error: true` gives a `tool_result` event with `status: "error"`; `system` `api_error` gives an `error` event. Usage classes: `in` = `input_tokens`, `cacheRead` = `cache_read_input_tokens`, `cacheWrite` = `cache_creation_input_tokens`, `out` = `output_tokens` (Anthropic counts cache tokens outside `input_tokens`). Tests for each, including an `end_turn` message split over 2 lines giving one `turn_end`.
+- Claude usage once per API message (C80): a `usage` event is emitted only for the first line of each `message.id`; later lines of the same id (other content blocks) emit their `tool_call` events but no usage. Parser state is rebuilt by reading the file from 0 on server start (14a), so a resumed client still sees each message's usage once. The same holds for a file the server first sees after startup (created, or appended after being skipped as older than 24 h): it is read from 0 to build parser state, and events from lines older than 24 h at that moment are suppressed (state only, no events), so a resumed old session shows only its new activity. Dedupe scope is one file: 0 `message.id` values appear in more than one of 204 main files and 0 ids carry differing usage across their lines (measured); if a later line of an id carries different usage, the parser keeps the first and logs one `[logs]` line per file (format drift signal, X1). Tests: a fixture with one message split over 3 content-block lines counts its tokens once; the golden fixture total equals the independent reference counter (X4) exactly; on the real Mac files the HUD total for one chosen file is within 1% of `jq` summing usage once per `message.id` (manual acceptance step, command written in the format doc).
+- Session-stable project key (C81, D5): each main session's `projectKey` is set once from its first line with a cwd: the git toplevel found by walking up from that cwd for `.git`; a `.git` file (worktree) is followed through its `gitdir` to the main repository root; when no `.git` is found or the path no longer exists, the first cwd itself. Later cwd changes inside the session never change the key, except the one-time upgrade from a non-git first cwd (C95). A subagent always takes its root session's `projectKey` (D7; measured: 84 of 300 Claude subagent files start in a different cwd from their parent); a Codex subagent with `parent_thread_id` takes its parent thread's key, one without it uses its own `session_meta.cwd`. The parent's key crosses files through an injected `deps.rootProjectKey(parentSessionId)`: the server keeps a map from session id to key filled by every parsed main file; when the parent is not parsed yet (backfill runs newest first, 4 files at a time), the server reads the parent file only up to its first line with a cwd (Claude: the sibling `<session>.jsonl` two directories up; Codex: the rollout file whose name ends in the parent thread id, found through a filename index of the roots), caches the result and resolves it. Results are cached per path. Codex main sessions use `session_meta.cwd` with the same resolver. Tests with temp dirs (resolver unit) and with a stub resolver (parsers): subdirectory cwd maps to the repo root; a worktree `.git` file maps to the main root; a missing path falls back to the cwd; a session whose later lines `cd` into a subdirectory keeps one key; a subagent in another cwd gets its parent's key, also when the subagent file is parsed before its parent (Claude and Codex).
+- Project-relative paths (D16): `filesTouched` paths are made relative to the session's own working root (the git toplevel of its first cwd, which for a worktree is the worktree itself, before the C81 mapping to the main repo); paths outside that root are replaced by `[outside project]` (a different placeholder from the secret marker `[redacted]` on purpose, so a reader can tell a hidden path from a hidden secret). One tool-to-path table names the path field per edit tool (Claude `Edit`/`Write`/`MultiEdit` `file_path`, `NotebookEdit` `notebook_path`; Codex `apply_patch` headers) and is shared with `toolClass`. Test: an edit inside a worktree session stays visible as a relative path; an edit to `/etc/hosts` is redacted.
+- currentTask and plan tools (C82, X5): each plan-tool call emits one `status` event per changed item, each carrying `todo` (and `currentTask` when it changes), using the C87 in-line index; the event has no `status` value, so session status is untouched. One table maps plan tools to `todo` items: Claude `TodoWrite` (`todos[]` of `{content, status, activeForm}`), Claude desktop `mcp__ccd_turn__update_plan` and Codex `update_plan` (`plan[]` of `{step, status}`). The parser keeps the last full list per session: `mcp__ccd_turn__update_plan` with `items` replaces it; `{advance: true}` completes the in-progress item and starts the next pending one; `{done: [n], start: m}` applies those 1-based changes (measured shapes in 204 sessions: `items` 25, `advance` 25, `done`+`start` 12, `done` 2). `todo.id` = hash of (sessionId, plan tool, normalised item text, occurrence number of that text in the list), so inserting an item does not shift the others' ids; `advance` and `done`/`start` resolve positions against the last full list and keep its ids. When a full list replaces the old one, every old item missing from the new list gets one `status` event with its `todo` status set to `completed`, so the chunk 13 jobs slice never keeps a dropped item open. `currentTask` follows the newest of two sources: the latest plan-tool update that leaves an in-progress item (its text), or the latest real user prompt; a plan update with no in-progress item yields the latest prompt. A real user prompt is a Claude `user` line whose content is a string or text block, not `tool_result`, not `isMeta`, not `isCompactSummary`, and not starting with an injected tag (measured in 204 sessions: `<task-notification` 263, `<command-message` 261, `<ci-monitor-event` 31, `<command-name` 19, `<bash-input` 10, `<system-reminder` 7, `<local-command-stdout` 3, `<bash-stdout` 1; the format doc keeps the list); for Codex a `response_item` `message` with role `user` whose text does not start with an injected tag (`<recommended_plugins`, `<user_action`, `<environment_context`, listed in the format doc). The text is redacted, then cut to 120 characters. Tests: each tool and call shape; an insert at index 0 keeps the other ids; a dropped item closes; prompt fallback; a newer prompt overrides an older plan; a `tool_result`-only user line and an injected Codex message do not change `currentTask`.
+- Tool class (chunk 13 field, D16): one shared classifier in `sidecar/parsers/toolClass.ts` maps a tool call to `toolClass`: Claude `Edit`, `Write`, `MultiEdit`, `NotebookEdit` and Codex `apply_patch` are `edit`; a shell command (Claude `Bash`, Codex `exec_command`/`exec`) whose command runs `git commit` is `git_commit`, a test runner (`vp test`, `vitest`, `jest`, `pytest`, `go test`, `cargo test`, `playwright test`, `npm`/`pnpm`/`yarn test`) is `test`, a linter or checker (`vp check`, `eslint`, `tsc`, `ruff`, `biome`, `prettier --check`) is `lint`; everything else is `other`. Command text never leaves Node. Tests per class and for a command that only mentions a test runner in a string argument (`other`).
+- Claude subagents (C83, D7): a line from `<session>/subagents/agent-<id>.jsonl` maps to `sessionId` = its `agentId`, `parentSessionId` = its `sessionId`, `agentKind` `sub`, `parentKnown` true; a subagent at `spawnDepth` > 1 still names the root session as parent. The sibling `.meta.json` is read once per file through `readMeta` for `agentType`; a missing or unreadable meta file changes nothing else. In-file sidechain lines (`isSidechain: true` inside a main session file) do not occur in 2.1.260-2.1.295 (0 in 204 files, measured); the format doc lists them as a known gap and the parser counts such a line as ignored. Fixture test: a session with two subagents, one nested.
+- Mapped, ignored and unknown types (C90): Claude mapped types are `user`, `assistant` and `system`; of `system` subtypes, `api_error` maps to an `error` event and `stop_hook_summary`, `turn_duration`, `away_summary`, `local_command`, `compact_boundary`, `informational`, `scheduled_task_fire` are ignored. Claude known-ignored types are `attachment`, `custom-title`, `ai-title`, `last-prompt`, `agent-name`, `queue-operation`, `atis-latch`, `bridge-session`, `mode`, `permission-mode`, `pr-link`, `cost-state`, `file-history-snapshot`, `file-history-delta` (measured: these plus the mapped types are every type in 204 main files). The format step confirms mapped plus ignored types cover 100% of observed lines, so the X1 warning stays silent on today's files. Codex known-ignored: top-level `world_state`, `token_usage_record` (usage comes from `token_count`); `event_msg` payloads other than `token_count`, `task_started` and `task_complete`; `response_item` `reasoning`; `token_count` with `info: null` (15 of 2,063 in 200 files, measured). Any other type counts as unknown, emits nothing and is not fatal. A malformed line (JSON parse error) counts as malformed and is skipped. Tests for each.
+- Parser health (X1, closes TODOS P3 "Retire the `logLines` slice"): per file the server keeps `{ lines, events, ignored, unknown, malformed, newestVersion }` and sends them in the 14a `lines` message, which keeps its `total` field (the line count; the 14b smoke and 14c checks read it unchanged) and gains `events`, `ignored`, `unknown`, `malformed` and `newestVersion`; the 14c `logLines` slice is kept under the same key (`path + fileId`) and holds these counts instead of the bare line total, and the `dev=1` HUD row shows them. The tested version range is a constant per parser (`TESTED_VERSIONS` in `sidecar/parsers/claude.ts` and `codex.ts`) and the format doc quotes it. The server logs one `[logs]` line per file the first time it sees an unknown type or a version above that range. Tests: counts on a mixed fixture; one log line, not one per occurrence.
+- Wire events (C89): `src/data/wire.ts` gains `{ type: "events", path, fileId, cursor, backfill, events }` with at most `MAX_BATCH` events. `cursor` is the byte offset of the first line whose events are not all in this or an earlier message, so a line whose events span two messages is resent from its start after a reconnect, and the C87 ids let the store drop the repeats. This relies on the store's `seen` set, which covers the ring (`RING_CAP` 50,000, `src/data/reduce.ts`); a resend is at most one line's events plus one batch (`MAX_BATCH` 500), far below that, and the drop-before-apply test asserts the resend size. `LiveSource` passes `events` to `onEvents` and advances that file's cursor only after `onEvents` returns; reconnect sends the cursors (14a). Tests: drop the socket after a batch is sent but before it is applied, reconnect, and totals equal an uninterrupted run with 0 duplicates (G4 event proof moved here from 14a/14c); a line with more events than one batch is split, the socket drops between the halves, and totals still match.
+- Golden fixtures (X4): a fixture script cuts one real session per vendor, replaces every text value with redacted placeholders of the same shape, keeps ids, timestamps, types and usage numbers, and the committed fixture passes the redaction tests; a reference counter written independently in the test (usage once per message id for Claude, `last_token_usage` with repeated totals skipped for Codex) gives the expected totals.
+- Codex tool errors: the format step records the failure field of `function_call_output`/`custom_tool_call_output` (exit code or error flag); a failed call gives a `tool_result` event with `status: "error"`. Test on a fixture.
+- Codex mappings (chunk 16): `session_meta` gives sessionId, cwd and `session_start`; `turn_context.model` gives the model; `event_msg` `task_started`/`task_complete` give `turn_start`/`turn_end`; `function_call` and `custom_tool_call` give `tool_call` with `toolName` (`exec_command`, `exec`, `apply_patch`, `update_plan`, others pass through), their `*_output` items give `tool_result`; `apply_patch` input headers (`*** Update File:`, `*** Add File:`, `*** Delete File:`) give `filesTouched` under the project-relative rule. Tests on fixtures for each.
+- Codex usage (C84, eng Q4): usage comes from each `token_count` event's `info.last_token_usage`; a `token_count` whose `total_token_usage` equals the previous one is skipped; a field missing from a record counts as 0 (`cache_write_input_tokens` is absent in some 0.147-0.160 files, measured). Class mapping: when the format step confirms that `input_tokens` includes cached input, `in` = `input_tokens` - `cached_input_tokens`, else `in` = `input_tokens`; `cacheRead` = `cached_input_tokens`, `cacheWrite` = `cache_write_input_tokens`, `out` = `output_tokens`, and the doc records whether `reasoning_output_tokens` sits inside `output_tokens`. A total lower than the previous one starts a new baseline and logs one `[logs]` line. Tests: repeated `token_count` counts once; null `info` emits nothing; class mapping on recorded sample numbers; restart mid-file equals one uninterrupted read (Q4).
+- Codex subagents (C85): `parentSessionId` = `session_meta.parent_thread_id` when present with `parentKnown` true, else `parentKnown` false. If the format step shows that lines before `subagent_history_start_ordinal` repeat the parent's history, the parser emits no events of any kind for them. Tests: subagent with and without `parent_thread_id`; inherited lines emit nothing when that rule applies.
+- Real Codex acceptance (C86): run one `codex exec` in this repository during acceptance, then check that its session appears in the same hall as this repo's Claude sessions (D5); 24 h backfill shows no older Codex files.
+- TODOS: add X3 (session title from `custom-title`/`agent-name`/`ai-title`, redacted, for rack labels; trigger chunk 24) and X6 (Claude `cost-state` lines carry `totalCostUSD` and `modelUsage`: compare the chunk 13 estimated cost with it as a calibration check and consider showing it as a `real` metric where present; trigger chunk 28 KPI cards).
+- Drift visible to the user (C92): when any file reports an unknown type or a version above its parser's `TESTED_VERSIONS`, the connection pill tooltip and the `dev=1` HUD health row show "Log format changed: <vendor> <version> is newer than tested; counts may be incomplete" with the README `#supported-logs` anchor; the pill text itself is unchanged. Test: a fixture line with a higher version raises the tooltip text once.
+- Fixture privacy (C93): golden fixtures replace every path with a synthetic root (`/repo/...`, `/home/user/...`) and every URL, branch, repo and remote name with placeholders; a test fails if any committed fixture contains the current `os.homedir()`, `os.userInfo().username`, `os.hostname()`, `github.com`, `/Users/` or `http`; the fixture script prints a summary of what it replaced for a human check before commit.
+- One-machine caveat (C94): the format docs state that the type lists, injected tags and plan-tool shapes come from one machine (n=1) and list its versions; `mcp__ccd_turn__update_plan` support is best-effort and no acceptance line depends on it.
+- Key upgrade once (C95): if a session's first cwd has no git root (for example `~` or a scratch dir) and a later line's cwd has one, the key changes once to that root and never again; events already sent keep their old key and the store moves the session (one `projectKey` per session in the store, newest wins). A monorepo stays one hall (known gap in the format doc). Tests: start in home, `cd` into a repo; start in repo A, `cd` into repo B keeps A.
+- Startup budget (C96): on the author's Mac the server finishes backfill of the last 24 h (measured on 2026-10-15: 175 Claude files, 186 MB, largest 32.8 MB) in under 15 s and logs one `[logs]` line with file count, bytes and duration; the acceptance records the measured time. If it is over 15 s, the persisted parser-state TODO (X8) becomes P1.
+- Codex facts (C98): the Codex format doc records the evidence (field values on recorded samples) for the cached-input and inherited-history answers; only the evidenced branch is implemented, and the parser logs one `[logs]` line per file if a record contradicts it (for example `cached_input_tokens` greater than `input_tokens`).
+- README "Supported logs" (C97) opens with one sentence on what the parsers feed (the live hall view across Claude Code and Codex), then format notes and known gaps (n=1 rules, monorepo, in-file sidechains, desktop plan tool best-effort).
+- TODOS: add X7 (run `vp run logs:probe` on 2-3 other machines before 14b and merge their type lists; trigger chunk 14b), X8 (persist parser state per `fileId` and offset; trigger measured backfill over 15 s), X9 (`--no-task-text` option that keeps `currentTask` to plan items only; trigger a user asks or the binary ships to others).
+- Oversize lines (C99): a line longer than 32 MiB is skipped without parsing and counted `oversize` with one `[logs]` line per file (measured max line 1.36 MB in 100 files). Test with a synthetic oversize line.
+- Store moves a session on key change (C100): when an event carries a `projectKey` different from its session's, `applyBatch` (`src/data/reduce.ts`) moves the session and its per-session token totals from the old project to the new one; project and global totals stay exact. Test in `reduce.test.ts`, including a subagent moved with its parent.
+- Redaction safety (C101): `redact.ts` patterns have no nested quantifiers; text is redacted on its first 4 KiB, then cut to 120 characters; a test runs `redact` on a 1 MiB adversarial string in under 50 ms.
+
+### Implementation Tasks (CEO)
+
+- [ ] **T1 (P1, human: ~3h / CC: ~10min)** — scripts — `vp run logs:probe` and Claude/Codex format docs
+  - Surfaced by: 0A PR1-PR16, X2, C94, C98
+  - Files: scripts/logs-probe.ts, docs/log-formats/claude.md, docs/log-formats/codex.md, package.json
+  - Verify: probe test (no fixture values in output); format doc lists types, versions, evidence for C84/C85
+- [ ] **T2 (P1, human: ~2d / CC: ~45min)** — sidecar/parsers — Claude parser with usage/turn dedupe, plan tools, currentTask, toolClass, redaction
+  - Surfaced by: C80, C82, C83, C90, C99, C101, X5, spec passes 1-3
+  - Files: sidecar/parsers/{claude,planTools,toolClass,redact,ids,types}.ts and tests
+  - Verify: `vp test sidecar/parsers`; golden fixture equals reference counter
+- [ ] **T3 (P1, human: ~1d / CC: ~30min)** — sidecar — project-key resolver, rootProjectKey, registry, health counters, drift
+  - Surfaced by: C81, C91, C92, C95, X1
+  - Files: sidecar/projectKey.ts, sidecar/logServer.ts, sidecar/parsers/index.ts
+  - Verify: temp-dir resolver tests; subagent-first order test; one drift log line
+- [ ] **T4 (P1, human: ~1d / CC: ~30min)** — data/wire — `events` message, cursor after apply, store move on key change
+  - Surfaced by: C87, C89, C100
+  - Files: src/data/wire.ts, src/data/liveSource.ts, src/data/reduce.ts, tests
+  - Verify: drop-before-apply and split-line reconnect tests; reduce move test
+- [ ] **T5 (P1, human: ~3h / CC: ~10min)** — fixtures — redacting fixture script and privacy test
+  - Surfaced by: X4, C93
+  - Files: scripts/make-fixture.ts, sidecar/parsers/fixtures/*
+  - Verify: privacy test fails on a planted homedir
+- [ ] **T6 (P1, human: ~1d / CC: ~30min)** — sidecar/parsers — Codex parser
+  - Surfaced by: C84, C85, C86, C98, spec pass 1-2 Codex mappings
+  - Files: sidecar/parsers/codex.ts and tests
+  - Verify: Q4 restart test; fresh `codex exec` shows in this repo's hall
+- [ ] **T7 (P2, human: ~2h / CC: ~10min)** — docs — PLAN.md chunk text, section 2, README "Supported logs", TODOS X3/X6-X9
+  - Surfaced by: spec pass 1 consistency, C97, Stale diagram audit
+  - Files: docs/PLAN.md, README.md, TODOS.md, src/data/schema.ts (comment)
+  - Verify: PLAN.md section 2 table matches the format docs
+- [ ] **T8 (P2, human: ~1h / CC: ~10min)** — acceptance — measured startup budget and real-folder 1% check
+  - Surfaced by: C96, C80
+  - Files: docs/log-formats/claude.md (commands and results)
+  - Verify: startup `[logs]` line under 15 s; HUD total within 1% of the `jq` count
+
+### Design review (Phase 2)
+
+Skipped: no UI scope (`uiRequired` false, 0 UI matches). This is a skip, not a completed review.
+
+## DX review record: Chunks 15, 16 (/autoplan, 2026-10-15)
+
+Mode: DX POLISH (autoplan override). Product type: CLI tool plus local web app (log server under `vp dev`, `vp preview` and the release binary; this chunk adds the parsers behind it) [auto-decided P6: same classification as the chunks 13-14b DX review]. Codex outside voice disabled; Claude subagent only.
+
+### 0A. Developer persona (carried forward, P6)
+
+```
+TARGET DEVELOPER PERSONA
+========================
+Who:       a developer who runs Claude Code and/or Codex CLI daily on a Mac (also Linux or Windows)
+Context:   wants an ambient view of what their agents and subagents are doing, beside the editor
+Tolerance: about 5 minutes and one blocked step before closing the tab
+Expects:   a download or one command, no account, no config, their own sessions visible quickly
+```
+Evidence: README "Data sources" (README.md:96) and the chunks 13-14b DX record; unchanged by this plan.
+
+### 0B. Developer perspective (empathy narrative)
+
+I already ran `vp dev` last week and saw the pill say "Connected" and a list of files with line counts. Today I pull main with chunk 15 and run `vp dev` again. The terminal prints the version, the URL and a `[logs]` line per root. I open the page with `?dev=1`. [observed in plan] I expect my sessions from this morning: ai-center and bms-frontend-v2, the session where I spawned four builder subagents, and the tokens I burned. [predicted confusion] If the hall shows `~` as a project because one session started in my home dir, or my worktree session lands in a second hall, I stop trusting it. If Codex shows nothing because I last used it three days ago, I will think Codex is broken. If Claude Code updated overnight and the counts look low, nothing tells me why unless the drift tooltip (C92) is there. The thing that makes me keep the tab open: my own session titles of work (the current task text) and token totals that match what I know I spent.
+
+### 0C. Competitive DX benchmark
+
+Search not used (DX POLISH, no new vehicle); peers from the chunks 13-14b DX record [reported, not re-measured].
+
+| Tool | Start → result | Time + evidence type | DX choice | Source |
+|---|---|---|---|---|
+| ccusage (CLI) | `npx ccusage` → daily token table from Claude JSONL | about 1 min [reported, prior record] | zero config, reads default dir | prior DX record |
+| Vendor usage views | open app → usage page | under 1 min [reported] | built in, single vendor | prior DX record |
+| Synapse Horizon after 15 | `vp dev` with logs present → own sessions in HUD | 3-4 min from clone [estimated: install 2-3 min, backfill under 15 s C96] | live, cross-vendor, spatial | this plan |
+
+Target: Competitive (2-5 min), unchanged from the 13-14b approval (auto-decided P6; no new evidence reopens it).
+
+### 0D. Magical moment
+
+"Your sessions are racks": within seconds of start, the terminal says what was found and the page shows the user's own sessions by project with token totals. Vehicle (P5, lowest effort, existing capabilities): the startup `[logs]` summary line (C96 extended by DX1) plus the HUD session list; the rack scene binding is chunk 18.
+
+### 0F. Developer journey
+
+```
+STAGE           | DEVELOPER DOES                          | FRICTION POINTS                                         | STATUS
+----------------|-----------------------------------------|---------------------------------------------------------|--------
+1. Discover     | reads README "Supported logs"           | which vendors/versions work                             | fixed (C97, C94 versions listed)
+2. Install      | `pnpm install`, `vp dev` (or binary 14b)| none new                                                | ok
+3. Hello World  | opens page, sees own sessions           | terminal shows files, not sessions                      | fixed (DX1 summary line)
+4. Real Usage   | watches live sessions, tokens, tasks    | Codex silent when last session is older than 24 h       | fixed (DX2 message)
+5. Debug        | counts look wrong                       | no per-file way to reproduce counts                     | fixed (DX4 probe --file, C92 tooltip with fix)
+6. Upgrade      | Claude Code or Codex updates            | drift signal names no fix; TESTED_VERSIONS bump unclear | fixed (DX5, DX6)
+```
+
+### 0G. First-time developer report
+
+```
+FIRST-TIME DEVELOPER REPORT
+Persona: daily Claude Code + Codex user on a Mac
+Attempting: see my own sessions after chunk 15
+T+0:00  `vp dev`: version, URL, `[logs] claude: ~/.claude/projects 175 files` (today, 14a). I want sessions, not files.
+T+0:30  Opens `?dev=1`: session list. Recognises ai-center. Sees a project `/Users/me` (session started in ~). Confused. (fixed by C95)
+T+1:00  Looks for yesterday's Codex review: nothing. Is Codex supported? (fixed by DX2)
+T+2:00  Compares tokens with what Claude Code showed: plausible. Satisfied if numbers match (C80).
+T+3:00  Succeeded; would keep the tab open.
+```
+
+### DX decision list (Step 0 and passes)
+
+| ID | Source/evidence | Current | Proposed | Approval + scope |
+|---|---|---|---|---|
+| DX1 | 0G T+0:00; magical moment | startup line counts files | startup summary per vendor: `[logs] claude: 175 files, 23 sessions, 9 projects in the last 24 h (2.4 s)`; `[logs] codex: ...` | autoplan P1, P5; extends C96 line |
+| DX2 | 0G T+1:00; measured 0 Codex files in 24 h | silent | when a root has files but none modified in 24 h: `[logs] codex: 533 files, none in the last 24 h (newest 3 days ago); start a Codex session to see it here. #supported-logs`; same text as the root `reason` in the pill tooltip | autoplan P1 (problem + cause + fix) |
+| DX3 | naming consistency with 14a `--log-root` | `logs:probe --root <dir>` | `logs:probe --log-root <dir>` (repeatable), defaulting to the same resolved roots as the server (14a resolver) | autoplan P5 |
+| DX4 | 0F Debug | no per-file reproduction | `vp run logs:probe -- --file <path>` prints that file's parser health counters and token totals (the same numbers as the HUD row), never values | autoplan P1 |
+| DX5 | C92 text | "counts may be incomplete" | "Log format changed: Claude Code 2.1.300 is newer than tested (2.1.260-2.1.295); counts may be incomplete. Run `vp run logs:probe` and report its output. #supported-logs" | autoplan P1 (fix named) |
+| DX6 | 0F Upgrade | `TESTED_VERSIONS` unexplained | the format doc has a "When a vendor updates" section: run the probe, compare type lists, update the ignored lists and `TESTED_VERSIONS`, run the golden tests | autoplan P1 |
+
+### DX dual voices
+
+Claude DX subagent: completed, INPUT dx 3d80160771e44a7591aaaa52b0ea9291e13d73ab86a22ad0049f4c6f3a1196b4 (matches the snapshot), 79/79 lines. Codex: disabled. Tag: [subagent-only]. 17 findings (5 high, 12 medium, 0 critical).
+
+Dispositions (factual corrections first): F1-quickstart and F1-empty-hall are already owned by approved work: 14c writes Quick start (`vp dev`, `vp run serve`) and the D9 first-run card names the resolved roots and their source, and DX2 adds the stale-root text; "Supported logs" links them (DX7). F1-env-vars: 14a already resolves `$CLAUDE_CONFIG_DIR/projects` and `$CODEX_HOME/sessions` with tests (PLAN.md:633); no change. Accepted: DX8 `oversize` in the health tuple; DX9 naming; DX10 probe invocation and `--json`; DX11 `vp run logs:fixture`; DX12 `[logs]` line contract with codes; DX13 multi-vendor drift text; DX14 first offset per class; DX15 privacy test precision; DX16 parser contract doc; DX17 the `jq` reference command written now; DX18 toolClass matching rule and wrapper list; DX19 hex strings never redacted, extra no-false-positive fixtures; DX20 fixed v1 limits stated. Deferred: user-extendable toolClass patterns (TASTE T7, TODO X10), monorepo key mapping (TODO X11).
+
+```
+DX DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Getting started < 5 min?          unclear (no quickstart)  N/A  N/A (Codex disabled)
+  2. API/CLI naming guessable?         partly  N/A    N/A
+  3. Error messages actionable?        no ([logs] contract)  N/A  N/A
+  4. Docs findable & complete?         partly  N/A    N/A
+  5. Upgrade path safe?                partly (fixed lists)  N/A  N/A
+  6. Dev environment friction-free?    partly (no overrides)  N/A  N/A
+Outside voice disabled: every Consensus cell N/A, never CONFIRMED. No single-voice critical finding.
+```
+
+### Pass 1: Getting Started (before 6/10, after 8/10)
+
+Evidence: 0C target Competitive (2-5 min), 0D vehicle startup summary line plus HUD. Gap: the user's first output after 15 is a file count, and "Supported logs" had no run-this-see-that step. Fix (DX1, DX7): summary line names sessions and projects; README "Supported logs" opens with two lines linking Quick start and Configuration (14a/14c) and the expected `[logs] claude: <n> files, <n> sessions, <n> projects` line. 10 would be the rack scene lighting up (chunk 18), out of scope.
+
+### Pass 2: API/CLI design (before 6/10, after 8/10)
+
+`logs:probe` flags aligned with the server (`--log-root`, DX3); invocation fixed as `vp run logs:probe -- --log-root <dir>` like `vp run mock:dump -- ...` (README.md:112); `--json` for machine output (DX10); fixture script named `vp run logs:fixture -- --vendor claude|codex --file <path>` (DX11). Health tuple gains `oversize` (DX8). Wire names `lines`/`total` and slice `logLines` kept for compatibility; `wire.ts` documents each field and the HUD row is labelled "Parser health" (DX9).
+
+### Pass 3: Error messages (before 4/10, after 8/10)
+
+Three traced paths: (1) vendor update: today "counts may be incomplete" with no action; after DX5/DX13 the tooltip names each drifting vendor, version, tested range, the probe command and the anchor. (2) A malformed or oversize line: today a bare count; after DX12/DX14 a coded line `[logs] W-MALFORMED claude <file> @<offset>: line is not JSON (likely a partial write or a non-log file). Skipped; check the file or report it. See README#supported-logs` and the HUD shows the first offset. (3) Old Codex root: DX2 message with cause and fix. Codes (DX12): `I-SUMMARY`, `W-STALE-ROOT`, `W-UNKNOWN-TYPE`, `W-NEW-VERSION`, `W-MALFORMED`, `W-OVERSIZE`, `W-INVALID-EVENT`, `W-USAGE-DRIFT`, `W-BASELINE-RESET`, `W-CODEX-FACT`, `W-PARENT-MISSING`, each with problem, cause, fix and anchor; one test per code.
+
+### Pass 4: Documentation (before 5/10, after 8/10)
+
+"Supported logs" in README (purpose, run-this-see-that, versions, known gaps, codes table) plus `docs/log-formats/claude.md` and `codex.md` (rules, evidence, "When a vendor updates", the `jq` reference command) plus `sidecar/parsers/README.md` "Parser contract" (signature, registry, deps, ids, a stub-resolver test example) (DX16). The `jq` command (DX17): `jq -s '[.[] | select(.type=="assistant" and .message.usage != null)] | unique_by(.message.id) | map(.message.usage | {in: .input_tokens, out: .output_tokens, cacheRead: (.cache_read_input_tokens // 0), cacheWrite: (.cache_creation_input_tokens // 0)}) | {in: (map(.in)|add), out: (map(.out)|add), cacheRead: (map(.cacheRead)|add), cacheWrite: (map(.cacheWrite)|add)}' <file>`.
+
+### Pass 5: Upgrade path (before 4/10, after 7/10)
+
+Vendor updates are this product's upgrade risk. DX6 procedure, C92/DX13 signal, `TESTED_VERSIONS`, golden tests. Fixed v1 limits stated in the format docs (DX20): 24 h backfill (TODOS `--since`), 32 MiB line cap, tested range. Residual: rules from one machine (X7). Not 10 because the fix still needs a release.
+
+### Pass 6: Dev environment (before 6/10, after 7/10)
+
+Parsers are pure with injected deps, so contributors test with fixtures on any OS; resolver tests use temp dirs; CI runs everything under `vp test`. Escape hatches: toolClass matching is defined (DX18) but not user-extendable (T7, X10); monorepo mapping deferred (X11).
+
+### Pass 7: Community (before 5/10, after 6/10)
+
+Public repo; the drift text asks for probe output in an issue (values never included, so it is safe to paste). No new channel; not changed by this plan.
+
+### Pass 8: DX measurement (before 5/10, after 7/10)
+
+The approved clock (clone to own sessions) is measured once manually in acceptance (C96 time plus the start); the `I-SUMMARY` line prints the backfill duration on every start, so regressions are visible. No telemetry (local tool).
+
+### DX scorecard
+
+```
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD                             |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend  |
+|----------------------|--------|--------|--------|
+| Getting Started      | 8/10   | 6/10   | +2 ↑   |
+| API/CLI/SDK          | 8/10   | 6/10   | +2 ↑   |
+| Error Messages       | 8/10   | 4/10   | +4 ↑   |
+| Documentation        | 8/10   | 5/10   | +3 ↑   |
+| Upgrade Path         | 7/10   | 4/10   | +3 ↑   |
+| Dev Environment      | 7/10   | 6/10   | +1 ↑   |
+| Community            | 6/10   | 5/10   | +1 ↑   |
+| DX Measurement       | 7/10   | 5/10   | +2 ↑   |
++--------------------------------------------------------------------+
+| TTHW                 | 3-4 min [est] | 3-4 min [est] | =       |
+| Competitive Rank     | Competitive                                 |
+| Magical Moment       | designed via I-SUMMARY line + HUD sessions  |
+| Product Type         | CLI tool + local web app                    |
+| Mode                 | POLISH                                      |
+| Overall DX           | 7/10   | 5/10   | +2 ↑   |
++====================================================================+
+| DX PRINCIPLE COVERAGE                                               |
+| Zero Friction      | covered (no new setup; defaults from 14a)      |
+| Learn by Doing     | covered (probe, fixtures, jq reference)        |
+| Fight Uncertainty  | covered (coded [logs] lines, drift tooltip)    |
+| Opinionated + Escape Hatches | gap (toolClass, monorepo: deferred)  |
+| Code in Context    | covered (parser contract with test example)    |
+| Magical Moments    | covered (summary line); racks in chunk 18      |
++====================================================================+
+```
+"Prior" is this review's initial score of the same plan. No dimension below 6. TTHW is not above 10 min.
+
+### DX implementation checklist
+
+```
+[ ] `vp dev` with real logs prints I-SUMMARY per vendor; own sessions in the HUD within the C96 budget
+[ ] Every [logs] warning has a code, file, offset, problem, cause, fix and README anchor (one test per code)
+[ ] Drift tooltip names each drifting vendor, version, tested range, the probe command
+[ ] `vp run logs:probe -- --log-root <dir> [--file <path>] [--json]` documented and tested; no values in output
+[ ] `vp run logs:fixture` documented; privacy test prints file, line and token on failure
+[ ] README "Supported logs", docs/log-formats/*.md, sidecar/parsers/README.md written
+[ ] jq reference command in the format doc matches the HUD on one real file within 1%
+[ ] Fixed v1 limits stated; deferred escape hatches listed in TODOS
+```
+
+### NOT in scope (DX)
+
+User-extendable toolClass patterns (T7, X10, trigger first missed runner report), monorepo key mapping (X11, trigger a user asks), telemetry (local tool, never).
+
+### What already exists (DX)
+
+14a roots resolver with `CLAUDE_CONFIG_DIR`/`CODEX_HOME`, `--log-root`, config file; 14c Quick start, D9 card, pill and D11 banner; `vp run mock:dump -- ...` argument style (README.md:112); `[logs]` line prefix (14a).
+
+### Taste decisions (DX)
+
+- T7 toolClass escape hatch: chosen fixed, documented built-in lists with a defined matching rule (P5 explicit, less config surface in v1). Alternative: a `toolClasses` config key merged with the defaults; covers custom runners now, adds a second merge rule next to the roots rule that never merges.
+
+
+- Startup summary (DX1, extends C96): after backfill the server prints one `[logs]` line per vendor root: files, sessions, projects found in the last 24 h and the duration, for example `[logs] claude: 175 files, 23 sessions, 9 projects in the last 24 h (2.4 s)`. Test in `cli.test.ts` with a fixture root.
+- Stale root message (DX2): when a root has log files but none modified in the last 24 h, the `[logs]` line and the root `reason` (pill tooltip) read `<vendor>: <n> files, none in the last 24 h (newest <age> ago); start a <vendor> session to see it here.` with the README `#supported-logs` anchor. Test with a fixture root of old files.
+- Probe flags (DX3, DX4): `vp run logs:probe` takes `--log-root <dir>` (repeatable) like the server and defaults to the same resolved roots (14a resolver); `--file <path>` prints that file's parser health counters and token totals, the same numbers as the HUD row, never values. Tests: default roots, `--log-root`, `--file` totals equal the HUD counters on a fixture.
+- Drift text (DX5, refines C92): the tooltip reads `Log format changed: <vendor> <version> is newer than tested (<range>); counts may be incomplete. Run vp run logs:probe and report its output.` with the README `#supported-logs` anchor.
+- Vendor update procedure (DX6): each format doc has a "When a vendor updates" section: run the probe, compare type lists, update the ignored lists and `TESTED_VERSIONS`, run the golden tests.
+- Supported logs entry (DX7): README "Supported logs" opens with two lines: run `vp dev` (link to Quick start) or the binary, override roots with `--log-root` (link to Configuration), and expect `[logs] claude: <n> files, <n> sessions, <n> projects in the last 24 h`.
+- Health tuple (DX8, DX9, DX14): the per-file health is `{ lines, events, ignored, unknown, malformed, oversize, newestVersion, firstMalformedOffset, firstOversizeOffset }`; the wire `lines` message keeps `total` and carries these fields; `wire.ts` documents each field; the HUD row is labelled "Parser health" and shows the first offsets. Test on a mixed fixture.
+- Probe and fixture commands (DX10, DX11): `vp run logs:probe -- --log-root <dir> [--file <path>] [--json]`; `--json` prints the same histogram as JSON (no values) for merging across machines (X7); `vp run logs:fixture -- --vendor claude|codex --file <path> --out <fixture>` is the fixture script (C93, X4). Both are listed in the format docs. Tests for `--json` shape and arguments.
+- Log line contract (DX12): every `[logs]` line from the parsers has the shape `[logs] <CODE> <vendor> <file> @<offset>: <problem>. <cause>. <fix>. See README#supported-logs`, with codes `I-SUMMARY`, `W-STALE-ROOT`, `W-UNKNOWN-TYPE`, `W-NEW-VERSION`, `W-MALFORMED`, `W-OVERSIZE`, `W-INVALID-EVENT`, `W-USAGE-DRIFT`, `W-BASELINE-RESET`, `W-CODEX-FACT`, `W-PARENT-MISSING` (file and offset omitted where they do not apply); README "Supported logs" has a codes table. One test per code asserting the exact line.
+- Multi-vendor drift (DX13, refines C92/DX5): the tooltip lists every drifting vendor on its own line.
+- Privacy test precision (DX15): C93's test matches `http://`, `https://`, `/Users/`, `github.com`, the current home dir, username and hostname, and on failure prints the fixture file, line number and matched token.
+- Parser contract doc (DX16): `sidecar/parsers/README.md` states the parser signature, registry, injected deps, id rule and file state, with one stub-resolver test example.
+- jq reference (DX17): the Claude format doc contains this exact command for the 1% check: `jq -s '[.[] | select(.type=="assistant" and .message.usage != null)] | unique_by(.message.id) | map(.message.usage | {in: .input_tokens, out: .output_tokens, cacheRead: (.cache_read_input_tokens // 0), cacheWrite: (.cache_creation_input_tokens // 0)}) | {in: (map(.in)|add), out: (map(.out)|add), cacheRead: (map(.cacheRead)|add), cacheWrite: (map(.cacheWrite)|add)}' <file>`.
+- toolClass matching (DX18): a shell command is split into segments on `&&`, `||`, `;` and `|`; in each segment, leading env assignments and the wrappers `npx`, `bunx`, `pnpm exec`, `pnpm`, `yarn`, `npm run`, `uv run`, `poetry run` are stripped, then the first one or two words are matched against the lists (test adds `bun test`, `deno test`, `make test`, `just test`); words inside quotes never match. Tests for each wrapper form and a quoted runner name (`other`).
+- Redaction precision (DX19): strings made only of hex digits (git SHAs, sha256, dash-less UUIDs) are never redacted by the entropy rule; the rule applies to 32+ character strings of mixed letters and digits with entropy at least 4.0 bits per character; base64-looking ids are redacted on purpose (documented). No-false-positive fixtures: 40-char SHA, 64-char sha256, dash-less UUID.
+- Fixed v1 limits (DX20): the format docs state that the 24 h backfill, the 32 MiB line cap and the tested version range are fixed in this version, with the TODOs that would change them.
+- TODOS: add X10 (user-extendable toolClass patterns in the config file; trigger first report of a missed runner) and X11 (monorepo sub-path to hall mapping; trigger a user asks).
+- Replacements of CEO-block values (the CEO block stays as recorded; these DX values win): DX3 replaces `[--root <dir>]` in the format-first bullet with `--log-root <dir>`; DX8 replaces the X1 health tuple; DX5 and DX13 replace the C92 tooltip text; DX15 replaces the C93 token list (`http` becomes `http://` and `https://`); DX18 extends the C82-era toolClass runner list and defines how commands are matched; DX19 narrows the R2 entropy rule (hex-only strings are never redacted).
+
+## Eng review record: Chunks 15, 16 (/autoplan, 2026-10-15)
+
+Target: this working plan (`chunks-15-16-plan.md`, Implementation plan plus the CEO and DX accepted blocks). Scope gate: user-named target (autoplan). Codex outside voice disabled; Claude subagent only. Prior learning applied: autoplan-amend-uses-review-record-block (confidence 9/10, 2026-10-15).
+
+### Step 0: Scope Challenge
+
+What already exists: `src/data/schema.ts:6-36` (`AgentEvent`, zod/mini strips unknown keys), `src/data/reduce.ts:193-260` (`applyBatch`: seen-id dedupe against the ring, session created with the first event's `projectKey` at :224, project totals keyed by each event's `projectKey` at :248, status from `e.status` newest-ts at :240-245), `MAX_BATCH`, `sidecar/cli.ts`/`server.ts` (02b). `node:crypto` `createHash("sha256")` is already used in tests (`src/data/mock.test.ts:1`); ids use it (Layer 1, stdlib). Chunks 13, 14a, 14c are approved plans, not code: every reference to `wire.ts`, `tail.ts`, `LiveSource`, `advanceTo`, `todo`, `toolClass` is to planned interfaces (labelled assumptions). Retrospective: `git log` on `src/data` and `sidecar` shows 4 feature commits, 0 reverts.
+
+Complexity: about 22 changed files across two PRs [estimated: 15 about 16 (parsers claude/redact/toolClass/planTools/ids/types/index, projectKey.ts, logServer.ts, wire.ts, liveSource.ts, reduce.ts, logs-probe.ts, make-fixture.ts, docs, README, tests), 16 about 6] and 6 new modules. The gate trips. Feature cuts proposed: none (P2 never reduce). Structure: Original arrangement (one parser module per vendor plus shared redact/toolClass/planTools/ids) vs Smaller arrangement (one `parsers.ts`); auto-decided Original (P5 explicit: per-vendor files map to the format docs and keep each under the 5-branch rule). Splitting chunk 15 into two PRs is UC1 (CEO), pending the user; it changes PR boundaries, not files. Scope record: feature answers none; structure A (autoplan P5); accepted scope as-is; pending remedies: UC1. Scope Challenge result: scope accepted as-is.
+
+Search check: no new infrastructure pattern beyond stdlib (`fs`, `crypto`, zod/mini already installed); no search run.
+
+Scope findings:
+- E1 [P1] (confidence: 9/10) `src/data/reduce.ts:240-245` "const status = e.status ?? (e.type === "session_end" ? "done" : undefined); if (status && newer(...)) session.status = status" with the plan's "a `tool_result` block with `is_error: true` gives a `tool_result` event with `status: "error"`": every failed tool call would set the session to `error` until a newer status arrives. Measured: 206 of 13,109 `tool_result` blocks have `is_error: true` in the last 100 Claude sessions, so racks would flash red and D12 technician carts would roll for routine failed greps. Accepted (E1): a failed tool call is a `tool_result` event with a new optional schema field `toolError: true` and no `status`; only `system` `api_error` (Claude) and a turn-aborting error event (Codex, from the format step) carry `status: "error"`. Additive schema change in chunk 15 (CEO C35 rule). Tests: a failed tool result leaves session status unchanged; an `api_error` sets `error`.
+- E2 [P1] (confidence: 8/10) 14a backpressure "When a client's `bufferedAmount` exceeds 1 MB the server stops sending to it and keeps only the latest `lines` total per file" (PLAN.md:641): events cannot be coalesced like totals. Accepted (E2): for `events`, a slow client is paused per file at its cursor (nothing dropped, nothing buffered beyond one batch per file) and resumed from that cursor when the buffer drains. Test: a stalled client during a 10,000-event backfill keeps server memory bounded and receives every event once after draining.
+- E3 [P1] (confidence: 8/10) The plan serves each client "from its cursor" but parses each file once (server parser state rebuilt from 0 on start). A second tab, or a reload with no cursors, needs events the server already emitted. Accepted (E3, TASTE T8): the server keeps a per-file event log for the 24 h window (events in emission order with their line offsets) and serves any client from any cursor out of that log; the log for a file is dropped when the file leaves the 24 h window or is truncated (generation change). Cap: 250,000 events in total [estimated: 24 h on this Mac is about 21k user+assistant lines, so about 30-40k events]; above the cap the oldest file's log is dropped with one `[logs] W-LOG-CAP` line and a client asking for it gets a fresh re-parse of that file. Tests: two clients, one reconnecting with cursors and one fresh, both end with identical totals; the cap path.
+
+### Reality rows (eng)
+
+| # | Premise | Receipt | Verdict |
+|---|---|---|---|
+| EP1 | Store dedupes resent events by id | `src/data/reduce.ts:198` `if (state.ring.seen.has(e.id) ...) continue` | pass (within the ring, C89 bound) |
+| EP2 | Session key fixed at first event | `src/data/reduce.ts:224` `projectKey: e.projectKey` | finding: C100 needed (accepted in CEO) |
+| EP3 | Event status drives session status | `src/data/reduce.ts:240-245` | finding: E1 |
+| EP4 | Unknown schema keys are dropped | `src/data/schema.ts:6` `z.object(` (zod/mini strips unknown keys) | pass: `toolError` must be added to the schema, not just emitted |
+| EP5 | Batches capped at 500 | `src/data/schema.ts:40` `MAX_BATCH = 500` | pass |
+| EP6 | 14a backpressure coalesces totals | PLAN.md:641 | finding: E2 for events |
+| EP7 | Server can serve any client cursor | PLAN.md:635 (rebuild from 0), 14c resume | finding: E3 |
+| EP8 | `sha256` available in Node | `src/data/mock.test.ts:1` `import { createHash } from "node:crypto"` | pass |
+unverified=0 (chunks 13/14a/14c interfaces are cited from the approved plan text, not code).
+
+REALITY: premise-table finding 8 premises, 4 findings, unverified=0 .gstack/tmp/autoplan/chunks-15-16-plan.md:1
+REALITY: already-done pass `git log origin/main --since=2026-10-12 -- sidecar/parsers docs/log-formats src/data/wire.ts` empty; no parser symbols in `src/` or `sidecar/` src/data/reduce.ts:193
+REALITY: surface-check finding `vp run mock:dump` exists (package.json:11); `logs:probe`, `logs:fixture`, `--log-root` (14a, planned) and `/api/stream` (14a, planned) do not exist yet and are created by this plan or its dependencies package.json:11
+REALITY: binding-decisions pass honours store-owned `advanceTo`, fs.watch, `/api/session`, nullable `Metric`, 14b after 15, A3, R2, D5, D16; E1 refines the CEO tool-error mapping without reversing a user decision src/data/reduce.ts:240
+REALITY: numbers pass 206/13,109 tool errors `[measured]` .gstack/tmp/autoplan/chunks-15-16-plan.md:831; 1.36 MB max line `[measured]` .gstack/tmp/autoplan/chunks-15-16-plan.md:64; 250,000-event cap and 30-40k events/24 h `[estimated]` .gstack/tmp/autoplan/chunks-15-16-plan.md:46
+REALITY: deferred-asks pass every CEO/DX deferral has a TODO entry (X3, X6-X11) with a trigger; OTel and vertical slice stay TODOs TODOS.md:98
+REALITY: pr-count pass two PRs (15, 16); UC1 would make it three (15a, 15b, 16): one extra review gate and one dependency hop, no user-facing reference crosses the split docs/PLAN.md:695
+PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=0 verdict=complete
+
+### Eng dual voices
+
+Claude eng subagent: completed, INPUT eng d6b407c6a2aca5f06446117e94ce303018ad7feeb0db0ca61c500a32cc8fefe8 (matches the snapshot), 98/98 lines. Codex: disabled. Tag: [subagent-only]. 17 findings (3 high, 9 medium, 5 low) plus 4 missing tests. Its HIGH 1 is the same defect as E1 (found independently from `reduce.ts:240-245`): confirmed by two Claude passes, not cross-model.
+
+```
+ENG DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Architecture sound?               yes, with fixes (key state, ids)  N/A  N/A (Codex disabled)
+  2. Test coverage sufficient?         gaps (4 named)  N/A  N/A
+  3. Performance risks addressed?      partly (sync I/O, memory)  N/A  N/A
+  4. Security threats covered?         gaps (paths in task text, hex)  N/A  N/A
+  5. Error paths handled?              gaps (tool error status, crash loop)  N/A  N/A
+  6. Deployment risk manageable?       yes (13 gate)  N/A  N/A
+Outside voice disabled: every Consensus cell N/A. No critical single-voice finding.
+```
+
+### Section 1: Architecture
+
+```
+            ~/.claude/projects/**.jsonl       ~/.codex/sessions/**.jsonl
+                     |                                  |
+   [14a watch/tail: per-file queue, cursor {path,fileId,offset}]
+                     |  line + offset
+   [registry (C91)] -+-> parsers/claude.ts  parsers/codex.ts   (sync, no I/O)
+                     |        uses: redact.ts toolClass.ts planTools.ts ids.ts
+                     |        deps -> sessionKeys.ts (NEW, E5): first-cwd resolver (C81),
+                     |                one-time upgrade (C95), parent map, head reads <=256 KiB (E8)
+                     v
+   [logServer.ts]  per-file event log (E3, cap 250k) + health (X1) + [logs] codes (DX12)
+                     |  validate AgentEvent before send (E9)
+                     |  wire `events` {path,fileId,cursor,backfill,events} (C89); pause per file on backpressure (E2)
+                     v
+   [LiveSource 14c] onEvents -> store applyBatch (seen-id, C100 move incl. subagents + jobs, E7)
+                     |  cursor advanced after apply; batch failing twice is quarantined (E9)
+                     v
+   HUD Parser health row, pill tooltip drift (C92/DX13)
+```
+Findings:
+- [P1] (confidence: 8/10) id stability across restarts: the truncation generation (C87) lives in server memory, so after a restart a rewritten file can collide with ids a still-open tab holds in `seen` (`reduce.ts:182,198`). Accepted E4: the id hashes (vendor, `fileId` (or the path when 14a falls back from `ino` 0), line byte offset, sha256 of the line bytes, index within the line); the truncation generation is dropped from the id (still used for the event log). Same content at the same offset gives the same id across restarts; rewritten content gives a new id; a rename keeps the ids (fixes voice LOW 13). Tests: truncate and rewrite, restart the server, reconnect the same client: new events arrive; rename a file: no double count.
+- [P1] (confidence: 8/10) session key state is spread across parsers (C81, C95, C100, parent head reads, Codex filename index). Accepted E5: a dedicated `sidecar/sessionKeys.ts` owns the session-to-key map; subagents never resolve their own key, they read their root session's current key from it; on a C95 upgrade the map entry changes and later subagent events carry the new key; the cache is keyed by session id (not path) and updated on upgrade. Tests: parent starts in `~` then moves into a repo, a subagent file parsed before and after the upgrade: both end in one hall; unit tests for the module alone.
+- [P2] (confidence: 7/10) C100 moves only session and token totals (`reduce.ts:224,248`). Accepted E7: moving a session moves its subagents and every per-project aggregate (session and subagent counts, tokens, and the chunk 13 jobs slice, which is keyed by session id with the project derived from the session's current key at read time); ring events keep their original key as history, and project views read the session's current key. Tests per aggregate.
+Data flow and failure scenario per new path are in the CEO Section 1 and the registries below.
+
+### Section 2: Code quality
+
+- [P2] (confidence: 7/10) `rootProjectKey` head reads are synchronous and unbounded. Accepted E8: a head read stops after 256 KiB (measured max line 1.36 MB) and falls back to the subagent's own cwd with `W-PARENT-MISSING`; negative results are cached; the `.git` walk stops at the filesystem root or after 32 levels.
+- [P2] (confidence: 7/10) Absolute paths in task text (D16): `currentTask` text goes through the outside-path rule before the cut: absolute paths outside the session's working root become `[outside project]`, inside it become relative (E10). Fixture case.
+- [P2] (confidence: 7/10) Hex secrets (DX19 too broad): accepted E11: hex strings of 32+ characters are redacted except strings of exactly 40 or 64 hex characters (SHA-1/SHA-256 lengths, git SHAs); documented residual risk: a 40-hex legacy token is not redacted. Replaces DX19's "hex-only strings are never redacted".
+- [P2] (confidence: 7/10) A reworded plan item would close as `completed`. Accepted E12: an item missing from a new full list emits `todo.status: "cancelled"` (additive enum value on the chunk 13 field); the jobs slice treats `cancelled` as closed and not done. Replaces the CEO wording "status set to `completed`" for dropped items.
+- [P3] (confidence: 6/10) Codex `in` can go negative on a contradicting record: clamp to 0 alongside `W-CODEX-FACT` (E13). Unknown Codex/MCP tool names are cut to 64 characters and passed through `redact` (E14). toolClass v1 limits (`bash -c`, `$(...)`, heredocs) listed in the format doc (E15).
+Shared-code rubric: `redact`, `toolClass`, `planTools`, `ids`, `sessionKeys` are shared by both parsers (two proposed callers each, labelled plan assumptions); no extraction from existing code is proposed.
+
+### Section 3: Test review
+
+Framework: Vitest (`vp test`, node), Playwright (`vp run e2e:local`), from CLAUDE.md and `package.json:19`. No LLM/prompt changes: no eval scope.
+
+```
+CODE PATHS                                                   USER FLOWS
+[+] sidecar/parsers/claude.ts                                [+] Start with real logs
+  ├── type dispatch (mapped/ignored/unknown/malformed/oversize)  ├── [GAP→planned] I-SUMMARY + sessions in HUD (manual + cli.test)
+  ├── usage once per message.id (C80)          [planned ★★★]   ├── [GAP→planned] [→E2E] logserver Playwright: fixture root -> HUD sessions
+  ├── turn_end once per id, session_start      [planned ★★★]   └── [GAP→planned] stale Codex root message (DX2)
+  ├── tool_result + toolError (E1)             [planned ★★★]   [+] Reconnect / second tab
+  ├── plan tools (items/advance/done/start, cancelled E12) [★★★] ├── [GAP→planned] drop-before-apply (C89)
+  ├── currentTask (prompt, injected tags, paths E10)  [★★★]    ├── [GAP→planned] split line across batches
+  └── redact (patterns, hex E11, ReDoS C101)   [planned ★★★]   ├── [GAP→planned] fresh second client from event log (E3)
+[+] sidecar/parsers/codex.ts                                    └── [GAP→planned] crash-loop quarantine (E9)
+  ├── token_count deltas, repeats A,B,A (E16), null info, clamp   [+] Vendor update
+  ├── parent link, inherited history (if evidenced)               └── [GAP→planned] drift tooltip per vendor
+  └── apply_patch paths, tool errors
+[+] sidecar/sessionKeys.ts (E5): resolver, upgrade, parent-first/subagent-first, 256 KiB cap
+[+] sidecar/logServer.ts: event log + cap, backpressure pause (E2), validate before send, parser-state eviction (E17)
+[+] src/data/reduce.ts: C100/E7 move, status untouched by no-status events (new test), ring overflow resend (new test)
+[+] ids.ts: content hash, rename, restart (E4)
+COVERAGE (planned): every listed path has a planned ★★★ test; existing coverage today 0/41 (no parser code exists).
+```
+Missing tests from the voice, accepted (E18): a no-status `status` event leaves session status unchanged (`reduce.test.ts`); more than 50,000 backfill events then a reconnect resend applies nothing twice; the startup `I-SUMMARY` line asserted on a synthetic root of 200 files (C96 stays manual for the 15 s number); a wire test that no `exec_command`/`Bash` command text or `apply_patch` body appears in any emitted event. Regression rule: `applyBatch` changes (C100/E7) put existing store behaviour at risk; the existing `reduce.test.ts`, `mock.test.ts` steady digests (E36) and scenario shape tests must pass unchanged (critical regression contract, carried from chunk 12 E36).
+Test plan artifact: `~/.gstack/projects/bjorkgard-ai-center/nathanael-main-eng-review-test-plan-<datetime>.md`.
+
+### Section 4: Performance
+
+- [P2] (confidence: 7/10) Parser state is never evicted in a long-running binary. Accepted E17: a file's parser state is dropped 2 h after its last append and rebuilt from 0 on the next append through the "first seen after startup" path (C80). Test with a fake clock.
+- [P3] (confidence: 6/10) Lines without `timestamp` and the 24 h suppression rule: a line with no `timestamp` takes the previous line's ts; with none before it, its events are suppressed (E19).
+- Event log memory: about 30-40k events/24 h [estimated] at a few hundred bytes each, under 20 MB; cap 250,000 events (E3). Parse cost: 186 MB/24 h [measured volume], JSON.parse bound, inside the C96 budget [estimated]. No DB, no N+1.
+
+### Failure modes registry (eng)
+
+```
+  CODEPATH            | FAILURE MODE                         | TEST? | HANDLED?             | USER SEES          | CRITICAL?
+  --------------------|--------------------------------------|-------|----------------------|--------------------|---------
+  ids                 | restart after truncation reuses ids  | Y     | E4 content hash      | new lines appear   | no
+  sessionKeys         | upgrade splits parent and subagents  | Y     | E5                   | one hall           | no
+  reduce move         | jobs keep old project                | Y     | E7                   | consistent hall    | no
+  claude tool_result  | failed grep marks session error      | Y     | E1                   | no false red rack  | no
+  logServer           | slow client                          | Y     | E2 pause             | catches up         | no
+  logServer           | second tab                           | Y     | E3 event log         | same totals        | no
+  LiveSource          | batch throws on apply                | Y     | E9 quarantine        | invalid count      | no
+  sessionKeys         | huge parent head                     | Y     | E8 256 KiB cap       | W-PARENT-MISSING   | no
+  redact              | hex secret                           | Y     | E11                  | [redacted]         | no
+  logServer           | memory growth over days              | Y     | E17 eviction         | nothing            | no
+```
+0 critical gaps.
+
+### Eng NOT in scope
+
+Persisted parser state (X8), user-extendable toolClass (X10), monorepo mapping (X11), OTel (T4), UC1 split (user decides). `bash -c` and heredoc classification (E15, documented limit).
+
+### Eng what already exists
+
+`applyBatch` dedupe and aggregates (extended by C100/E7), `node:crypto` sha256, zod/mini schema (extended additively by `toolError` and `cancelled`), `MAX_BATCH`, 02b CLI and server, planned 14a tail/watch/wire, 14c LiveSource.
+
+### Worktree parallelization
+
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| Format docs + probe | scripts/, docs/ | — |
+| Shared parser libs (redact, toolClass, planTools, ids) | sidecar/parsers/ | format docs |
+| sessionKeys | sidecar/ | — |
+| Claude parser | sidecar/parsers/ | shared libs, sessionKeys |
+| Server integration (log, wire, backpressure) | sidecar/, src/data/ | Claude parser |
+| Store changes (C100/E7, toolError) | src/data/ | — |
+Lane A: format docs → shared libs → Claude parser → server integration. Lane B: sessionKeys, then store changes (src/data/reduce.ts; conflicts with server integration on src/data/wire.ts only, so merge B before A's last step). Codex parser (16) is a later PR.
+
+### Eng completion summary
+
+- Step 0: Scope Challenge — scope accepted as-is (UC1 split pending the user)
+- Reality rows: 7/7 applicable rows emitted (PLAN_REALITY complete), 0 unverified premises
+- Architecture Review: 3 issues found (E4, E5, E7)
+- Code Quality Review: 6 issues found (E8, E10, E11, E12, E13-E15 grouped)
+- Test Review: diagram produced, 4 gaps identified (E18) plus E16
+- Performance Review: 2 issues found (E17, E19)
+- Scope Challenge findings: 3 (E1, E2, E3); outside voice findings: 17 (all dispositioned)
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 11 items (X3, X6-X11 written to TODOS.md; OTel, vertical slice and logLines entries updated)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review (UC1 is the CEO phase's, at the gate)
+- Outside voice: codex disabled; Claude subagent completed
+- Parallelization: 2 lanes, sequential merge of lane B before lane A's last step
+- Lake Score: N/A (no scored user questions)
+
+### Taste decisions (eng)
+
+- T8 serving any cursor: chosen a per-file in-memory event log for the 24 h window (P5 explicit; one parse per file). Alternative: re-parse a file from 0 for each client that needs older events; no extra memory, but CPU on every connect (186 MB/24 h measured).
+
+- Tool errors do not set session status (E1): a failed tool call (Claude `tool_result` with `is_error: true`; Codex output whose failure field the format step records) is a `tool_result` event with a new optional schema field `toolError: true` (added to `src/data/schema.ts`, additive) and no `status`; only Claude `system` `api_error` and the Codex turn-aborting error the format step identifies carry `status: "error"`. This replaces the CEO-block wording "gives a `tool_result` event with `status: \"error\"`" for both vendors. Tests: a failed tool result leaves session status unchanged and is counted; an `api_error` sets `error`.
+- Events backpressure (E2, extends 14a limits): for `events`, a client whose `bufferedAmount` exceeds 1 MB is paused per file at its cursor; nothing is dropped and at most one batch per file is held; sending resumes from the cursor when the buffer drains (`lines` totals keep the 14a coalescing). Test: a stalled client during a 10,000-event backfill keeps server memory bounded and receives every event exactly once after draining.
+- Per-file event log (E3, TASTE T8): the server keeps, per file, the events of the 24 h window in emission order with their line offsets and serves any client from any cursor out of that log; a file's log is dropped when the file leaves the 24 h window or is truncated. Total cap 250,000 events; above it the oldest file's log is dropped with one `[logs] W-LOG-CAP` line and that file is re-parsed from 0 for a client that asks for it. Tests: two clients (one reconnecting with cursors, one fresh) end with identical totals; the cap path re-parses and still yields identical totals.
+- Content-stable ids (E4, replaces the truncation generation in C87's id): `id` = sha256 of (vendor, `fileId` or, when 14a falls back from `ino` 0, the path, line byte offset, sha256 of the line bytes, index within the line). Tests: truncate and rewrite, restart the server, reconnect the same client and the new events arrive; rename a file and nothing is counted twice.
+- Session keys module (E5, refines C81/C95 and `rootProjectKey`): `sidecar/sessionKeys.ts` owns the session-to-key map; subagents read their root session's current key from it and never resolve their own; a C95 upgrade updates the entry and later subagent events carry the new key; the cache is keyed by session id. Tests: unit tests for the module; parent starts in `~` then moves into a repo with a subagent parsed before and after the upgrade, and all end in one hall.
+- Full session move (E7, extends C100): moving a session moves its subagents and every per-project aggregate (session and subagent counts, tokens, the chunk 13 jobs slice keyed by session id with the project derived from the session's current key); ring events keep their original key and project views read the session's current key. Tests per aggregate.
+- Bounded head reads (E8): a parent head read stops after 256 KiB and falls back to the subagent's own cwd with `W-PARENT-MISSING`; negative results are cached; the `.git` walk stops at the filesystem root or after 32 levels. Tests for the cap and the depth stop.
+- Validate and quarantine (E9): the server validates every event against `AgentEvent` before sending (`W-INVALID-EVENT` on failure, event dropped); the client quarantines a batch whose apply throws twice: it counts the events as invalid, advances that file's cursor and shows the count in the HUD health row. Test with an injected throwing apply.
+- Paths in task text (E10, D16): `currentTask` text has absolute paths outside the session's working root replaced by `[outside project]` and paths inside it made relative, before the 120-character cut. Fixture case.
+- Hex redaction (E11, replaces DX19's hex exemption): hex strings of 32+ characters are redacted except strings of exactly 40 or 64 hex characters (git SHA-1 and SHA-256 lengths); the README states the residual risk that a 40-hex legacy token is not redacted. Tests: 40 and 64 kept, 32 and 48 redacted.
+- Cancelled plan items (E12, replaces the CEO wording "status set to `completed`" for dropped items): an item missing from a new full list emits `todo.status: "cancelled"`, an additive value on the chunk 13 enum; the jobs slice treats `cancelled` as closed, not done. Test: a reworded item gives one `cancelled` and one new item, and completion counts do not rise.
+- Small guards (E13, E14, E15): Codex `in` is clamped to 0 when a record contradicts the cached-input rule (with `W-CODEX-FACT`); unknown tool names are cut to 64 characters and passed through `redact`; the format doc lists toolClass v1 limits (`bash -c`, `$(...)`, heredocs).
+- Repeat skip test (E16): the Codex repeated-total test includes a non-consecutive repeat (A, B, A after a baseline reset) and pins the behaviour: only an equal immediately preceding total is skipped.
+- Parser-state eviction (E17): a file's parser state is dropped 2 h after its last append and rebuilt from 0 on the next append through the first-seen path. Test with a fake clock.
+- Missing tests (E18): a no-status `status` event leaves session status unchanged; more than 50,000 backfill events then a reconnect resend applies nothing twice; the `I-SUMMARY` line on a synthetic root of 200 files; no `Bash`/`exec_command` command text and no `apply_patch` body appear in any emitted event. Existing `reduce.test.ts`, `mock.test.ts` steady digests and scenario shape tests pass unchanged (regression contract).
+- Lines without timestamp (E19): a line with no `timestamp` takes the previous line's ts for the 24 h suppression rule; with none before it, its events are suppressed.
+- Sequencing (E20): chunk 15 does not start before chunk 13 is merged; the parsers import the chunk 13 schema fields (`todo`, `toolClass`) rather than local copies.
+
+## Decision Audit Trail (chunks 15-16)
+
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|----------------|-----------|-----------|----------|
+| 1 | CEO | Mode SELECTIVE EXPANSION | Mechanical | autoplan override | fixed by /autoplan | other modes |
+| 2 | CEO | C80 usage once per message.id | Mechanical | P1 | measured 1.8x overcount per line | per-line usage |
+| 3 | CEO | C81 repo-rooted session key | Mechanical | P1 | measured cwd drift splits halls | per-line cwd |
+| 4 | CEO | C82 currentTask from plan tools, else prompt | Mechanical | P1 | TodoWrite 20 of 204 sessions | TodoWrite only |
+| 5 | CEO | C83 Claude subagent file mapping | Mechanical | P1 | measured file layout | sidechain lines |
+| 6 | CEO | C84 Codex last_token_usage deltas | Mechanical | P1 | sum(last)=total in 80/80 | cumulative diff |
+| 7 | CEO | C85 Codex parent_thread_id | Mechanical | P1 | measured field | parentKnown=false always |
+| 8 | CEO | C86 fresh codex exec in acceptance | Mechanical | P5 | 0 Codex files in 24 h | widen backfill |
+| 9 | CEO | C87 ids with in-line index | Mechanical | P5 | multi-event lines | offset only |
+| 10 | CEO | C88 15 depends on 14c | Mechanical | P5 | acceptance needs LiveSource | 13, 14a only |
+| 11 | CEO | C89 wire events + cursor after apply | Mechanical | P1 | 14a H2 handoff | lines only |
+| 12 | CEO | C90 ignored-type lists | Mechanical | P5 | unknown must mean new | count all unmapped |
+| 13 | CEO | C91 registry, *.jsonl only | Mechanical | P5 | meta.json siblings | tail all files |
+| 14 | CEO | X1 parser health, retire logLines count | Mechanical | P1, P2 | Prime Directive 5 | keep bare line count |
+| 15 | CEO | X2 logs:probe | Mechanical | P1, P2 | repeatable privacy-safe evidence | manual jq |
+| 16 | CEO | X3 session title deferred | Taste | P3 | chunk 24 owns labels | add now |
+| 17 | CEO | X4 golden fixtures + reference counter | Mechanical | P1 | automates 1% check | manual only |
+| 18 | CEO | X5 desktop plan tool | Taste | P1 | 64 vs 20 calls | TodoWrite only |
+| 19 | CEO | T1 worktrees join main hall | Taste | P5 | D5 same repo | hall per worktree |
+| 20 | CEO | Spec pass 1 fixes (23 issues) | Mechanical | P1 | verified on real files | - |
+| 21 | CEO | Spec pass 2 fixes (14 issues) | Mechanical | P1 | verified on real files | - |
+| 22 | CEO | Spec pass 3 fixes (8 issues) | Mechanical | P1 | applied, not re-reviewed (cap) | 4th review |
+| 23 | CEO | X6 cost-state cross-check deferred | Taste | P3 | belongs to chunk 28 | add now |
+| 24 | CEO | Document approval A | Mechanical | P6 | /autoplan | revise |
+| 25 | CEO | C92 drift visible in pill/HUD | Mechanical | P1 | voice F1 | [logs] only |
+| 26 | CEO | T4 OTel/hooks stays deferred | Taste | P3 | D3 user direction | spike before 14b |
+| 27 | CEO | UC1 split chunk 15 | User Challenge | - | both Claude reviews agree | (gate) |
+| 28 | CEO | T5 16 stays after 15 | Taste | P6 | P2 TODO has its trigger | 18 before 16 |
+| 29 | CEO | C93 fixture privacy test | Mechanical | P1 | voice F4 | text-only replace |
+| 30 | CEO | C94 n=1 caveat, desktop tool best-effort | Mechanical | P5 | voice F5 | silent |
+| 31 | CEO | X7 probe other machines deferred | Mechanical | P3 | needs other people | - |
+| 32 | CEO | C95 one-time key upgrade | Mechanical | P1 | voice F6 | fixed first cwd |
+| 33 | CEO | C96 15 s startup budget, X8 deferred | Mechanical | P1, P3 | voice F7 | no budget |
+| 34 | CEO | C97 README purpose line | Mechanical | P5 | voice F8 | - |
+| 35 | CEO | T6 prompt text kept (D16), X9 deferred | Taste | P6 | user-approved A12 | plan-only default |
+| 36 | CEO | C98 evidenced branch only | Mechanical | P5 | voice F10 | both branches |
+| 37 | CEO | C99 32 MiB line cap | Mechanical | P1 | bound memory | unbounded |
+| 38 | CEO | C100 store moves session on key change | Mechanical | P1 | reduce.ts:224 vs :248 | split totals |
+| 39 | CEO | C101 linear redaction, 4 KiB window | Mechanical | P1 | ReDoS | unbounded regex |
+| 40 | DX | Mode DX POLISH, persona and target carried forward | Mechanical | P6 | 13-14b approval, no new evidence | re-ask |
+| 41 | DX | DX1 I-SUMMARY line | Mechanical | P1, P5 | magical moment vehicle | file counts only |
+| 42 | DX | DX2 stale-root message | Mechanical | P1 | 0 Codex files in 24 h | silent |
+| 43 | DX | DX3 probe `--log-root` | Mechanical | P5 | consistency with 14a | `--root` |
+| 44 | DX | DX4 probe `--file` | Mechanical | P1 | debug stage | none |
+| 45 | DX | DX5/DX13 drift text with fix, all vendors | Mechanical | P1 | problem+cause+fix | problem only |
+| 46 | DX | DX6 vendor update procedure | Mechanical | P1 | upgrade stage | none |
+| 47 | DX | DX7 Supported logs entry lines | Mechanical | P5 | voice F1 (quickstart owned by 14c) | new quickstart |
+| 48 | DX | DX8/DX9/DX14 health tuple, naming, first offsets | Mechanical | P1, P5 | voice F2/F3 | - |
+| 49 | DX | DX10/DX11 probe `--json`, `logs:fixture` | Mechanical | P5 | voice F2 | unnamed |
+| 50 | DX | DX12 coded [logs] contract | Mechanical | P1 | voice F3 | free text |
+| 51 | DX | DX15 privacy test precision | Mechanical | P5 | voice F3 | `http` substring |
+| 52 | DX | DX16 parser contract doc | Mechanical | P1 | voice F4 | scattered |
+| 53 | DX | DX17 jq command now | Mechanical | P5 | voice F4 | promised later |
+| 54 | DX | DX18 toolClass matching rule | Mechanical | P1 | voice F5 | substring |
+| 55 | DX | DX19 hex never redacted | Mechanical | P1 | voice F5 false positives | redact hex |
+| 56 | DX | DX20 fixed v1 limits stated | Mechanical | P5 | voice F5 | flags now |
+| 57 | DX | T7 toolClass not user-extendable in v1 (X10) | Taste | P5 | less config surface | config key |
+| 58 | DX | X11 monorepo mapping deferred | Mechanical | P3 | no user ask yet | build now |
+| 59 | Eng | Scope accepted as-is; Original arrangement | Mechanical | P2, P5 | never reduce; per-vendor files | one file |
+| 60 | Eng | E1 tool errors use `toolError`, not status | Mechanical | P1 | 206/13,109 measured; confirmed by voice | status error |
+| 61 | Eng | E2 events backpressure pause | Mechanical | P1 | events cannot coalesce | drop/coalesce |
+| 62 | Eng | E3 per-file event log (T8) | Taste | P5 | one parse per file | re-parse per client |
+| 63 | Eng | E4 content-stable ids | Mechanical | P1 | restart collisions (voice H2) | generation in id |
+| 64 | Eng | E5 sessionKeys module | Mechanical | P5 | hidden cross-file state (voice H3) | in parsers |
+| 65 | Eng | E7 full session move | Mechanical | P1 | voice M4 | tokens only |
+| 66 | Eng | E8 256 KiB head cap | Mechanical | P1 | voice M5 | unbounded sync read |
+| 67 | Eng | E9 validate + quarantine | Mechanical | P1 | voice M6 crash loop | infinite resend |
+| 68 | Eng | E10 paths in task text | Mechanical | P1 | D16 | filesTouched only |
+| 69 | Eng | E11 hex: keep 40/64 only | Mechanical | P1 | voice M8 leak | all hex exempt |
+| 70 | Eng | E12 cancelled items | Mechanical | P1 | voice M9 | completed |
+| 71 | Eng | E13-E15 small guards | Mechanical | P5 | voice LOW | - |
+| 72 | Eng | E16 A,B,A test | Mechanical | P5 | voice LOW 15 | - |
+| 73 | Eng | E17 parser-state eviction | Mechanical | P1 | voice M11 | unbounded |
+| 74 | Eng | E18 missing tests | Mechanical | P1 | voice tests | - |
+| 75 | Eng | E19 no-timestamp lines | Mechanical | P5 | voice M12 | undefined |
+| 76 | Eng | E20 13 before 15 | Mechanical | P5 | voice M10 | stub fields |
+| 77 | Eng | TODOS.md written (X3, X6-X11) | Mechanical | P6 | Eng collects deferrals | - |
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` (via /autoplan for chunks 15-16) | Scope & strategy | 4 | ISSUES OPEN | 5 proposals, 4 accepted, 1 deferred (this run; 0 critical gaps, 0 unresolved; UC1 approved) |
+| Outside Review | codex via /autoplan | Independent 2nd opinion | 8 | disabled | `codex_reviews` disabled; no completed external review |
+| Eng Review | `/plan-eng-review` (via /autoplan for chunks 15-16) | Architecture & tests (required) | 6 | ISSUES OPEN | 11 issues, 0 critical gaps (this run; all accepted as E1-E20, 0 unresolved) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 4 | skipped | skipped for chunks 15-16 (no UI scope) |
+| DX Review | `/plan-devex-review` (via /autoplan for chunks 15-16) | Developer experience gaps | 3 | ISSUES OPEN | score: 5/10 → 7/10, TTHW: 3-4 min → 2-5 min target |
+
+- **OUTSIDE COVERAGE:** codex disabled for the chunks 15-16 CEO, DX and eng phases; design skipped (no UI scope). The CEO, DX and eng voices and the three 0H spec reviews were same-harness Claude subagents, not outside coverage.
+- **VERDICT:** No review is CLEAR: CEO, DX and Eng are ISSUES OPEN because findings were found, all accepted into chunks 15a, 15b and 16 with 0 unresolved decisions and 0 critical gaps; the chunks are ready to implement after chunks 13, 14a and 14c. eng review required.
+
+NO UNRESOLVED DECISIONS
