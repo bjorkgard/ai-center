@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import { createSimClock } from "../../data/clock.ts";
+import { createSimClock, type SimClock } from "../../data/clock.ts";
 import {
   ANCHOR_MS,
   CATCHUP_MS,
@@ -7,11 +7,19 @@ import {
   createMockSource,
   mockEvents,
 } from "../../data/mock.ts";
+import {
+  coolingDuty,
+  hallHeat,
+  hallInlet,
+  hotAisle,
+  racksOf,
+  tokensPerMin,
+} from "../../data/metrics.ts";
 import { aggregatesOf, ringEvents, totalInvalid } from "../../data/reduce.ts";
 import { SCENARIO_NAMES } from "../../data/scenarios.ts";
 import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
 import { resetStore, useStore } from "./index.ts";
-import { setWarnClock } from "./data.ts";
+import { metricsTime, setWarnClock } from "./data.ts";
 
 class FakeSource implements Source {
   name = "fake";
@@ -457,3 +465,265 @@ test.each(SCENARIO_NAMES)(
   },
   60_000,
 );
+
+// Session-end inference, the 1 s interval and commit-on-change (chunk 13: CEO C77, E51, M9).
+const MIN = 60_000;
+const T0 = Date.UTC(2026, 0, 1, 9, 0, 0);
+
+class ClockedSource extends FakeSource {
+  readonly clock: SimClock;
+  constructor(speed: 1 | 10 | 60 = 1, paused = false, startMs = T0) {
+    super();
+    this.clock = createSimClock({ realNow: () => Date.now(), startMs, speed, paused });
+  }
+}
+
+const quiet = (at: number, over: Partial<AgentEvent> = {}): AgentEvent => ({
+  id: `q-${at}-${over.sessionId ?? "s1"}`,
+  vendor: "claude",
+  projectKey: "/work/orbit-api",
+  sessionId: "s1",
+  parentKnown: true,
+  agentKind: "main",
+  ts: new Date(at).toISOString(),
+  type: "session_start",
+  status: "idle",
+  provenance: {},
+  ...over,
+});
+
+const fake = () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(T0);
+  vi.spyOn(console, "info").mockImplementation(() => {});
+};
+afterEach(() => vi.useRealTimers());
+
+test("a quiet source idle-ends a session at exactly T + 30 min", () => {
+  fake();
+  const source = new ClockedSource();
+  store().connect(source);
+  source.report("live");
+  source.emit([quiet(T0, { status: "waiting_user" })]);
+  vi.advanceTimersByTime(30 * MIN - 1000);
+  expect(store().sessions.get("s1")!.status).toBe("waiting_user");
+  vi.advanceTimersByTime(1000);
+  expect(store().sessions.get("s1")!.status).toBe("done");
+  expect(store().sessions.get("s1")!.inferred!.endAt).toBe(T0 + 30 * MIN);
+});
+
+test.each([1, 10, 60] as const)("the end ts is T + 30 min at %ix too (G6)", (speed) => {
+  fake();
+  const source = new ClockedSource(speed);
+  store().connect(source);
+  source.report("live");
+  source.emit([quiet(T0)]);
+  vi.advanceTimersByTime((31 * MIN) / speed);
+  expect(store().sessions.get("s1")!.status).toBe("done");
+  expect(store().sessions.get("s1")!.inferred!.endAt).toBe(T0 + 30 * MIN);
+});
+
+test("connect makes one interval, a second connect replaces it and disconnect clears it", () => {
+  fake();
+  expect(vi.getTimerCount()).toBe(0);
+  store().connect(new ClockedSource());
+  expect(vi.getTimerCount()).toBe(1);
+  store().connect(new ClockedSource());
+  expect(vi.getTimerCount()).toBe(1);
+  store().disconnect();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("after a scenario switch the new source's sessions idle-end again, even on an earlier clock", () => {
+  fake();
+  const a = new ClockedSource();
+  store().connect(a);
+  a.report("live");
+  a.emit([quiet(T0)]);
+  vi.advanceTimersByTime(10 * MIN);
+  // The next source starts its own clock back at T0.
+  const b = new ClockedSource();
+  store().connect(b);
+  b.report("live");
+  b.emit([quiet(Date.now(), { sessionId: "s2" })]);
+  const started = Date.now();
+  vi.advanceTimersByTime(31 * MIN);
+  expect(store().sessions.has("s1")).toBe(false);
+  expect(store().sessions.get("s2")!.status).toBe("done");
+  expect(started).toBe(T0 + 10 * MIN);
+});
+
+test("a paused clock makes no store commit and infers nothing", () => {
+  fake();
+  const source = new ClockedSource(1, true);
+  store().connect(source);
+  source.report("live");
+  source.emit([quiet(T0)]);
+  const before = store().sessions;
+  const calls = vi.fn();
+  const unsub = useStore.subscribe(calls);
+  vi.advanceTimersByTime(40 * MIN);
+  expect(calls).not.toHaveBeenCalled();
+  expect(store().sessions).toBe(before);
+  store().advanceTo(T0 + 40 * MIN);
+  expect(calls).not.toHaveBeenCalled();
+  unsub();
+});
+
+test("a running clock with no due change makes 0 commits over 20 ticks", () => {
+  fake();
+  const source = new ClockedSource();
+  store().connect(source);
+  source.report("live");
+  source.emit([quiet(T0)]);
+  const calls = vi.fn();
+  const unsub = useStore.subscribe(calls);
+  vi.advanceTimersByTime(20_000);
+  expect(calls).not.toHaveBeenCalled();
+  unsub();
+});
+
+test("advanceTo ignores a time that is not later than the last call", () => {
+  fake();
+  const source = new ClockedSource();
+  store().connect(source);
+  source.report("live");
+  source.emit([quiet(T0)]);
+  store().advanceTo(T0 + 31 * MIN);
+  expect(store().sessions.get("s1")!.status).toBe("done");
+  const calls = vi.fn();
+  const unsub = useStore.subscribe(calls);
+  store().advanceTo(T0 + 31 * MIN);
+  store().advanceTo(T0 + 5 * MIN);
+  expect(calls).not.toHaveBeenCalled();
+  unsub();
+});
+
+test("a backfill delivered after now ends nothing while catching up, then ends at last + 30 min", () => {
+  fake();
+  const source = new ClockedSource(1, false, T0 + 3 * 60 * MIN);
+  store().connect(source);
+  source.report("catching_up");
+  source.emit([quiet(T0, { sessionId: "old" }), quiet(T0 + 10 * MIN, { sessionId: "old2" })]);
+  vi.advanceTimersByTime(5000);
+  expect(store().sessions.get("old")!.status).toBe("idle");
+  source.report("live");
+  vi.advanceTimersByTime(1000);
+  expect(store().sessions.get("old")!.status).toBe("done");
+  expect(store().sessions.get("old")!.inferred!.endAt).toBe(T0 + 30 * MIN);
+  expect(store().sessions.get("old2")!.inferred!.endAt).toBe(T0 + 40 * MIN);
+});
+
+test("a batch and the inference it triggers commit together", () => {
+  fake();
+  const source = new ClockedSource(1, false, T0 + 3 * 60 * MIN);
+  store().connect(source);
+  source.report("live");
+  const calls = vi.fn();
+  const unsub = useStore.subscribe(calls);
+  source.emit([quiet(T0)]);
+  expect(calls).toHaveBeenCalledTimes(1);
+  expect(store().sessions.get("s1")!.status).toBe("done");
+  unsub();
+});
+
+test("an event from the future counts as now, so it ends 30 min after now", () => {
+  fake();
+  const source = new ClockedSource();
+  store().connect(source);
+  source.report("live");
+  source.emit([quiet(T0 + 10 * MIN)]);
+  expect(store().sessions.get("s1")!.lastSeen).toBe(T0);
+});
+
+test("pausing freezes the derived values and play resumes them from the same point", () => {
+  fake();
+  const source = new ClockedSource();
+  store().connect(source);
+  source.report("live");
+  source.emit([
+    quiet(T0, {
+      type: "usage",
+      status: undefined,
+      tokens: { in: 4000, out: 0, cacheRead: 0, cacheWrite: 0 },
+    }),
+  ]);
+  vi.advanceTimersByTime(10_000);
+  store().pause();
+  const frozen = store().rates;
+  vi.advanceTimersByTime(60_000);
+  expect(store().rates).toBe(frozen);
+  store().play();
+  vi.advanceTimersByTime(10_000);
+  expect(store().rates).not.toBe(frozen);
+});
+
+// Derived values read through the real store, the real mock and the store's own interval
+// (CEO C49 for chunk 13): the source's watermark holds the advance back to what has been
+// delivered, so the speed does not matter.
+test.each(["steady", "churn", "overflow", "errors", "waiting"])(
+  "%s: rack, hall and cooling metrics are identical at 1x, 10x and 60x at T = 1,200 s through the store",
+  (scenario) => {
+    fake();
+    vi.setSystemTime(0);
+    const END = ANCHOR_MS + 1_200_000;
+    const run = (speed: 1 | 10 | 60) => {
+      store().disconnect();
+      resetStore();
+      const source = createMockSource({
+        seed: 1,
+        scenario,
+        freeze: false,
+        speed,
+        realNow: () => Date.now(),
+      });
+      vi.setSystemTime(0);
+      store().connect(source);
+      while (source.clock.now() < END) vi.advanceTimersByTime(250);
+      expect(source.clock.now()).toBe(END);
+      const s = store();
+      const racks = racksOf(s, END)
+        .map((r) => [r.sessionId, r.tokensPerMin, r.kw, r.inletC.toFixed(9)])
+        .sort((a, b) => (String(a[0]) < String(b[0]) ? -1 : 1));
+      const halls = [...s.projects.keys()]
+        .sort()
+        .map((p) => [
+          p,
+          hallHeat(s, p, END).value,
+          hallInlet(s, p, END).value?.toFixed(9),
+          hotAisle(s, p, END).value?.toFixed(9),
+        ]);
+      return {
+        racks,
+        halls,
+        duty: coolingDuty(s, END).value,
+        tpm: tokensPerMin(s, END).value,
+        status: [...s.sessions.values()].map((x) => [x.sessionId, x.status]),
+      };
+    };
+    const one = run(1);
+    expect(one.racks.length).toBeGreaterThan(0);
+    expect(run(10)).toEqual(one);
+    expect(run(60)).toEqual(one);
+  },
+  120_000,
+);
+
+test("metrics are read at the advanced time, which a behind source holds back, so tokens stay in the window", () => {
+  fake();
+  const source = new ClockedSource(1, false, T0 + 120_000);
+  store().connect(source);
+  source.report("live");
+  const usage = quiet(T0, {
+    type: "usage",
+    status: undefined,
+    tokens: { in: 4000, out: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+  // The source has delivered only through T0 + 10 s while its clock is at T0 + 120 s.
+  store().ingest("fake", [usage], undefined, T0 + 10_000);
+  expect(source.clock.now()).toBe(T0 + 120_000);
+  expect(metricsTime(store().clock)).toBe(T0 + 10_000);
+  expect(tokensPerMin(store(), metricsTime(store().clock)).value).toBe(4000);
+  // Read at the raw clock the same tokens have left the 60 s window.
+  expect(tokensPerMin(store(), source.clock.now()).value).toBe(0);
+});

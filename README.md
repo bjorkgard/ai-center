@@ -113,6 +113,29 @@ Scenarios (`src/data/scenarios.ts`) select what the mock shows. Add `&speed=10` 
 
 ![The Data section open over the frozen mock catch-up](docs/img/11-store-debug.png)
 
+## Provenance legend (chunk 13)
+
+Every number is a `Metric` (`src/data/metrics.ts`): a value (or `null`, shown as "unknown", never 0), a unit, a provenance and a `basis` string. A raw `number` does not compile where a metric is expected. `?dev=1` lists the metrics in the Data section, each with its badge; hover or focus a badge for its provenance and basis.
+
+| Badge       | Meaning                                      | Example                            |
+| ----------- | -------------------------------------------- | ---------------------------------- |
+| Solid dot   | `real`: read from the logs as is             | token totals                       |
+| Ring        | `derived`: computed from real data by a rule | tokens/min, active sessions        |
+| Dashed ring | `estimated`: built from invented constants   | rack kW, inlet, cooling duty, cost |
+
+A composite takes the highest provenance of its inputs (real < derived < estimated). All constants live in `src/config/estimation.ts` and are labelled `[estimated]`:
+
+- tokens/min of a session = its in + out tokens in the trailing 60 sim s, in one-second buckets; a rack's figure adds its subagents'.
+- rack kW = 0.8 + 0.004 x tokens/min, at most 40; rack load = kW / 40. A rack is a main session that is not done; a hall is a project.
+- hall heat = sum of its racks' kW; inlet = 22 + 0.25 x kW with a first-order lag (tau 30 s), integrated exactly in sim time; hot aisle = hall inlet + 12 x mean rack load.
+- cooling duty = min(1, total hall heat / (400 kW x placed halls)), at least 2 halls; its basis says "over capacity" past 100%.
+- cost = tokens x the model's price per token class (`src/config/prices.ts`, `asOf` in the basis): an API-equivalent figure, not a subscription bill. Sessions with an unknown model are left out and counted in the basis; if all are unknown the cost is "unknown". In live mode totals name their window ("last 24 h, backfill window").
+- a session with no event for 30 sim min ends at exactly its last activity + 30 min, on the one store clock; `waiting_user` holds until then. Derived values freeze while the clock is paused, so a frozen frame shows each rack's inlet at its idle baseline.
+
+Done sessions leave the store once the 50,000-event ring no longer holds them; project and global totals stay exact. Limits: a session that returns after eviction restarts its per-session counters at 0, and an id dropped from the full 100,000-id tombstone set counts as a new session.
+
+![The Data section's metrics with their provenance badges, the tokens tooltip open](docs/img/13-provenance.png)
+
 ## Configuration
 
 The dev server (`vp dev`), the preview server (`vp preview`) and the release binary tail Claude Code and Codex log folders and stream per-file line counts to the app over a WebSocket at `/api/stream`. Nothing leaves your machine: the server binds to `127.0.0.1` (`localhost` under `vp dev`), refuses other Host and Origin headers, and the page needs a per-run token. In this version the stream carries counts and folder paths only.

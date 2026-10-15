@@ -1,6 +1,13 @@
 import type { StateCreator } from "zustand";
 import { createLiveClock, type SimClock, type Speed } from "../../data/clock.ts";
-import { applyBatch, emptyData, validate, type DataState } from "../../data/reduce.ts";
+import {
+  advance,
+  applyBatch,
+  emptyData,
+  validate,
+  type ApplyOptions,
+  type DataState,
+} from "../../data/reduce.ts";
 import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
 
 export type SourceState = SourceStatus | "idle";
@@ -11,7 +18,10 @@ export interface SourceInfo {
   detail?: string;
 }
 
-export type ApplyFn = (state: DataState, events: AgentEvent[]) => DataState;
+export type ApplyFn = (state: DataState, events: AgentEvent[], options?: ApplyOptions) => DataState;
+
+// The inference tick (eng review A3): real ms between calls of advanceTo(clock.now()).
+const ADVANCE_EVERY_MS = 1000;
 
 // The store's view of the source clock (CEO C48). `speed`, `paused` and `locked` are only ever
 // read back from the clock's getters, so they cannot drift from it.
@@ -34,7 +44,12 @@ export interface DataActions {
   setSpeed(speed: number): void;
   // Validates, applies and commits one batch with a single set(). `apply` is the test seam
   // for a reducer that throws.
-  ingest(source: string, raw: unknown[], apply?: ApplyFn): void;
+  // `deliveredThrough` is the source's watermark (see Source.onEvents).
+  ingest(source: string, raw: unknown[], apply?: ApplyFn, deliveredThrough?: number): void;
+  // Moves the derived state (session ends, inlet lag, buckets, eviction) to source time
+  // `nowMs`; a no-op while the clock is paused, when `nowMs` is not later than the last call
+  // and while the source catches up; commits only when something changed (CEO C77, E51).
+  advanceTo(nowMs: number): void;
 }
 
 export type DataSlice = DataState & { source: SourceInfo } & ClockInfo & DataActions;
@@ -69,11 +84,27 @@ export function setWarnClock(next: Clock = () => performance.now()): void {
 // The one live connection; callbacks of an older one are ignored.
 let active: { source: Source; token: number } | null = null;
 let tokens = 0;
+// The source time of the last advance, null until the first of a connection, and the interval
+// that makes the next ones.
+let lastAdvance: number | null = null;
+// The greatest `deliveredThrough` the source has reported, null while it has reported none.
+let watermark: number | null = null;
+let ticker: ReturnType<typeof setInterval> | null = null;
+
+// The source time derived values stand at: the last advance, which holds back to what the source
+// has delivered, else the clock. Read metrics at this, not at the raw clock.
+export function metricsTime(clock: SimClock | null): number {
+  return lastAdvance ?? clock?.now() ?? 0;
+}
 
 function detach(): void {
   const previous = active;
   active = null;
   tokens++;
+  lastAdvance = null;
+  watermark = null;
+  if (ticker !== null) clearInterval(ticker);
+  ticker = null;
   previous?.source.stop();
 }
 
@@ -85,6 +116,10 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
     console.info(`[data] ${name}: ${current.status} -> ${status}`);
     set({ source: { name, status, detail } });
   };
+
+  // Where derived values may advance to: the clock, held back to what the source has delivered.
+  const target = (clock: SimClock) =>
+    watermark === null ? clock.now() : Math.min(clock.now(), watermark);
 
   // Runs a clock action and commits the mirror only when something in it changed.
   const act = (run: (clock: SimClock) => void) => {
@@ -108,12 +143,16 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       });
       const token = tokens;
       active = { source, token };
-      source.onEvents((raw) => {
-        if (token === tokens) get().ingest(source.name, raw);
+      source.onEvents((raw, through) => {
+        if (token === tokens) get().ingest(source.name, raw, undefined, through);
       });
       source.onStatus((status, detail) => {
         if (token === tokens) setStatus(source.name, status, detail);
       });
+      ticker = setInterval(() => {
+        const current = get().clock;
+        if (current) get().advanceTo(target(current));
+      }, ADVANCE_EVERY_MS);
       source.start();
     },
     disconnect: () => {
@@ -123,14 +162,31 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
     play: () => act((clock) => clock.play()),
     pause: () => act((clock) => clock.pause()),
     setSpeed: (speed) => act((clock) => clock.setSpeed(speed)),
-    ingest: (name, raw, apply = applyBatch) => {
-      if (raw.length === 0) return;
+    advanceTo: (nowMs) => {
+      const state = get();
+      if (!state.clock || state.clock.paused) return;
+      if (state.source.status === "catching_up") return;
+      if (lastAdvance !== null && nowMs <= lastAdvance) return;
+      lastAdvance = nowMs;
+      const next = advance(state, nowMs);
+      if (next !== state) set(next);
+    },
+    ingest: (name, raw, apply = applyBatch, deliveredThrough) => {
+      if (deliveredThrough !== undefined)
+        watermark = Math.max(watermark ?? -Infinity, deliveredThrough);
+      if (raw.length === 0) {
+        // A watermark alone can free time to advance to.
+        const { clock } = get();
+        if (deliveredThrough !== undefined && clock) get().advanceTo(target(clock));
+        return;
+      }
       const start = performance.now();
       const state = get();
       const { events, rejects } = validate(raw);
+      const now = state.clock?.now();
       let next: DataState;
       try {
-        next = apply(state, events);
+        next = apply(state, events, { now, mark: lastAdvance ?? undefined });
       } catch (error) {
         const detail = `batch of ${raw.length} failed at event ${events[0]?.id ?? "-"}`;
         console.error(
@@ -158,7 +214,7 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
           );
         }
       }
-      set({
+      next = {
         ...next,
         dataHealth: {
           ...next.dataHealth,
@@ -167,7 +223,20 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
           lastBatchSize: raw.length,
           lastApplyMs: performance.now() - start,
         },
-      });
+      };
+      // The batch and the advance it calls for commit together (CEO C77).
+      const to = state.clock ? target(state.clock) : undefined;
+      if (
+        state.clock &&
+        !state.clock.paused &&
+        state.source.status !== "catching_up" &&
+        to !== undefined &&
+        (lastAdvance === null || to > lastAdvance)
+      ) {
+        lastAdvance = to;
+        next = advance(next, to);
+      }
+      set(next);
     },
   };
 };
