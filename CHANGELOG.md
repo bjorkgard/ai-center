@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/bjorkgard/ai-center/compare/v0.12.0...v0.13.0) (2026-10-15)
+
+
+### Features
+
+* add mock scenarios and replay clock ([#30](https://github.com/bjorkgard/ai-center/issues/30)) ([fee2a7f](https://github.com/bjorkgard/ai-center/commit/fee2a7fc25e8a2d35db50ea53eae696e555d7792))
+
 # [0.12.0](https://github.com/bjorkgard/ai-center/compare/v0.11.0...v0.12.0) (2026-10-15)
 
 
