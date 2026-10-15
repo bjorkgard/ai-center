@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { join } from "node:path";
@@ -142,6 +143,7 @@ export class Sanitizer {
   readonly #paths = new Map<string, string>();
   readonly #tools = new Map<string, string>();
   #text = 0;
+  readonly #sessions = new Map<string, string>();
 
   #url(value: string): void {
     this.replaced.urls += value.match(/https?:\/\//g)?.length ?? 0;
@@ -303,16 +305,20 @@ export class Sanitizer {
       return undefined;
     }
     const out: Rec = {};
-    for (const key of [
-      "type",
-      "subtype",
-      "uuid",
-      "parentUuid",
-      "sessionId",
-      "agentId",
-      "timestamp",
-    ]) {
+    for (const key of ["type", "subtype", "uuid", "parentUuid", "timestamp"]) {
       if (typeof o[key] === "string") out[key] = o[key];
+    }
+    // The real session and agent ids name a session on this machine; a generated id stands in,
+    // the same on every line.
+    for (const key of ["sessionId", "agentId"]) {
+      const real = o[key];
+      if (typeof real !== "string") continue;
+      let fake = this.#sessions.get(real);
+      if (fake === undefined) {
+        fake = randomUUID();
+        this.#sessions.set(real, fake);
+      }
+      out[key] = fake;
     }
     if (typeof o.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(o.version)) {
       out.version = o.version;

@@ -22,6 +22,7 @@ export const IGNORED_TYPES = [
   "cost-state",
   "file-history-snapshot",
   "file-history-delta",
+  "fork-context-ref",
 ] as const;
 export const IGNORED_SYSTEM_SUBTYPES = [
   "stop_hook_summary",
@@ -154,6 +155,12 @@ function tokensOf(usage: Record_): Tokens {
 
 const sameTokens = (a: Tokens, b: Tokens) =>
   a.in === b.in && a.out === b.out && a.cacheRead === b.cacheRead && a.cacheWrite === b.cacheWrite;
+
+const lowerAnywhere = (counted: Tokens, line: Tokens) =>
+  line.in < counted.in ||
+  line.out < counted.out ||
+  line.cacheRead < counted.cacheRead ||
+  line.cacheWrite < counted.cacheWrite;
 
 const isInjected = (text: string) => INJECTED_TAGS.some((tag) => text.startsWith(tag));
 
@@ -361,17 +368,31 @@ function mapAssistant(o: Record_, state: ClaudeFileState, byteOffset: number, em
 
   if (messageId !== undefined && isRecord(message.usage)) {
     const tokens = tokensOf(message.usage);
-    const first = state.usage.get(messageId);
-    if (first === undefined) {
-      state.usage.set(messageId, tokens);
+    const seen = state.usage.get(messageId);
+    // The counted value of each field is its largest over the message's lines: the first line
+    // is counted whole, a later line adds only what it raises, a smaller value is drift.
+    const base = seen ?? { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+    const grown: Tokens = {
+      in: Math.max(base.in, tokens.in),
+      out: Math.max(base.out, tokens.out),
+      cacheRead: Math.max(base.cacheRead, tokens.cacheRead),
+      cacheWrite: Math.max(base.cacheWrite, tokens.cacheWrite),
+    };
+    if (seen !== undefined && lowerAnywhere(seen, tokens)) note(state, "drift", byteOffset);
+    if (seen === undefined || !sameTokens(seen, grown)) {
+      const delta: Tokens = {
+        in: grown.in - base.in,
+        out: grown.out - base.out,
+        cacheRead: grown.cacheRead - base.cacheRead,
+        cacheWrite: grown.cacheWrite - base.cacheWrite,
+      };
+      state.usage.set(messageId, grown);
       const total = state.health.tokens;
-      total.in += tokens.in;
-      total.out += tokens.out;
-      total.cacheRead += tokens.cacheRead;
-      total.cacheWrite += tokens.cacheWrite;
-      emit("usage", { ...modelFields, tokens }, { ...modelProvenance, tokens: "real" });
-    } else if (!sameTokens(first, tokens)) {
-      note(state, "drift", byteOffset);
+      total.in += delta.in;
+      total.out += delta.out;
+      total.cacheRead += delta.cacheRead;
+      total.cacheWrite += delta.cacheWrite;
+      emit("usage", { ...modelFields, tokens: delta }, { ...modelProvenance, tokens: "real" });
     }
   }
 

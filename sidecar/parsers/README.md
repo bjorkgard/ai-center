@@ -2,7 +2,7 @@
 
 A parser turns the lines of one vendor's log file into `AgentEvent`s (`src/data/schema.ts`). Parsers run only in Node, never in the browser, and they do no I/O: they are synchronous functions of a line and some state, so a contributor can test one with a fixture on any OS.
 
-This page is the parser contract (DX16). The format each parser reads is in [`docs/log-formats/`](../../docs/log-formats/claude.md). Chunk 15a ships the Claude Code parser alone; nothing calls it from the log server yet (chunk 15b adds the registry and the `events` wire message), and the Codex parser is chunk 16.
+This page is the parser contract (DX16). The format each parser reads is in [`docs/log-formats/`](../../docs/log-formats/claude-code.md). Chunk 15a ships the Claude Code parser alone; nothing calls it from the log server yet (chunk 15b adds the registry and the `events` wire message), and the Codex parser is chunk 16.
 
 ## Files
 

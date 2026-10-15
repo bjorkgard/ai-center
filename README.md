@@ -170,10 +170,10 @@ If a `[logs]` line says the inotify watch limit was reached (`ENOSPC`, Linux), t
 
 The parsers turn the lines of your own Claude Code logs into the events the app draws: sessions, subagents, tool calls, exact token counts and the task each session is working on. Nothing leaves your machine, and the parsers keep no prompt, command, patch or tool output; free text is redacted and cut to 120 characters first. [Quick start](#configuration) and the folders watched are under Configuration.
 
-| Vendor      | Reads                           | Status                                                                                                                                                                   |
-| ----------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Claude Code | `~/.claude/projects/**/*.jsonl` | The parser exists and is tested on real sessions (chunk 15a); the app does not show it yet (chunk 15b). Format: [docs/log-formats/claude.md](docs/log-formats/claude.md) |
-| Codex CLI   | `~/.codex/sessions/**/*.jsonl`  | Chunk 16                                                                                                                                                                 |
+| Vendor      | Reads                           | Status                                                                                                                                                                             |
+| ----------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | The parser exists and is tested on real sessions (chunk 15a); the app does not show it yet (chunk 15b). Format: [docs/log-formats/claude-code.md](docs/log-formats/claude-code.md) |
+| Codex CLI   | `~/.codex/sessions/**/*.jsonl`  | Chunk 16                                                                                                                                                                           |
 
 Run this to see what is in your folder, with no values, safe to paste into an issue:
 
@@ -202,7 +202,7 @@ root ~/.claude/projects (flag, last 24 h)
   - A monorepo is one project per working directory the session started in, not per package.
   - Sidechain lines inside a main session file are ignored; subagents are read from their own files.
   - The desktop app's plan tool (`update_plan`) is read on a best-effort basis; `TodoWrite` is the stable one.
-  - Output tokens use the first line the log has for each message. On this machine that leaves out about 8% of output tokens (details in the format page); input and cache tokens are exact.
+  - Tokens per message are the largest value each field reaches over the message's lines (Claude Code rewrites a message's output count as it streams; on this machine the first line alone would miss about 8% of output tokens).
 - **40-hex risk:** the redaction keeps hex strings of exactly 40 or 64 characters, because they are git commit hashes. A secret that happens to be 40 hex characters would not be redacted. Longer or shorter hex strings are.
 - **When a vendor updates:** see "When a vendor updates" in the format page.
 

@@ -31,19 +31,16 @@ Measured with `vp run logs:probe -- --all` (every file, counts are lines):
 | `system` / `turn_duration` | 342 | ignored |
 | `system` / `away_summary`, `local_command`, `compact_boundary`, `informational`, `scheduled_task_fire` | 22, 20, 17, 14, 4 | ignored |
 | `attachment` | 172,254 | ignored |
-| `last-prompt`, `custom-title`, `agent-name`, `atis-latch`, `bridge-session`, `queue-operation`, `mode`, `permission-mode`, `pr-link`, `ai-title`, `cost-state`, `file-history-snapshot`, `file-history-delta` | 10,765 / 8,329 / 7,779 / 10,477 / 9,043 / 9,992 / 2,310 / 717 / 1,042 / 826 / 190 / 902 / 634 | ignored |
-| `fork-context-ref` | 6 | **unknown** (see below) |
+| `last-prompt`, `custom-title`, `agent-name`, `atis-latch`, `bridge-session`, `queue-operation`, `mode`, `permission-mode`, `pr-link`, `ai-title`, `cost-state`, `file-history-snapshot`, `file-history-delta`, `fork-context-ref` | 10,765 / 8,329 / 7,779 / 10,477 / 9,043 / 9,992 / 2,310 / 717 / 1,042 / 826 / 190 / 902 / 634 / 6 | ignored |
 | anything else | - | counted `unknown` (`W-UNKNOWN-TYPE`) |
 
 **Mapped:** `user`, `assistant`, and `system` with `subtype: "api_error"`.
 
-**Known-ignored types** (`IGNORED_TYPES`, C90): `attachment`, `custom-title`, `ai-title`, `last-prompt`, `agent-name`, `queue-operation`, `atis-latch`, `bridge-session`, `mode`, `permission-mode`, `pr-link`, `cost-state`, `file-history-snapshot`, `file-history-delta`.
+**Known-ignored types** (`IGNORED_TYPES`, C90): `attachment`, `custom-title`, `ai-title`, `last-prompt`, `agent-name`, `queue-operation`, `atis-latch`, `bridge-session`, `mode`, `permission-mode`, `pr-link`, `cost-state`, `file-history-snapshot`, `file-history-delta`, `fork-context-ref` (added after the plan's list, on a user decision, when 6 such lines turned up).
 
 **Known-ignored `system` subtypes** (`IGNORED_SYSTEM_SUBTYPES`): `stop_hook_summary`, `turn_duration`, `away_summary`, `local_command`, `compact_boundary`, `informational`, `scheduled_task_fire`.
 
 Also ignored, as a known gap: in a **main** file, a `user`/`assistant`/`system` line with `isSidechain: true` (an in-file sidechain). It is counted `sidechain` and makes no event. In a subagent file `isSidechain` is true on every line and means nothing.
-
-`fork-context-ref` (6 lines on this machine) is in neither list, so it is counted `unknown` and shows as a `[logs]` warning until someone decides it is ignorable; the plan fixed the lists before this type was seen.
 
 A line that is not JSON (or is JSON but not an object) is counted `malformed` (`W-MALFORMED`). A line over 32 MiB is skipped and counted `oversize` (`W-OVERSIZE`); the longest line measured is 1.36 MB. A blank line is skipped without a count. The health counters (`lines`, `malformed`, `unknown`, `oversize`, `ignored`, `drift`, `sidechain`, `noTimestamp`, the first byte offset of each class, unknown type names) are on the file state: `vp run logs:probe -- --file <path>` prints them with the token totals.
 
@@ -55,7 +52,7 @@ One line can make several events. Each event's `id` includes the index of the ev
 | --- | --- | --- |
 | `session_start` | once per file, on the first line with `sessionId`, `timestamp` and `cwd`, whatever its type | no status |
 | `turn_start` | a real user prompt (below) | `currentTask` = the redacted prompt |
-| `usage` | the first line of each `message.id` that has `message.usage` | `tokens` {`in` = `input_tokens`, `out` = `output_tokens`, `cacheRead` = `cache_read_input_tokens`, `cacheWrite` = `cache_creation_input_tokens`}, `model` |
+| `usage` | the first line of each `message.id` that has `message.usage`, and any later line of it that raises a field | `tokens` is the increase over what was counted for that message (the whole usage for the first line):  `tokens` {`in` = `input_tokens`, `out` = `output_tokens`, `cacheRead` = `cache_read_input_tokens`, `cacheWrite` = `cache_creation_input_tokens`}, `model` |
 | `tool_call` | every `tool_use` block | `toolName`, `toolClass`, `filesTouched` for edit tools, `model` |
 | `tool_result` | every `tool_result` block in a user line | `toolName` of the call it answers; `toolError: true` when `is_error` is true; never a `status` |
 | `status` | a plan tool call changed a plan item | `todo` {`id`, `status`}, no `status` value; `currentTask` on one of them |
@@ -68,11 +65,11 @@ Only the `api_error` event carries a session `status`. A failed tool call does n
 
 ### Usage once per message (C80)
 
-Claude Code writes one line per content block and repeats `message.usage` on each. Counting every line over-counts about 1.8 times (measured), so the parser takes the usage of the **first** line of each `message.id` and ignores the rest. A later line with different usage is counted `drift` (`W-USAGE-DRIFT`) and the first stays.
+Claude Code writes one line per content block and repeats `message.usage` on each. Counting every line over-counts about 1.8 times (measured). The counted value of each token field is its **largest** value over the lines of a `message.id` (decided after measuring, below). The first line gives a `usage` event with its whole usage. A later line that raises a field gives one more `usage` event carrying only the increase (its id comes from that line, so it is stable). A later line with a smaller value in any field is counted `drift` (`W-USAGE-DRIFT`) and adds nothing.
 
-**Measured limit, last 24 h, this machine:** in 151 of 6,822 messages (2.2%) a later line carried a larger `output_tokens` (the other three fields never differed). On those messages the first line holds 2,113 output tokens and the last line 218,415, so the first-line rule leaves out about 216,000 of 2.82 million output tokens (about 8%) that the file does record. Input and cache fields are exact. The `jq` command below uses the same first-line rule, so the HUD matches it; neither is the final output total. This is a finding for a later decision, not something the parser changes: the plan fixes "first line, flag drift".
+**Why max, measured on this machine, last 24 h:** in 151 of 6,822 messages (2.2%) a later line carried a larger `output_tokens` (the other three fields never differed); on those messages the first line holds 2,113 output tokens and the last line 218,415. The first-line rule of the plan would have left out about 216,000 of 2.84 million output tokens (about 8%).
 
-Total, 167 files of the last 24 h (164 MB of text, parsed in 1.5 s): input 13,664, output 2,600,399, cache read 1,602,449,816, cache write 26,778,375, equal to an independent counter in all four fields, with 153 drift lines, 0 malformed, 0 unknown, 0 oversize.
+Total, 167 files of the last 24 h (163 MB of text, parsed in 1.5 s, files still growing): input 13,740, output 2,840,547, cache read 1,620,510,575, cache write 27,318,599, equal to an independent per-field-max counter in all four fields, with 0 drift lines, 0 malformed, 0 unknown, 0 oversize.
 
 ### Prompts, turns and `currentTask` (C82, X5, E10, E12)
 
@@ -137,10 +134,10 @@ The probe prints counts of line types, content block types, key paths and versio
 The reference token count (DX17), which is also the golden-fixture check (`golden.test.ts` runs it against `jq` when `jq` is installed):
 
 ```bash
-jq -s '[.[] | select(.type=="assistant" and .message.usage != null)] | unique_by(.message.id) | map(.message.usage | {in: .input_tokens, out: .output_tokens, cacheRead: (.cache_read_input_tokens // 0), cacheWrite: (.cache_creation_input_tokens // 0)}) | {in: (map(.in)|add), out: (map(.out)|add), cacheRead: (map(.cacheRead)|add), cacheWrite: (map(.cacheWrite)|add)}' <file>
+jq -s '[.[] | select(.type=="assistant" and .message.usage != null)] | group_by(.message.id) | map(map(.message.usage) | {in: (map(.input_tokens // 0)|max), out: (map(.output_tokens // 0)|max), cacheRead: (map(.cache_read_input_tokens // 0)|max), cacheWrite: (map(.cache_creation_input_tokens // 0)|max)}) | {in: (map(.in)|add), out: (map(.out)|add), cacheRead: (map(.cacheRead)|add), cacheWrite: (map(.cacheWrite)|add)}' <file>
 ```
 
-On one real 1,812-line session the parser, `jq` and `vp run logs:probe -- --file` gave the same four numbers (in 464, out 206,617, cache read 87,067,706, cache write 508,665). `unique_by` keeps the first line of each message id, the same rule as the parser. Run it per file: message ids are only unique within a file.
+On one real 1,812-line session the parser, `jq` and `vp run logs:probe -- --file` gave the same four numbers (in 464, out 206,617, cache read 87,067,706, cache write 508,665). `group_by` takes the largest value of each field per message id, the same rule as the parser. Run it per file: message ids are only unique within a file.
 
 ## Fixtures
 
@@ -158,7 +155,7 @@ Every line of both was read before they were committed. Their token totals equal
 - **24 h backfill:** only files modified in the last 24 h are read at startup (TODOS `--since`).
 - **32 MiB line cap:** a longer line is skipped and counted `oversize`.
 - **Tested range:** 2.1.260 to 2.1.295. A version outside it is not refused; the app says so (chunk 15b).
-- toolClass is not user-extendable; one working root per session; in-file sidechains are ignored; the desktop plan tool is best effort; output tokens use the first line of each message (see the measured limit above).
+- toolClass is not user-extendable; one working root per session; in-file sidechains are ignored; the desktop plan tool is best effort; output tokens are the largest value over a message's lines.
 
 ## When a vendor updates
 

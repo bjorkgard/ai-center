@@ -28,27 +28,34 @@ interface Total {
 
 /**
  * The reference counter: no parser code, just the rule the `jq` reference command states (PLAN
- * DX17). Keep the usage of the first assistant line of every message id and add it up.
+ * DX17). Per message id, the largest value of each token field over its lines; add them up.
  */
 function referenceTotal(text: string): Total {
-  const seen = new Set<string>();
-  const total: Total = { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+  const best = new Map<string, Total>();
   for (const line of text.split("\n")) {
     if (line === "") continue;
     const o = JSON.parse(line);
     if (o.type !== "assistant" || !o.message?.usage) continue;
-    if (seen.has(o.message.id)) continue;
-    seen.add(o.message.id);
-    total.in += o.message.usage.input_tokens ?? 0;
-    total.out += o.message.usage.output_tokens ?? 0;
-    total.cacheRead += o.message.usage.cache_read_input_tokens ?? 0;
-    total.cacheWrite += o.message.usage.cache_creation_input_tokens ?? 0;
+    const u = o.message.usage;
+    const cur = best.get(o.message.id) ?? { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+    cur.in = Math.max(cur.in, u.input_tokens ?? 0);
+    cur.out = Math.max(cur.out, u.output_tokens ?? 0);
+    cur.cacheRead = Math.max(cur.cacheRead, u.cache_read_input_tokens ?? 0);
+    cur.cacheWrite = Math.max(cur.cacheWrite, u.cache_creation_input_tokens ?? 0);
+    best.set(o.message.id, cur);
+  }
+  const total: Total = { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+  for (const t of best.values()) {
+    total.in += t.in;
+    total.out += t.out;
+    total.cacheRead += t.cacheRead;
+    total.cacheWrite += t.cacheWrite;
   }
   return total;
 }
 
 const JQ =
-  '[.[] | select(.type=="assistant" and .message.usage != null)] | unique_by(.message.id) | map(.message.usage | {in: .input_tokens, out: .output_tokens, cacheRead: (.cache_read_input_tokens // 0), cacheWrite: (.cache_creation_input_tokens // 0)}) | {in: (map(.in)|add), out: (map(.out)|add), cacheRead: (map(.cacheRead)|add), cacheWrite: (map(.cacheWrite)|add)}';
+  '[.[] | select(.type=="assistant" and .message.usage != null)] | group_by(.message.id) | map(map(.message.usage) | {in: (map(.input_tokens // 0)|max), out: (map(.output_tokens // 0)|max), cacheRead: (map(.cache_read_input_tokens // 0)|max), cacheWrite: (map(.cache_creation_input_tokens // 0)|max)}) | {in: (map(.in)|add), out: (map(.out)|add), cacheRead: (map(.cacheRead)|add), cacheWrite: (map(.cacheWrite)|add)}';
 const hasJq = spawnSync("jq", ["--version"]).status === 0;
 
 const sumUsage = (events: AgentEvent[]): Total => {

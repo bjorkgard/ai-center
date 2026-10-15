@@ -421,6 +421,7 @@ describe("line classes (C90, C99)", () => {
         "cost-state",
         "file-history-snapshot",
         "file-history-delta",
+        "fork-context-ref",
       ].sort(),
     );
     expect([...IGNORED_SYSTEM_SUBTYPES].sort()).toEqual(
@@ -451,14 +452,41 @@ describe("usage once per message (C80)", () => {
     expect(state.health.drift).toBe(0);
   });
 
-  test("the first line's usage is kept and a later different one is flagged as drift", () => {
-    const changed = assistant(4, "m1", [text("x")], { usage: { ...USAGE, output_tokens: 99 } });
-    const { events, state } = run([user(1, "go"), blocks[0], blocks[1], changed]);
+  test("a later line that raises a field emits one usage event with the increase", () => {
+    const raised = assistant(4, "m1", [text("x")], { usage: { ...USAGE, output_tokens: 99 } });
+    const { events, state, perLine } = run([user(1, "go"), blocks[0], blocks[1], raised]);
     const usage = events.filter((e) => e.type === "usage");
-    expect(usage).toHaveLength(1);
-    expect(usage[0].tokens?.out).toBe(5);
+    expect(usage.map((e) => e.tokens)).toEqual([
+      { in: 10, out: 5, cacheRead: 100, cacheWrite: 7 },
+      { in: 0, out: 94, cacheRead: 0, cacheWrite: 0 },
+    ]);
+    expect(new Set(usage.map((e) => e.id)).size).toBe(2);
+    expect(perLine[3].filter((e) => e.type === "usage")).toHaveLength(1);
+    expect(state.health.tokens.out).toBe(99);
+    expect(state.health.drift).toBe(0);
+  });
+
+  test("a line that repeats the maximum again adds nothing", () => {
+    const raised = assistant(3, "m1", [text("x")], { usage: { ...USAGE, output_tokens: 99 } });
+    const again = assistant(4, "m1", [text("y")], { usage: { ...USAGE, output_tokens: 99 } });
+    const { events, state } = run([blocks[0], raised, again]);
+    expect(events.filter((e) => e.type === "usage")).toHaveLength(2);
+    expect(state.health.tokens.out).toBe(99);
+  });
+
+  test("a later line with a smaller field is drift and counts nothing", () => {
+    const smaller = assistant(4, "m1", [text("x")], { usage: { ...USAGE, output_tokens: 1 } });
+    const { events, state } = run([user(1, "go"), blocks[0], smaller]);
+    expect(events.filter((e) => e.type === "usage")).toHaveLength(1);
+    expect(state.health.tokens.out).toBe(5);
     expect(state.health.drift).toBe(1);
     expect(state.health.firstOffsets.drift).toBeGreaterThan(0);
+  });
+
+  test("the ids of the increase are stable on re-parse", () => {
+    const raised = assistant(4, "m1", [text("x")], { usage: { ...USAGE, output_tokens: 99 } });
+    const lines = [blocks[0], raised];
+    expect(run(lines).events.map((e) => e.id)).toEqual(run(lines).events.map((e) => e.id));
   });
 
   test("distinct messages each count once", () => {

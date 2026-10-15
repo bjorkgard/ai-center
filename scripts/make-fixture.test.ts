@@ -362,11 +362,23 @@ describe("the sanitiser", () => {
     expect(out[5]).toEqual({
       type: "attachment",
       uuid: "x1",
-      sessionId: "s1",
+      sessionId: expect.any(String),
       timestamp: "2026-10-14T08:00:05.000Z",
       cwd: "/repo",
     });
-    expect(out[6]).toEqual({ type: "custom-title", sessionId: "s1" });
+    expect(Object.keys(out[6]!).sort()).toEqual(["sessionId", "type"]);
+  });
+
+  test("the real session id becomes a generated UUID, the same on every line", () => {
+    const { out, text } = sanitized();
+    const ids = new Set(out.map((o) => o!.sessionId));
+    expect(ids.size).toBe(1);
+    const [id] = [...ids] as string[];
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(id).not.toBe("s1");
+    expect(text).not.toContain('"s1"');
+    // Another run makes another one, so the fixture holds nothing from the original.
+    expect(new Sanitizer().line(JSON.stringify(RAW[0]))!.sessionId).not.toBe(id);
   });
 
   test("a line that is not JSON is skipped and counted", () => {
