@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
+import { synapseLogServer } from "./sidecar/plugin.ts";
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
 
@@ -12,6 +13,9 @@ const appVersionMeta = {
     { tag: "meta", attrs: { name: "app-version", content: version }, injectTo: "head" as const },
   ],
 };
+
+// Vitest runs its own Vite server with this config; it must not watch the real home directory.
+const logServer = process.env.VITEST ? [] : [synapseLogServer()];
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -67,10 +71,12 @@ export default defineConfig({
   // Cross-origin isolation gives performance.now() 5-20 us steps instead of
   // 0.1-1 ms, which the chunk 36 frame-timing measurements need (ADR 0001, eng E6).
   preview: {
+    // The log server's gates accept 127.0.0.1:<port> under preview (CEO C73).
+    host: "127.0.0.1",
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
   },
-  plugins: lazyPlugins(() => [react(), tailwindcss(), appVersionMeta]),
+  plugins: lazyPlugins(() => [react(), tailwindcss(), appVersionMeta, ...logServer]),
 });
