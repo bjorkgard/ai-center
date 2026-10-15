@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import { createLiveClock, type SimClock, type Speed } from "../../data/clock.ts";
 import { applyBatch, emptyData, validate, type DataState } from "../../data/reduce.ts";
 import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
 
@@ -12,21 +13,45 @@ export interface SourceInfo {
 
 export type ApplyFn = (state: DataState, events: AgentEvent[]) => DataState;
 
+// The store's view of the source clock (CEO C48). `speed`, `paused` and `locked` are only ever
+// read back from the clock's getters, so they cannot drift from it.
+export interface ClockInfo {
+  clock: SimClock | null;
+  speed: Speed;
+  paused: boolean;
+  locked: boolean;
+  // Counts every connect and disconnect; scene halls are torn down when it changes (UC1).
+  sourceEpoch: number;
+}
+
 export interface DataActions {
   // Stops any previous source, clears the slice, then starts this one (eng E30).
   connect(source: Source): void;
   disconnect(): void;
+  // Drive the source clock (G18); no-ops while there is none or it is locked.
+  play(): void;
+  pause(): void;
+  setSpeed(speed: number): void;
   // Validates, applies and commits one batch with a single set(). `apply` is the test seam
   // for a reducer that throws.
   ingest(source: string, raw: unknown[], apply?: ApplyFn): void;
 }
 
-export type DataSlice = DataState & { source: SourceInfo } & DataActions;
+export type DataSlice = DataState & { source: SourceInfo } & ClockInfo & DataActions;
 
 const IDLE: SourceInfo = { name: null, status: "idle" };
 
-export function initialData(): DataState & { source: SourceInfo } {
-  return { ...emptyData(), source: IDLE };
+const NO_CLOCK = { clock: null, speed: 1, paused: false, locked: true } as const;
+
+const mirror = (clock: SimClock): Pick<ClockInfo, "clock" | "speed" | "paused" | "locked"> => ({
+  clock,
+  speed: clock.speed,
+  paused: clock.paused,
+  locked: clock.locked,
+});
+
+export function initialData(): DataState & { source: SourceInfo } & ClockInfo {
+  return { ...emptyData(), source: IDLE, ...NO_CLOCK, sourceEpoch: 0 };
 }
 
 // One warning per source and issue path per minute; the clock is injectable (eng review).
@@ -61,12 +86,26 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
     set({ source: { name, status, detail } });
   };
 
+  // Runs a clock action and commits the mirror only when something in it changed.
+  const act = (run: (clock: SimClock) => void) => {
+    const { clock, speed, paused, locked } = get();
+    if (!clock) return;
+    run(clock);
+    if (clock.speed !== speed || clock.paused !== paused || clock.locked !== locked)
+      set(mirror(clock));
+  };
+
   return {
     ...initialData(),
     connect: (source) => {
       detach();
       setWarnClock(clock);
-      set({ ...emptyData(), source: { name: source.name, status: "idle" } });
+      set({
+        ...emptyData(),
+        source: { name: source.name, status: "idle" },
+        ...mirror(source.clock ?? createLiveClock()),
+        sourceEpoch: get().sourceEpoch + 1,
+      });
       const token = tokens;
       active = { source, token };
       source.onEvents((raw) => {
@@ -79,8 +118,11 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
     },
     disconnect: () => {
       detach();
-      set({ ...emptyData(), source: IDLE });
+      set({ ...emptyData(), source: IDLE, ...NO_CLOCK, sourceEpoch: get().sourceEpoch + 1 });
     },
+    play: () => act((clock) => clock.play()),
+    pause: () => act((clock) => clock.pause()),
+    setSpeed: (speed) => act((clock) => clock.setSpeed(speed)),
     ingest: (name, raw, apply = applyBatch) => {
       if (raw.length === 0) return;
       const start = performance.now();

@@ -57,10 +57,11 @@ export function App() {
         seed: params.seed,
         scenario: params.scenario ?? "steady",
         freeze: params.freeze,
+        speed: params.speed,
       }),
     );
     return () => useStore.getState().disconnect();
-  }, [params.source, params.seed, params.scenario, params.freeze]);
+  }, [params.source, params.seed, params.scenario, params.freeze, params.speed]);
 
   useEffect(() => (params.dev ? installDataDev() : undefined), [params.dev]);
 
@@ -95,7 +96,13 @@ export function App() {
       >
         <CardLayer />
         {!lookdev && <FocusBrackets />}
-        {params.dev && !lookdev && <PerfHud frozen={params.freeze} seed={params.seed} />}
+        {params.dev && !lookdev && (
+          <PerfHud
+            frozen={params.freeze}
+            seed={params.seed}
+            scenario={params.scenario ?? "steady"}
+          />
+        )}
       </div>
       {!lookdev && <ToastHost />}
     </main>

@@ -45,7 +45,15 @@ const BUTTON =
 // Under the rows, a collapsible Camera section (open at first) holds the glide test, the
 // projection toggle and the right-panel toggle. The collapsed sections after it (Hall from
 // chunk 06, Racks from chunk 07, Campus from chunk 08, Cooling from chunk 09, Network from chunk 10, Data from chunk 11) each hold one chunk's dev controls (design-review Phase 3 WD14).
-export function PerfHud({ frozen, seed }: { frozen: boolean; seed: number }) {
+export function PerfHud({
+  frozen,
+  seed,
+  scenario,
+}: {
+  frozen: boolean;
+  seed: number;
+  scenario: string;
+}) {
   const quality = useStore((s) => s.quality);
   const webgl = useStore((s) => s.webgl);
   const rightPanelOpen = useStore((s) => s.rightPanelOpen);
@@ -314,7 +322,7 @@ export function PerfHud({ frozen, seed }: { frozen: boolean; seed: number }) {
           Data
           <span aria-hidden="true">{dataOpen ? "-" : "+"}</span>
         </button>
-        {dataOpen && <DataSection frozen={frozen} seed={seed} />}
+        {dataOpen && <DataSection frozen={frozen} seed={seed} scenario={scenario} />}
       </section>
     </div>
   );

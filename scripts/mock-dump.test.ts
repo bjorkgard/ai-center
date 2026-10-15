@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, test } from "vite-plus/test";
 import { mockEvents } from "../src/data/mock.ts";
+import { SCENARIO_NAMES } from "../src/data/scenarios.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "mock-dump-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -21,7 +22,7 @@ test("the dump for a seed equals the generator's events after JSON.parse of each
 test.each([
   [["--seed", "x", "--scenario", "steady", "--minutes", "1", "--out", "o"], "--seed"],
   [["--scenario", "steady", "--minutes", "1", "--out", "o"], "--seed"],
-  [["--seed", "1", "--scenario", "burst", "--minutes", "1", "--out", "o"], "scenario"],
+  [["--seed", "1", "--scenario", "nope", "--minutes", "1", "--out", "o"], "scenario"],
   [["--seed", "1", "--scenario", "steady", "--minutes", "0", "--out", "o"], "--minutes"],
   [["--seed", "1", "--scenario", "steady", "--minutes", "1.5", "--out", "o"], "--minutes"],
   [
@@ -39,4 +40,19 @@ test.each([
   const res = run(...args);
   expect(res.status).not.toBe(0);
   expect(res.stderr).toContain(word);
+});
+
+test.each(SCENARIO_NAMES)("scenario %s dumps and matches the generator", (name) => {
+  const out = join(dir, `${name}.jsonl`);
+  const res = run("--seed", "2", "--scenario", name, "--minutes", "2", "--out", out);
+  expect(res.status).toBe(0);
+  const lines = readFileSync(out, "utf8").trimEnd().split("\n");
+  expect(lines.map((l) => JSON.parse(l))).toEqual(mockEvents(2, name, 0, 2 * 60_000));
+});
+
+test("an unknown scenario exits non-zero naming all 7 valid ones", () => {
+  const res = run("--seed", "1", "--scenario", "nope", "--minutes", "1", "--out", join(dir, "n"));
+  expect(res.status).not.toBe(0);
+  expect(res.stderr).toContain('"nope"');
+  for (const name of SCENARIO_NAMES) expect(res.stderr).toContain(name);
 });

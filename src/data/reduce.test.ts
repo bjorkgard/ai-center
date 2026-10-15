@@ -3,6 +3,7 @@ import { createRng } from "../sim/rng.ts";
 import { mockEvents } from "./mock.ts";
 import {
   NO_EVENTS,
+  activeProjects,
   applyBatch,
   createRing,
   emptyData,
@@ -191,4 +192,23 @@ test("totalInvalid sums the per-path counts", () => {
   expect(
     totalInvalid({ ...emptyData().dataHealth, invalid: { "mock:vendor": 2, "mock:ts": 1 } }),
   ).toBe(3);
+});
+
+test("activeProjects lists projects with a main session that is not done, sorted, subagents ignored (C46)", () => {
+  let s = emptyData();
+  s = applyBatch(s, [
+    ev({ projectKey: "/work/b", sessionId: "b1", type: "session_start", status: "idle" }),
+    ev({ projectKey: "/work/a", sessionId: "a1", type: "session_start", status: "idle" }),
+    ev({ projectKey: "/work/a", sessionId: "a2", type: "session_start", status: "idle" }),
+    ev({ projectKey: "/work/c", sessionId: "c1", type: "session_start", status: "idle" }),
+    ev({ projectKey: "/work/d", sessionId: "d-sub", agentKind: "sub", type: "session_start" }),
+  ]);
+  expect(activeProjects(s)).toEqual(["/work/a", "/work/b", "/work/c"]);
+  s = applyBatch(s, [ev({ projectKey: "/work/b", sessionId: "b1", type: "session_end" })]);
+  s = applyBatch(s, [ev({ projectKey: "/work/a", sessionId: "a1", type: "session_end" })]);
+  expect(activeProjects(s)).toEqual(["/work/a", "/work/c"]);
+  s = applyBatch(s, [ev({ projectKey: "/work/a", sessionId: "a2", type: "session_end" })]);
+  expect(activeProjects(s)).toEqual(["/work/c"]);
+  expect(s.projects.has("/work/b")).toBe(true);
+  expect(activeProjects(emptyData())).toEqual([]);
 });

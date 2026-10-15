@@ -163,3 +163,28 @@ test("two frozen captures of the open Data section match across a reload", async
   const second = await hud.screenshot({ animations: "disabled" });
   expect(second.equals(first)).toBe(true);
 });
+
+test("burst at 10x: the applied count rises, Pause stops it over 1 s, Play resumes it", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openData(page, "dev=1&source=mock&scenario=burst&speed=10");
+  await expect(health(page)).toContainText("live");
+  await expect(health(page)).toContainText("10x");
+  const first = await applied(page);
+  await expect.poll(() => applied(page), { timeout: 20_000 }).toBeGreaterThan(first);
+  await settle(page);
+  const playPause = page.locator("[data-testid=data-playpause]");
+  await expect(playPause).toHaveText("Pause");
+  await playPause.click();
+  await expect(playPause).toHaveText("Play");
+  await expect(health(page)).toContainText("paused");
+  // Let the 250 ms panel throttle and any in-flight tick land before counting.
+  await page.waitForTimeout(600);
+  const frozen = await applied(page);
+  await page.waitForTimeout(1000);
+  expect(await applied(page)).toBe(frozen);
+  await playPause.click();
+  await expect(playPause).toHaveText("Pause");
+  await expect.poll(() => applied(page), { timeout: 20_000 }).toBeGreaterThan(frozen);
+});

@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
+import { SCENARIO_NAMES } from "../data/scenarios.ts";
 import { loadParams, parseParams } from "./params.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -12,6 +13,7 @@ test("no parameters gives the defaults and no warnings", () => {
       view: "home",
       source: null,
       scenario: null,
+      speed: 1,
       seed: 1,
       freeze: false,
     },
@@ -31,6 +33,7 @@ test("every key parses its allowed values", () => {
     view: "lookdev",
     source: "mock",
     scenario: "steady",
+    speed: 1,
     seed: 42,
     freeze: true,
   });
@@ -66,11 +69,14 @@ test("junk in each key falls back and the warning names that key", () => {
     ["freeze", "true", false],
     ["view", "foo", "home"],
     ["source", "a b!", null],
-    ["scenario", "x".repeat(40), null],
+    ["scenario", "x".repeat(40), "steady"],
+    ["speed", "5", 1],
     ["seed", "-3", 1],
   ];
   for (const [key, bad, fallback] of cases) {
-    const { params, warnings } = parseParams(`?${key}=${encodeURIComponent(bad)}`);
+    const { params, warnings } = parseParams(
+      `?${key === "scenario" || key === "speed" ? "source=mock&" : ""}${key}=${encodeURIComponent(bad)}`,
+    );
     expect(params[key as keyof typeof params]).toBe(fallback);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(key);
@@ -117,10 +123,52 @@ test("source=mock and scenario=steady are accepted", () => {
   });
 });
 
-test("an unknown source or scenario warns and falls back to null", () => {
+test("an unknown source warns and falls back to null; scenario and speed are then ignored", () => {
   const { params, warnings } = parseParams("?source=live&scenario=burst");
-  expect(params).toMatchObject({ source: null, scenario: null });
+  expect(params).toMatchObject({ source: null, scenario: "burst" });
   expect(warnings).toHaveLength(2);
   expect(warnings[0]).toContain("source");
   expect(warnings[1]).toContain("scenario");
+  expect(warnings[1]).toContain("ignored");
+});
+
+test.each(SCENARIO_NAMES)("scenario=%s is accepted with source=mock", (name) => {
+  expect(parseParams(`?source=mock&scenario=${name}`)).toMatchObject({
+    params: { source: "mock", scenario: name },
+    warnings: [],
+  });
+});
+
+test.each([1, 10, 60])("speed=%i is accepted with source=mock", (speed) => {
+  expect(parseParams(`?source=mock&speed=${speed}`)).toMatchObject({
+    params: { speed },
+    warnings: [],
+  });
+});
+
+test("an unknown scenario warns naming the valid ones and falls back to steady", () => {
+  const { params, warnings } = parseParams("?source=mock&scenario=nope");
+  expect(params.scenario).toBe("steady");
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("scenario");
+  for (const name of SCENARIO_NAMES) expect(warnings[0]).toContain(name);
+});
+
+test.each(["0", "2", "100", "fast", "10x"])("speed=%s warns and falls back to 1", (bad) => {
+  const { params, warnings } = parseParams(`?source=mock&speed=${bad}`);
+  expect(params.speed).toBe(1);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("speed");
+});
+
+test("speed and scenario without source=mock warn that they are ignored", () => {
+  for (const q of ["?speed=10", "?scenario=burst", "?source=live&speed=10"]) {
+    const { warnings } = parseParams(q);
+    expect(
+      warnings.some((w) => w.includes("ignored without source=mock")),
+      q,
+    ).toBe(true);
+  }
+  expect(parseParams("?speed=10&scenario=burst").warnings).toHaveLength(2);
+  expect(parseParams("?source=mock&speed=10&scenario=burst").warnings).toEqual([]);
 });

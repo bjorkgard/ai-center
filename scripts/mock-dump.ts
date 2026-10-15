@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { mockEvents } from "../src/data/mock.ts";
+import { isScenario, scenarioList } from "../src/data/scenarios.ts";
 import { AgentEvent } from "../src/data/schema.ts";
 
 // `vp run mock:dump -- --seed N --scenario steady --minutes M --out <file>` writes the mock's
@@ -34,7 +35,7 @@ if (!/^\d+$/.test(minutesText) || !Number.isSafeInteger(minutes * 60_000) || min
 if (minutes > MAX_MINUTES)
   fail(`--minutes must be at most ${MAX_MINUTES} (one sim day), got ${minutes}`);
 const scenario = value("--scenario");
-if (scenario !== "steady") fail(`unknown scenario "${scenario}" (only steady)`);
+if (!isScenario(scenario)) fail(`unknown scenario "${scenario}" (use ${scenarioList()})`);
 const out = value("--out");
 
 const events = mockEvents(Number(seedText), scenario, 0, minutes * 60_000);

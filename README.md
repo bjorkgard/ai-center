@@ -93,11 +93,23 @@ The power yard stands in the power zone, left of the gate: a fenced substation w
 
 ![The power yard at night: substation, generators, tanks, the vault and the fibre with packets](docs/img/10-power-network.png)
 
-## Data sources (chunk 11)
+## Data sources (chunks 11 and 12)
 
-Agent activity lands in one store (`src/app/store/data.ts`) as batches of normalised events (`src/data/schema.ts`, zod 4 `zod/mini`). Every source implements `{ start, stop, onEvents, onStatus }`, delivers at most 500 events a batch and reports `catching_up`, `live`, `closed` or `error`. Each event is validated; invalid ones are dropped and counted, repeats are skipped by id, and per-session `lastSeen` and status follow the newest `ts`. Totals per project, session and subagent are authoritative; a 50,000-event ring buffer keeps only the recent timeline. Only the mock exists for now: `?source=mock&scenario=steady&seed=1` streams a seeded `steady` scenario (3 fictional projects under `/work/`, Claude and Codex, a few subagents) on a sim clock: the first 10 sim minutes arrive as catch-up, then it runs in real time; with `freeze=1` only the catch-up is sent. `?dev=1` adds a collapsed Data section with a source switch, a health row (applied, batches, last batch, invalid, duplicates), the 50 newest sessions and, under a clicked session, its last 20 events.
+Agent activity lands in one store (`src/app/store/data.ts`) as batches of normalised events (`src/data/schema.ts`, zod 4 `zod/mini`). Every source implements `{ start, stop, onEvents, onStatus }`, delivers at most 500 events a batch and reports `catching_up`, `live`, `closed` or `error`. Each event is validated; invalid ones are dropped and counted, repeats are skipped by id, and per-session `lastSeen` and status follow the newest `ts`. Totals per project, session and subagent are authoritative; a 50,000-event ring buffer keeps only the recent timeline. Only the mock exists for now: `?source=mock&scenario=steady&seed=1` streams a seeded scenario (fictional projects under `/work/`, Claude and Codex) on a sim clock: the first 10 sim minutes arrive as catch-up, then it runs in real time; with `freeze=1` only the catch-up is sent and the clock is paused and locked. `speed=1`, `10` or `60` sets the clock speed. `?dev=1` adds a collapsed Data section with a scenario select, play/pause and 1x/10x/60x buttons (disabled under `freeze=1`), a health row (applied, batches, last batch, invalid, duplicates, source time as +HH:MM:SS since the sim start, speed, paused), the 50 newest sessions and, under a clicked session, its last 20 events.
 
-`vp run mock:dump -- --seed 1 --scenario steady --minutes 10 --out events.jsonl` writes the mock's events as JSONL, one per line.
+Scenarios (`src/data/scenarios.ts`) select what the mock shows. Add `&speed=10` to see a scenario unfold ten times faster.
+
+| Scenario     | What it shows                                                                                                      | Example URL                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `steady`     | Three projects, seven sessions and three subagents at an even pace                                                 | `?source=mock&scenario=steady&speed=10`     |
+| `burst`      | One parent session spawns 10 subagents together, every 2 sim minutes                                               | `?source=mock&scenario=burst&speed=10`      |
+| `churn`      | Six projects swap in and out every 20 sim seconds, three at a time; two more idle long enough to retire and return | `?source=mock&scenario=churn&speed=10`      |
+| `overflow`   | One project grows to 40 sessions by 18 sim minutes, then shrinks to 8                                              | `?source=mock&scenario=overflow&speed=10`   |
+| `errors`     | An error storm across six sessions every 5 sim minutes, then recovery                                              | `?source=mock&scenario=errors&speed=10`     |
+| `codex-only` | Every session is a Codex session                                                                                   | `?source=mock&scenario=codex-only&speed=10` |
+| `waiting`    | Three sessions end a turn and wait on the user                                                                     | `?source=mock&scenario=waiting&speed=10`    |
+
+`vp run mock:dump -- --seed 1 --scenario burst --minutes 10 --out events.jsonl` writes any scenario's events as JSONL, one per line.
 
 ![The Data section open over the frozen mock catch-up](docs/img/11-store-debug.png)
 
