@@ -166,6 +166,46 @@ On start the binary prints the version, `listening on http://127.0.0.1:<port>/` 
 
 If a `[logs]` line says the inotify watch limit was reached (`ENOSPC`, Linux), the folder is polled every 5 s instead; raise the limit with `sudo sysctl fs.inotify.max_user_watches=524288`. A `permission denied (EACCES)` line names a file the server could not read; check its owner. Quick start and "Data sources and privacy" arrive with the live source.
 
+## Supported logs
+
+The parsers turn the lines of your own Claude Code logs into the events the app draws: sessions, subagents, tool calls, exact token counts and the task each session is working on. Nothing leaves your machine, and the parsers keep no prompt, command, patch or tool output; free text is redacted and cut to 120 characters first. [Quick start](#configuration) and the folders watched are under Configuration.
+
+| Vendor      | Reads                           | Status                                                                                                                                                                   |
+| ----------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | The parser exists and is tested on real sessions (chunk 15a); the app does not show it yet (chunk 15b). Format: [docs/log-formats/claude.md](docs/log-formats/claude.md) |
+| Codex CLI   | `~/.codex/sessions/**/*.jsonl`  | Chunk 16                                                                                                                                                                 |
+
+Run this to see what is in your folder, with no values, safe to paste into an issue:
+
+```bash
+vp run logs:probe -- --log-root ~/.claude/projects
+```
+
+You should see the root, a file and line count for the last 24 h, then the line types (`assistant`, `user`, `attachment`, ...), the message content types, the Claude Code versions with line counts and the key sets, for example:
+
+```text
+root ~/.claude/projects (flag, last 24 h)
+  167 files, 45962 lines, 0 not JSON
+  line types:
+       16236  attachment
+       12766  assistant
+        8201  user
+  versions:
+       37469  2.1.295
+```
+
+`vp run logs:probe -- --file <session.jsonl>` prints one file's parser counters (`malformed`, `unknown`, `oversize`, `ignored`, `drift`) and its input, output and cache token totals; `--json` prints either as JSON, `--all` reads every file instead of the last 24 h. The same page has the `jq` command that gives the same token totals.
+
+- **Versions:** the rules were checked against Claude Code 2.1.260 to 2.1.295. A newer or older version is read anyway; any line type the parser has not seen is counted, not guessed.
+- **Known gaps:**
+  - The rules come from one machine (n=1); other setups may differ. Run the probe and report what it prints.
+  - A monorepo is one project per working directory the session started in, not per package.
+  - Sidechain lines inside a main session file are ignored; subagents are read from their own files.
+  - The desktop app's plan tool (`update_plan`) is read on a best-effort basis; `TodoWrite` is the stable one.
+  - Output tokens use the first line the log has for each message. On this machine that leaves out about 8% of output tokens (details in the format page); input and cache tokens are exact.
+- **40-hex risk:** the redaction keeps hex strings of exactly 40 or 64 characters, because they are git commit hashes. A secret that happens to be 40 hex characters would not be redacted. Longer or shorter hex strings are.
+- **When a vendor updates:** see "When a vendor updates" in the format page.
+
 ## Controls
 
 Left-drag pans, right-drag rotates, the scroll wheel zooms towards the cursor, and a double-click on empty ground (a road, a pad or open ground, not a hall) flies home; the camera stays inside the campus. With the 3D view focused (Tab, right after the top bar) the keys work too: arrows pan, `+`/`=` and `-` zoom, `Q`/`E` rotate 45 degrees, `0` or `Home` frames the placed campus, `P` switches orthographic and perspective. `?dev=1` adds a Camera section under the perf HUD with a glide test, the projection switch and the right-panel toggle.
