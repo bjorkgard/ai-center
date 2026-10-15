@@ -131,7 +131,7 @@
 - **P3: Session title for rack labels** (deferred by /autoplan chunks 15-16 CEO review X3, 2026-10-15)
   - What: a redacted `title?` field from Claude `custom-title`, `ai-title` and `agent-name` lines, so racks and panels can show a human name instead of a session id.
   - Why: a rack labelled "fix auth redirect" is recognisable at a glance; a uuid is not.
-  - Context: chunk 15 ignores these line types (known-ignored list in `docs/log-formats/claude.md`); chunk 24 owns labels. Titles are user text, so they go through `redact` and the 120-character cut.
+  - Context: chunk 15 ignores these line types (known-ignored list in `docs/log-formats/claude-code.md`); chunk 24 owns labels. Titles are user text, so they go through `redact` and the 120-character cut.
   - Effort: human S / CC S.
   - Trigger to pick up: chunk 24 starts.
   - Depends on: chunks 15, 24.

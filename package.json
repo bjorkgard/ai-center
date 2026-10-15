@@ -9,6 +9,8 @@
     "lint": "vp lint",
     "check:workflows": "node scripts/check-workflows.ts",
     "mock:dump": "node scripts/mock-dump.ts",
+    "logs:probe": "node scripts/logs-probe.ts",
+    "logs:fixture": "node scripts/make-fixture.ts",
     "serve": "vp build && node scripts/serve.ts",
     "build:bin": "node scripts/build-bin.ts",
     "release:dry": "semantic-release --dry-run --no-ci",

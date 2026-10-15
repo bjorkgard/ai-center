@@ -28,10 +28,16 @@ export const AgentEvent = z.object({
   status: z.optional(z.enum(["idle", "thinking", "tool", "waiting_user", "error", "done"])),
   currentTask: z.optional(z.string()),
   toolName: z.optional(z.string()),
+  // A `tool_result` whose call failed. It never sets the session status (eng E1).
+  toolError: z.optional(z.boolean()),
   // A TodoWrite item (its text goes through currentTask) and the class of a tool call, both set
-  // by the Node parsers so raw commands never reach the browser (D16).
+  // by the Node parsers so raw commands never reach the browser (D16). `cancelled` marks an item
+  // a newer full plan dropped while it was still open.
   todo: z.optional(
-    z.object({ id: z.string(), status: z.enum(["pending", "in_progress", "completed"]) }),
+    z.object({
+      id: z.string(),
+      status: z.enum(["pending", "in_progress", "completed", "cancelled"]),
+    }),
   ),
   toolClass: z.optional(z.enum(["edit", "git_commit", "test", "lint", "other"])),
   filesTouched: z.optional(z.array(z.string())),

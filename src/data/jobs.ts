@@ -2,7 +2,14 @@ import type { AgentEvent } from "./schema.ts";
 
 // The job model of PLAN section 2 (derived): a job is the active TodoWrite item when there is
 // one, otherwise one user-prompt turn. Stage names follow the plan's order.
-export type JobStage = "queued" | "scheduled" | "running" | "checkpoint" | "evaluating" | "done";
+export type JobStage =
+  | "queued"
+  | "scheduled"
+  | "running"
+  | "checkpoint"
+  | "evaluating"
+  | "done"
+  | "cancelled";
 
 export interface JobAgg {
   sessionId: string;
@@ -61,8 +68,9 @@ export function applyJobEvent(
     const cur = jobs.get(jobKey(e.sessionId, id));
     const stamp = session.todoStamp;
     const fresh = !stamp || at > stamp.at || (at === stamp.at && e.id > stamp.id);
-    if (e.todo.status === "completed") {
-      set(id, "todo", "done");
+    if (e.todo.status === "completed" || e.todo.status === "cancelled") {
+      // A cancelled item is closed but not done, so completion counts do not rise (E12).
+      set(id, "todo", e.todo.status === "cancelled" ? "cancelled" : "done");
       if (fresh && session.activeTodo === e.todo.id) {
         session.activeTodo = undefined;
         session.todoStamp = { at, id: e.id };
