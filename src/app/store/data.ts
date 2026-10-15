@@ -44,7 +44,8 @@ export interface DataActions {
   setSpeed(speed: number): void;
   // Validates, applies and commits one batch with a single set(). `apply` is the test seam
   // for a reducer that throws.
-  ingest(source: string, raw: unknown[], apply?: ApplyFn): void;
+  // `deliveredThrough` is the source's watermark (see Source.onEvents).
+  ingest(source: string, raw: unknown[], apply?: ApplyFn, deliveredThrough?: number): void;
   // Moves the derived state (session ends, inlet lag, buckets, eviction) to source time
   // `nowMs`; a no-op while the clock is paused, when `nowMs` is not later than the last call
   // and while the source catches up; commits only when something changed (CEO C77, E51).
@@ -86,6 +87,8 @@ let tokens = 0;
 // The source time of the last advance, null until the first of a connection, and the interval
 // that makes the next ones.
 let lastAdvance: number | null = null;
+// The greatest `deliveredThrough` the source has reported, null while it has reported none.
+let watermark: number | null = null;
 let ticker: ReturnType<typeof setInterval> | null = null;
 
 function detach(): void {
@@ -93,6 +96,7 @@ function detach(): void {
   active = null;
   tokens++;
   lastAdvance = null;
+  watermark = null;
   if (ticker !== null) clearInterval(ticker);
   ticker = null;
   previous?.source.stop();
@@ -106,6 +110,10 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
     console.info(`[data] ${name}: ${current.status} -> ${status}`);
     set({ source: { name, status, detail } });
   };
+
+  // Where derived values may advance to: the clock, held back to what the source has delivered.
+  const target = (clock: SimClock) =>
+    watermark === null ? clock.now() : Math.min(clock.now(), watermark);
 
   // Runs a clock action and commits the mirror only when something in it changed.
   const act = (run: (clock: SimClock) => void) => {
@@ -129,15 +137,15 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       });
       const token = tokens;
       active = { source, token };
-      source.onEvents((raw) => {
-        if (token === tokens) get().ingest(source.name, raw);
+      source.onEvents((raw, through) => {
+        if (token === tokens) get().ingest(source.name, raw, undefined, through);
       });
       source.onStatus((status, detail) => {
         if (token === tokens) setStatus(source.name, status, detail);
       });
       ticker = setInterval(() => {
         const current = get().clock;
-        if (current) get().advanceTo(current.now());
+        if (current) get().advanceTo(target(current));
       }, ADVANCE_EVERY_MS);
       source.start();
     },
@@ -157,8 +165,15 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       const next = advance(state, nowMs);
       if (next !== state) set(next);
     },
-    ingest: (name, raw, apply = applyBatch) => {
-      if (raw.length === 0) return;
+    ingest: (name, raw, apply = applyBatch, deliveredThrough) => {
+      if (deliveredThrough !== undefined)
+        watermark = Math.max(watermark ?? -Infinity, deliveredThrough);
+      if (raw.length === 0) {
+        // A watermark alone can free time to advance to.
+        const { clock } = get();
+        if (deliveredThrough !== undefined && clock) get().advanceTo(target(clock));
+        return;
+      }
       const start = performance.now();
       const state = get();
       const { events, rejects } = validate(raw);
@@ -204,15 +219,16 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
         },
       };
       // The batch and the advance it calls for commit together (CEO C77).
+      const to = state.clock ? target(state.clock) : undefined;
       if (
         state.clock &&
         !state.clock.paused &&
         state.source.status !== "catching_up" &&
-        now !== undefined &&
-        (lastAdvance === null || now > lastAdvance)
+        to !== undefined &&
+        (lastAdvance === null || to > lastAdvance)
       ) {
-        lastAdvance = now;
-        next = advance(next, now);
+        lastAdvance = to;
+        next = advance(next, to);
       }
       set(next);
     },

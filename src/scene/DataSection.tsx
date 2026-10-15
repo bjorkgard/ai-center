@@ -43,7 +43,8 @@ function pick() {
     subagents: s.subagents,
     rates: s.rates,
     tokens: s.tokens,
-    modelTokens: s.modelTokens,
+    evictedTokens: s.evictedTokens,
+    evictedKnown: s.evictedKnown,
     evictedUnknown: s.evictedUnknown,
     // The source clock's whole second: what the metrics are read at.
     at: s.clock ? Math.floor(s.clock.now() / 1000) * 1000 : 0,
@@ -61,7 +62,8 @@ const same = (a: Snapshot, b: Snapshot) =>
   a.subagents === b.subagents &&
   a.rates === b.rates &&
   a.tokens === b.tokens &&
-  a.modelTokens === b.modelTokens &&
+  a.evictedTokens === b.evictedTokens &&
+  a.evictedKnown === b.evictedKnown &&
   a.evictedUnknown === b.evictedUnknown &&
   a.at === b.at &&
   a.version === b.version &&

@@ -7,6 +7,14 @@ import {
   createMockSource,
   mockEvents,
 } from "../../data/mock.ts";
+import {
+  coolingDuty,
+  hallHeat,
+  hallInlet,
+  hotAisle,
+  racksOf,
+  tokensPerMin,
+} from "../../data/metrics.ts";
 import { aggregatesOf, ringEvents, totalInvalid } from "../../data/reduce.ts";
 import { SCENARIO_NAMES } from "../../data/scenarios.ts";
 import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
@@ -649,3 +657,54 @@ test("pausing freezes the derived values and play resumes them from the same poi
   vi.advanceTimersByTime(10_000);
   expect(store().rates).not.toBe(frozen);
 });
+
+// Derived values read through the real store, the real mock and the store's own interval
+// (CEO C49 for chunk 13): the source's watermark holds the advance back to what has been
+// delivered, so the speed does not matter.
+test.each(["steady", "churn", "overflow", "errors", "waiting"])(
+  "%s: rack, hall and cooling metrics are identical at 1x, 10x and 60x at T = 1,200 s through the store",
+  (scenario) => {
+    fake();
+    vi.setSystemTime(0);
+    const END = ANCHOR_MS + 1_200_000;
+    const run = (speed: 1 | 10 | 60) => {
+      store().disconnect();
+      resetStore();
+      const source = createMockSource({
+        seed: 1,
+        scenario,
+        freeze: false,
+        speed,
+        realNow: () => Date.now(),
+      });
+      vi.setSystemTime(0);
+      store().connect(source);
+      while (source.clock.now() < END) vi.advanceTimersByTime(250);
+      expect(source.clock.now()).toBe(END);
+      const s = store();
+      const racks = racksOf(s, END)
+        .map((r) => [r.sessionId, r.tokensPerMin, r.kw, r.inletC.toFixed(9)])
+        .sort((a, b) => (String(a[0]) < String(b[0]) ? -1 : 1));
+      const halls = [...s.projects.keys()]
+        .sort()
+        .map((p) => [
+          p,
+          hallHeat(s, p, END).value,
+          hallInlet(s, p, END).value?.toFixed(9),
+          hotAisle(s, p, END).value?.toFixed(9),
+        ]);
+      return {
+        racks,
+        halls,
+        duty: coolingDuty(s, END).value,
+        tpm: tokensPerMin(s, END).value,
+        status: [...s.sessions.values()].map((x) => [x.sessionId, x.status]),
+      };
+    };
+    const one = run(1);
+    expect(one.racks.length).toBeGreaterThan(0);
+    expect(run(10)).toEqual(one);
+    expect(run(60)).toEqual(one);
+  },
+  120_000,
+);

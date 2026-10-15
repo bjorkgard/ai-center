@@ -187,7 +187,7 @@ test("a done session still in the ring is kept; once the ring has moved on it is
   // Totals do not move.
   expect(out.tokens).toEqual(s.tokens);
   expect(out.projects).toEqual(s.projects);
-  expect(out.modelTokens).toEqual(s.modelTokens);
+  expect(cost(out).value).toBeCloseTo(cost(s).value!, 9);
 });
 
 test("an evicted session's jobs go with it", () => {
@@ -251,7 +251,7 @@ test("a session idle-ends, is evicted, then gets an event 40 min later: counts a
   expect(big.evicted).toBe(false);
   expect(small.s.projects).toEqual(big.s.projects);
   expect(small.s.tokens).toEqual(big.s.tokens);
-  expect(small.s.modelTokens).toEqual(big.s.modelTokens);
+  expect(cost(small.s).value).toBeCloseTo(cost(big.s).value!, 6);
   expect(small.s.sessions.get("s1")!.status).toBe("idle");
 });
 
@@ -273,7 +273,7 @@ test("a 2-hour churn run at 60x keeps the maps bounded with totals equal to an u
   const big = run(50_000);
   expect(small.s.projects).toEqual(big.s.projects);
   expect(small.s.tokens).toEqual(big.s.tokens);
-  expect(small.s.modelTokens).toEqual(big.s.modelTokens);
+  expect(cost(small.s).value).toBeCloseTo(cost(big.s).value!, 6);
   expect(small.s.dataHealth.applied).toBe(big.s.dataHealth.applied);
   // At most the active sessions plus those the ring still references (or with live buckets).
   const bound = (s: DataState) =>
@@ -336,3 +336,79 @@ test.each(SCENARIO_NAMES)(
   },
   60_000,
 );
+
+test("a done rack's inlet keeps integrating: a resumed session matches one that never ended, at any tick size", () => {
+  const run = (stepMs: number, ended: boolean) => {
+    let s = applyBatch(emptyData(), [
+      ev({ at: 0, tokens: tok(6000), type: "usage" }),
+      ...(ended ? [ev({ at: 1000, type: "session_end" })] : []),
+    ]);
+    for (let t = stepMs; t <= 100_000; t += stepMs) s = advance(s, T0 + t);
+    s = applyBatch(s, [ev({ at: 100_000, tokens: tok(6000), type: "usage" })], {
+      now: T0 + 100_000,
+      mark: T0 + 100_000,
+    });
+    s = advance(s, T0 + 105_000);
+    return inletOf(s);
+  };
+  const never = run(1000, false);
+  for (const step of [1000, 20_000, 60_000]) expect(run(step, true)).toBeCloseTo(never, 9);
+});
+
+// A session leaves the store once done and out of the ring (ring of 2, two events of another).
+const evict = (s: DataState, id: string, at = 100): DataState =>
+  advance(
+    applyBatch(s, [ev({ sessionId: `${id}-x`, at }), ev({ sessionId: `${id}-x`, at: at + 1 })]),
+    T0 + 2 * MIN,
+  );
+
+test("evicting a known-model session never turns the cost into null or drops it", () => {
+  let s = emptyData(2);
+  s = applyBatch(s, [
+    ev({ sessionId: "k", type: "session_end", tokens: tok(1_000_000) }),
+    ev({ sessionId: "u", model: "mystery", at: 1, tokens: tok(10) }),
+  ]);
+  const before = cost(s);
+  s = evict(s, "k");
+  expect(s.sessions.has("k")).toBe(false);
+  const after = cost(s);
+  expect(after.value).toBeCloseTo(3, 9);
+  expect(after.value).toBeCloseTo(before.value!, 9);
+  expect(after.basis).toContain("excludes 1 sessions with unknown model");
+  // And only known sessions, all evicted: still a value.
+  let k = emptyData(2);
+  k = applyBatch(k, [ev({ sessionId: "k", type: "session_end", tokens: tok(1_000_000) })]);
+  k = evict(k, "k");
+  expect(cost(k).value).toBeCloseTo(3, 9);
+});
+
+test("tokens that arrive before the session names a model are priced at that model", () => {
+  const s = applyBatch(emptyData(), [
+    ev({ model: undefined, at: 0, tokens: tok(1_000_000) }),
+    ev({ model: "claude-sonnet-4", at: 1, type: "turn_start" }),
+  ]);
+  const c = cost(s);
+  expect(c.value).toBeCloseTo(3, 9);
+  expect(c.basis).not.toContain("excludes");
+  // A session that never names one is unknown, not $0.
+  const none = applyBatch(emptyData(), [ev({ model: undefined, tokens: tok(1_000_000) })]);
+  expect(cost(none).value).toBeNull();
+  const mixed = applyBatch(none, [ev({ sessionId: "k", tokens: tok(1_000_000), at: 1 })]);
+  expect(cost(mixed).value).toBeCloseTo(3, 9);
+  expect(cost(mixed).basis).toContain("excludes 1 sessions with unknown model");
+});
+
+test("a reactivated unknown-model session counts once in excludes N", () => {
+  let s = emptyData(2);
+  s = applyBatch(s, [
+    ev({ sessionId: "k", tokens: tok(1_000_000), at: 0 }),
+    ev({ sessionId: "u", model: "mystery", type: "session_end", at: 1, tokens: tok(10) }),
+  ]);
+  s = evict(s, "u", 10);
+  expect(s.sessions.has("u")).toBe(false);
+  expect(cost(s).basis).toContain("excludes 1 sessions");
+  s = applyBatch(s, [ev({ sessionId: "u", model: "mystery", at: 200, tokens: tok(5) })]);
+  expect(s.sessions.has("u")).toBe(true);
+  expect(cost(s).basis).toContain("excludes 1 sessions");
+  expect(cost(s).basis).not.toContain("excludes 2");
+});

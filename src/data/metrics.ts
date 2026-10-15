@@ -9,7 +9,14 @@ import {
   RATE_WINDOW_S,
 } from "../config/estimation.ts";
 import { PRICES_AS_OF, priceOf } from "../config/prices.ts";
-import { activeProjects, rackKwOf, rateKey, type DataState, type RateAgg } from "./reduce.ts";
+import {
+  activeProjects,
+  rackKwOf,
+  rateKey,
+  type DataState,
+  type RateAgg,
+  type Tokens,
+} from "./reduce.ts";
 
 // Every number the dashboard shows is a Metric (CEO C75, design D19): the value, its unit, how
 // it was obtained and a short human string saying how.
@@ -58,7 +65,8 @@ export function formatMetric(m: Metric): string {
 export const LIVE_WINDOW = "last 24 h, backfill window";
 
 type Series = Pick<DataState, "sessions" | "subagents" | "rates">;
-export type MetricsState = Series & Pick<DataState, "tokens" | "modelTokens" | "evictedUnknown">;
+export type MetricsState = Series &
+  Pick<DataState, "tokens" | "evictedTokens" | "evictedKnown" | "evictedUnknown">;
 
 const withWindow = (basis: string, window?: string): string =>
   window ? `${basis}, ${window}` : basis;
@@ -241,37 +249,40 @@ export function hottestHall(state: Series, nowMs: number): string | undefined {
 // Sessions with an unknown model are left out and counted in the basis; null when all are.
 export function cost(state: MetricsState, window?: string): Metric {
   let usd = 0;
-  const models: string[] = [];
-  for (const [model, t] of state.modelTokens) {
-    const price = priceOf(model === "" ? undefined : model);
-    if (!price) continue;
-    models.push(model);
+  const models = new Set<string>();
+  const price = (model: string, t: Tokens) => {
+    const p = priceOf(model)!;
+    models.add(model);
     usd +=
-      (t.in * price.in +
-        t.out * price.out +
-        t.cacheRead * price.cacheRead +
-        t.cacheWrite * price.cacheWrite) /
+      (t.in * p.in + t.out * p.out + t.cacheRead * p.cacheRead + t.cacheWrite * p.cacheWrite) /
       1_000_000;
-  }
+  };
+  for (const [model, t] of state.evictedTokens) price(model, t);
+  // Evicted sessions are all counted: a known one stays known after it leaves the store.
+  let known = state.evictedKnown;
   let unknown = state.evictedUnknown;
-  let all = state.evictedUnknown;
   for (const map of [state.sessions, state.subagents]) {
     for (const s of map.values()) {
       const t = s.tokens;
       if (t.in + t.out + t.cacheRead + t.cacheWrite === 0) continue;
-      all++;
-      if (!priceOf(s.model)) unknown++;
+      if (s.model !== undefined && priceOf(s.model)) {
+        known++;
+        price(s.model, t);
+      } else unknown++;
     }
   }
   const unit = "USD";
-  if (all > 0 && unknown === all)
+  if (known === 0 && unknown > 0)
     return metric(
       null,
       unit,
       "estimated",
-      withWindow(`all ${all} sessions have an unknown model; prices as of ${PRICES_AS_OF}`, window),
+      withWindow(
+        `all ${unknown} sessions have an unknown model; prices as of ${PRICES_AS_OF}`,
+        window,
+      ),
     );
-  const priced = models.length > 0 ? models.sort().join(", ") : "no model";
+  const priced = models.size > 0 ? [...models].sort().join(", ") : "no model";
   const note = unknown > 0 ? `; excludes ${unknown} sessions with unknown model` : "";
   return metric(
     usd,

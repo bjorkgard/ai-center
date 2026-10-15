@@ -132,6 +132,7 @@ function harness(options: Partial<MockSourceOptions> = {}) {
   let cancelled = 0;
   const log: string[] = [];
   const batches: number[] = [];
+  const throughs: (number | undefined)[] = [];
   const statusAtBatch: (SourceStatus | undefined)[] = [];
   const events: unknown[] = [];
   let status: SourceStatus | undefined;
@@ -149,7 +150,10 @@ function harness(options: Partial<MockSourceOptions> = {}) {
     },
     ...options,
   });
-  source.onEvents((batch) => {
+  source.onEvents((batch, through) => {
+    throughs.push(through);
+    // A watermark with no events is not a batch.
+    if (batch.length === 0) return;
     batches.push(batch.length);
     statusAtBatch.push(status);
     events.push(...batch);
@@ -162,6 +166,7 @@ function harness(options: Partial<MockSourceOptions> = {}) {
   return {
     source,
     log,
+    throughs,
     batches,
     statusAtBatch,
     events,
@@ -221,6 +226,30 @@ test("a tick of 1,200 events arrives as 500, 500 and 200", () => {
   h.setClock(CATCHUP_MS + 250);
   h.fire();
   expect(h.batches).toEqual([500, 500, 200]);
+});
+
+test("every delivery carries a watermark: an inner slice up to its last ts, the last slice and an empty tick to the range end", () => {
+  const fake = (from: number) =>
+    Array.from({ length: 1200 }, (_, i) => ({
+      ...mockEvents(1, "steady", 0, 1000)[0],
+      id: `w${from}-${i}`,
+      ts: new Date(ANCHOR_MS + from + i).toISOString(),
+    }));
+  const h = harness({
+    generate: (_s, _sc, from, to) => (from === 0 ? [] : to <= CATCHUP_MS + 250 ? fake(from) : []),
+  });
+  h.source.start();
+  expect(h.throughs).toEqual([ANCHOR_MS + CATCHUP_MS]);
+  h.setClock(CATCHUP_MS + 250);
+  h.fire();
+  expect(h.throughs.slice(1)).toEqual([
+    ANCHOR_MS + CATCHUP_MS + 499,
+    ANCHOR_MS + CATCHUP_MS + 999,
+    ANCHOR_MS + CATCHUP_MS + 250,
+  ]);
+  h.setClock(CATCHUP_MS + 500);
+  h.fire();
+  expect(h.throughs.at(-1)).toBe(ANCHOR_MS + CATCHUP_MS + 500);
 });
 
 test("paused and behind, ticks drain the backlog under the cap; after play the stream has no gap or duplicate", () => {

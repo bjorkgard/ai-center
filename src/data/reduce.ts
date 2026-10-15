@@ -108,10 +108,14 @@ export interface DataState {
   tokens: Tokens;
   // Rate state by `rateKey(kind, sessionId)`.
   rates: Map<string, RateAgg>;
-  // Tokens by event model ("" = none known): cost is priced from these, so it survives eviction.
-  modelTokens: Map<string, Tokens>;
-  // Evicted sessions that carried tokens under a model with no price.
+  // Cost prices each session at the latest model it names, so tokens that arrived before the
+  // model was known are priced too. Evicted sessions are folded in here: their tokens by model,
+  // how many there were, and how many carried tokens under a model with no price.
+  evictedTokens: Map<string, Tokens>;
+  evictedKnown: number;
   evictedUnknown: number;
+  // The evicted ids counted in evictedUnknown, so a returning session is not counted twice.
+  unknownTombstones: Set<string>;
   // Jobs per session (authoritative, eng Q1); dropped with their session.
   jobs: Map<string, JobAgg>;
   // Ids of evicted sessions, oldest first, mutated in place like the ring.
@@ -154,8 +158,10 @@ export function emptyData(cap: number = RING_CAP): DataState {
     subagents: new Map(),
     tokens: zeroTokens(),
     rates: new Map(),
-    modelTokens: new Map(),
+    evictedTokens: new Map(),
+    evictedKnown: 0,
     evictedUnknown: 0,
+    unknownTombstones: new Set(),
     jobs: new Map(),
     tombstones: new Set(),
     ring: createRing(cap),
@@ -302,8 +308,6 @@ export function applyBatch(
   const ownedRates = new Set<RateAgg>();
   const ownedSessions = new Set<SessionAgg>();
   const ownedProjects = new Set<ProjectAgg>();
-  let modelTokens = state.modelTokens;
-  let modelOwned = false;
   let tokens = state.tokens;
   const reactivated: string[] = [];
 
@@ -365,12 +369,6 @@ export function applyBatch(
       if (flow > 0) {
         rate.buckets.set(sec, (rate.buckets.get(sec) ?? 0) + flow);
       }
-      if (!modelOwned) {
-        modelTokens = new Map(modelTokens);
-        modelOwned = true;
-      }
-      const model = session.model ?? "";
-      modelTokens.set(model, addTokens(modelTokens.get(model) ?? zeroTokens(), e.tokens));
     }
     const status: SessionStatus | undefined =
       e.status ?? (e.type === "session_end" ? "done" : undefined);
@@ -398,15 +396,20 @@ export function applyBatch(
   }
 
   for (const e of fresh) pushRing(state.ring, e);
-  for (const key of reactivated) state.tombstones.delete(key);
+  let evictedUnknown = state.evictedUnknown;
+  for (const key of reactivated) {
+    state.tombstones.delete(key);
+    // The returning session counts itself if its model is still unknown.
+    if (state.unknownTombstones.delete(key)) evictedUnknown--;
+  }
   return {
     ...state,
+    evictedUnknown,
     sessions,
     subagents,
     projects,
     jobs,
     rates,
-    modelTokens,
     tokens,
     ringVersion: state.ringVersion + 1,
     dataHealth: {
@@ -527,7 +530,8 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
   for (const s of sessions.values()) {
     const key = rateKey("main", s.sessionId);
     const rate = state.rates.get(key);
-    if (!rate || s.status === "done" || rate.lagSec >= toSec) continue;
+    // Done racks integrate too: pruning moves lagSec, so it must never skip unintegrated time.
+    if (!rate || rate.lagSec >= toSec) continue;
     const inlet = integrateInlet(
       rate.inletC,
       rackBuckets(rate, subsOf.get(s.sessionId) ?? []),
@@ -551,6 +555,8 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
   // Eviction of done sessions the ring no longer holds (CEO X1).
   const gone = new Set<string>();
   let evictedUnknown = state.evictedUnknown;
+  let evictedKnown = state.evictedKnown;
+  let evictedTokens = state.evictedTokens;
   for (const [kind, map] of [
     ["main", sessions],
     ["sub", subagents],
@@ -570,10 +576,22 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
       rates.delete(key);
       gone.add(s.sessionId);
       state.tombstones.add(key);
-      if (state.tombstones.size > TOMBSTONE_CAP)
-        state.tombstones.delete(state.tombstones.values().next().value!);
+      if (state.tombstones.size > TOMBSTONE_CAP) {
+        const oldest = state.tombstones.values().next().value!;
+        state.tombstones.delete(oldest);
+        // Dropped from the set it returns as new, so it is no longer an evicted session.
+        if (state.unknownTombstones.delete(oldest)) evictedUnknown--;
+      }
       const t = s.tokens;
-      if (t.in + t.out + t.cacheRead + t.cacheWrite > 0 && !priceOf(s.model)) evictedUnknown++;
+      if (t.in + t.out + t.cacheRead + t.cacheWrite === 0) continue;
+      if (priceOf(s.model)) {
+        if (evictedTokens === state.evictedTokens) evictedTokens = new Map(evictedTokens);
+        evictedTokens.set(s.model!, addTokens(evictedTokens.get(s.model!) ?? zeroTokens(), t));
+        evictedKnown++;
+      } else {
+        evictedUnknown++;
+        state.unknownTombstones.add(key);
+      }
     }
   }
   let jobs = state.jobs;
@@ -584,7 +602,16 @@ export function advance(state: DataState, toMs: number, options: AdvanceOptions 
 
   if (sessions === state.sessions && subagents === state.subagents && rates === state.rates)
     return state;
-  return { ...state, sessions, subagents, rates, jobs, evictedUnknown };
+  return {
+    ...state,
+    sessions,
+    subagents,
+    rates,
+    jobs,
+    evictedTokens,
+    evictedKnown,
+    evictedUnknown,
+  };
 }
 
 // Oldest first.

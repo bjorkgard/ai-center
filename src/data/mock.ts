@@ -387,7 +387,7 @@ export class MockSource implements Source {
   readonly name = "mock";
   readonly clock: SimClock;
   private readonly options: MockSourceOptions;
-  private events: (events: unknown[]) => void = () => {};
+  private events: (events: unknown[], deliveredThrough?: number) => void = () => {};
   private statusCb: (status: SourceStatus, detail?: string) => void = () => {};
   // Bumped by stop(); every delivery checks it, so a late timer sends nothing (C34).
   private generation = 0;
@@ -402,7 +402,7 @@ export class MockSource implements Source {
     this.clock = options.clock;
   }
 
-  onEvents(callback: (events: unknown[]) => void): void {
+  onEvents(callback: (events: unknown[], deliveredThrough?: number) => void): void {
     this.events = callback;
   }
 
@@ -422,10 +422,7 @@ export class MockSource implements Source {
     this.statusCb("catching_up");
     try {
       const all = generate(seed, scenario, 0, CATCHUP_MS);
-      for (let i = 0; i < all.length; i += MAX_BATCH) {
-        if (generation !== this.generation) return;
-        this.events(all.slice(i, i + MAX_BATCH));
-      }
+      this.deliver(generation, all, CATCHUP_MS);
     } catch (error) {
       this.fail(generation, error, 0, CATCHUP_MS);
       return;
@@ -457,16 +454,28 @@ export class MockSource implements Source {
       const { seed, scenario } = this.options;
       const batch = (this.options.generate ?? mockEvents)(seed, scenario, from, to);
       this.last = to;
-      for (let i = 0; i < batch.length; i += MAX_BATCH) {
-        if (generation !== this.generation) return;
-        this.events(batch.slice(i, i + MAX_BATCH));
-      }
+      this.deliver(generation, batch, to);
       if (to === now && this.behind) {
         this.behind = false;
         if (generation === this.generation) this.statusCb("live");
       }
     } catch (error) {
       this.fail(generation, error, from, to);
+    }
+  }
+
+  // Sends `batch` in slices of at most MAX_BATCH, each with the time its events are complete
+  // through: the last event's ts for an inner slice, the end of the range for the last one.
+  private deliver(generation: number, batch: AgentEvent[], rangeEnd: number): void {
+    if (batch.length === 0) {
+      this.events([], ANCHOR_MS + rangeEnd);
+      return;
+    }
+    for (let i = 0; i < batch.length; i += MAX_BATCH) {
+      if (generation !== this.generation) return;
+      const slice = batch.slice(i, i + MAX_BATCH);
+      const last = i + MAX_BATCH >= batch.length;
+      this.events(slice, last ? ANCHOR_MS + rangeEnd : Date.parse(slice[slice.length - 1].ts));
     }
   }
 

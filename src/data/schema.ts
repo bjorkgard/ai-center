@@ -55,6 +55,10 @@ export interface Source {
   readonly clock?: SimClock;
   start(): void;
   stop(): void;
-  onEvents(callback: (events: unknown[]) => void): void;
+  // `deliveredThrough` (epoch ms, source time) says every event up to it has been delivered, so
+  // the store never advances its derived values past events still to come. A source with no
+  // such knowledge (the live one) omits it and the store uses the clock. An empty batch may
+  // carry it alone.
+  onEvents(callback: (events: unknown[], deliveredThrough?: number) => void): void;
   onStatus(callback: (status: SourceStatus, detail?: string) => void): void;
 }
