@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/bjorkgard/ai-center/compare/v0.11.0...v0.12.0) (2026-10-15)
+
+
+### Features
+
+* add data schema, store slice and seeded mock source ([#28](https://github.com/bjorkgard/ai-center/issues/28)) ([8ad877b](https://github.com/bjorkgard/ai-center/commit/8ad877bc507d52528588e1d04e280cb7449ec172))
+
 # [0.11.0](https://github.com/bjorkgard/ai-center/compare/v0.10.0...v0.11.0) (2026-10-14)
 
 
