@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/bjorkgard/ai-center/compare/v0.13.0...v0.14.0) (2026-10-15)
+
+
+### Features
+
+* add log server with watcher, tailer and gated WebSocket ([#33](https://github.com/bjorkgard/ai-center/issues/33)) ([1d2d91c](https://github.com/bjorkgard/ai-center/commit/1d2d91c5db58ee68958a995360f7adfcd8ec4955))
+
 # [0.13.0](https://github.com/bjorkgard/ai-center/compare/v0.12.0...v0.13.0) (2026-10-15)
 
 
