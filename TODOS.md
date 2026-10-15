@@ -51,3 +51,43 @@
   - Trigger to pick up: chunk 18 starts, or a demo needs the campus to react to mock data before then.
   - Effort: M (human ~3h / CC ~20 min).
   - Depends on: chunk 11 data slice.
+
+- **P2: Bound the growth of `done` sessions in the store** (deferred by /autoplan chunk 12 review, 2026-10-15)
+  - What: evict or compact sessions and subagents whose status is `done` from the `sessions`/`subagents` maps after they leave the ring buffer, keeping project and global token totals unchanged.
+  - Why: churn and burst add a new session id per cycle (up to 18,000 per real hour at 60x [estimated]), and `applyBatch` copies both maps on every batch (`src/data/reduce.ts`), so a long-running 60x tab slows down.
+  - Context: chunk 12 scenarios, chunk 13 session-end inference (30 min idle), `docs/PLAN.md` chunk 12 review record, CEO row 21.
+  - Trigger to pick up: chunk 13 lands session-end inference, or an all-day mock tab shows slow batches.
+  - Effort: S (human ~2h / CC ~10 min).
+  - Depends on: chunk 13.
+
+- **P2: Re-check `waiting` and `churn` after chunk 13 inference** (deferred by /autoplan chunk 12 eng review, 2026-10-15)
+  - What: re-run the chunk 12 `waiting` and `churn` shape tests with session-end inference on; give waiting lanes a non-status heartbeat if 30-minute idle-end marks them `done` (about 2,390 sim s).
+  - Why: chunk 13 inference can silently end the states these scenarios exist to show.
+  - Context: `src/data/mock.ts` lane plans, chunk 13 Tasks, chunk 12 eng review finding 10.
+  - Trigger to pick up: chunk 13 implementation.
+  - Effort: S (human ~1h / CC ~5 min).
+  - Depends on: chunk 12, chunk 13.
+
+- **P3: Remove or keep-as-debug the interim dev clock controls** (deferred by /autoplan chunk 12 review, 2026-10-15)
+  - What: when chunk 27 builds the D8 mode chip and replay bar, remove the dev Data section's scenario select, play/pause and speed buttons, or keep them as dev-only debug that calls the same store actions.
+  - Why: two control surfaces driving one clock confuse state and tests.
+  - Context: `src/scene/DataSection.tsx`, chunk 12 TASTE decision 6, chunk 27 Tasks.
+  - Trigger to pick up: chunk 27 starts.
+  - Effort: S (human ~30 min / CC ~5 min).
+  - Depends on: chunk 27.
+
+- **P3: Seekable replay clock** (deferred by /autoplan chunk 12 CEO review X1, 2026-10-15)
+  - What: `seek(simMs)` for mock and replay, implemented as reconnect at a new `startMs` with the store cleared, so no consumer ever sees time go back.
+  - Why: the D8 replay bar has a sim-time scrubber; today it only shows time.
+  - Context: `src/data/clock.ts` (chunk 12), chunk 17 file replay, chunk 27 replay bar.
+  - Trigger to pick up: chunk 27 replay bar or chunk 17 wants scrubbing.
+  - Effort: M (human ~3h / CC ~15 min).
+  - Depends on: chunk 12 clock.
+
+- **P3: `tour` demo scenario** (deferred by /autoplan chunk 12 CEO review X4, 2026-10-15)
+  - What: one mock scenario that chains burst, overflow, errors and waiting on a timeline, for demos and the README.
+  - Why: a single URL that shows every behaviour.
+  - Context: chunk 12 scenario registry in `src/data/scenarios.ts` and `src/data/mock.ts`.
+  - Trigger to pick up: a demo or README video needs one URL that shows everything.
+  - Effort: S (human ~2h / CC ~10 min).
+  - Depends on: chunk 12.

@@ -586,14 +586,24 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 #### [ ] 12. Mock scenarios and replay clock
 - **Goal:** Every later behaviour can be triggered on demand.
 - **Depends on:** 11.
-- **Tasks:** Scenarios: `steady`, `burst` (one parent spawns 10 subagents), `churn` (projects appear and vanish every 20 s), `overflow` (one project grows to 40 sessions), `errors` (error storm and recovery), `codex-only`, `waiting` (sessions waiting on user). Replay clock with 1x/10x/60x and pause, shared by mock and file replay. Scenario and speed in URL params. Switching source (live / replay / mock) clears aggregates, ring buffer and scene halls through the chunk 20 dispose path before the new source starts (eng re-review E3); test: live then mock then live gives totals equal to live alone (G12). Replay bar play/pause and 1x/10x/60x drive the store clock (G18). The top-bar mode chip and replay bar (section 4b, design D8) drive the same clock; the dev menu only adds seed and debug toggles.
-- **Acceptance:** Each scenario produces its expected store shape within 60 s at 10x (asserted by unit tests on the reducer output). Pause freezes all derived values.
-- **README:** Table of scenarios and how to select them.
+- **Tasks:** Scenarios: `steady`, `burst` (one parent spawns 10 subagents), `churn` (projects appear and vanish every 20 s), `overflow` (one project grows to 40 sessions), `errors` (error storm and recovery), `codex-only`, `waiting` (sessions waiting on user). Replay clock with 1x/10x/60x and pause, shared by mock and file replay. Scenario and speed in URL params. Switching source (live / replay / mock) clears aggregates, ring buffer and seen ids before the new source starts (already done by chunk 11's `connect`, eng E30), and the store keeps a `sourceEpoch` that increments on every `connect` (a scenario switch on the same source type included) and on `disconnect`; scene halls are torn down when the epoch changes, in chunk 20 through its dispose path (eng re-review E3; chunk 12 UC1, approved 2026-10-15). Replay bar play/pause and 1x/10x/60x drive the store clock (G18): chunk 12 builds the clock and its store actions, chunk 27 builds the top-bar mode chip and replay bar (section 4b, design D8) on the same actions.
+  - Scenario names (C43, X3; E44): `src/data/scenarios.ts` is a Node-runnable leaf module listing exactly the 7 names with a one-line description each; `params.ts`, `mock:dump`, the dev Data section, tests and the README check read names from it. `mockEvents(seed, scenario, fromMs, toMs)` accepts each name and throws naming the valid ones for any other; it stays pure (no `Date.now()`, timers or env), and for every scenario the output over [0, 20 min) equals the concatenation over [0, 7 min) and [7 min, 20 min).
+  - Lane plans (C44, E35, E36), in `src/data/mock.ts`: each scenario is a transform applied after `plan(seed)` builds the steady lanes, so every steady `createRng` draw is still taken; extra lanes draw from a separate rng seeded from `seed` and the scenario name. `mockEvents` and `laneEvents` stay generic and read per-lane fields (end slot, period, no-turns, error windows), never scenario names (CEO row 20). `steady` stays byte-identical to chunk 11: before the refactor, commit SHA-256 digests of the JSON-serialised steady stream for seeds 1 and 42 over [0, 1,200 s) and assert them after. Base plans: `burst` keeps the steady main lanes, drops the steady subagent lanes, forces lane 0 to `claude` and adds 10 subagent lanes under lane 0 starting together every 120 sim s from 90 s and living 60 s, new session ids each cycle; `churn` drops all steady lanes and runs 6 project lanes from the fixed `/work/` list, each periodic (period 120 sim s, active 60 sim s, phase offset 20 sim s x project index, a new `sessionId` per cycle, no turns: `session_start`, tool call/result and usage, then `session_end`), so every 20 sim-s boundary swaps one project in and one out; `overflow` drops all steady lanes, starts one main lane in one project every 15 sim s from 480 s until 40 exist (the 40th at 1,065 s), holds them, then from 1,215 s ends one session every 15 sim s, newest first, with `session_end` until 8 remain (the 32nd end at 1,680 s), and holds 8; plus a second project with 2 main lanes (C65: the shrink gives chunk 20's "removes them when load drops" its data); `errors` keeps the steady plan and repeats a storm every 300 sim s in [270 + 300n, 330 + 300n) s, where at least 5 main lanes emit an `error` event (status `error`) at offset 990 ms of each slot with their normal events suppressed, then one `thinking` status event at the window end; `codex-only` keeps the steady main lanes with vendor `codex` and drops the steady subagent lanes (hard-coded `claude`); `waiting` keeps the steady plan, and at least 3 main lanes end a turn with `waiting_user` by 590 sim s and emit no status-bearing event after it.
+  - `activeProjects(state)` (C46): pure selector of projects with at least one main session whose status is not `done` (reducers never remove projects); used by the churn assertion and later by the chunk 19 reconciler.
+  - Clock contract (C47, E40, E41, E43): `src/data/clock.ts` (Node-runnable) `createSimClock({ realNow, startMs, speed, paused })` returns `now()`, read-only getters `speed`, `paused` and `locked`, and `play()`, `pause()`, `setSpeed(s)`. `now()` is source time in epoch ms, the time base of event `ts`, so every source and chunk 13's inference share one base: the mock starts at `ANCHOR_MS + CATCHUP_MS` and converts with sim ms = `now() - ANCHOR_MS`; the live clock (1x, locked) reads `now() = max(previous, wallNow())` from the injected wall clock; file replay (chunk 17) sets its own `startMs`. `speed` is 1, 10 or 60; any other value changes nothing and logs one `[data]` warning; `setSpeed(current)` does nothing and logs nothing; `setSpeed` while paused changes the speed and stays paused. Pausing or changing speed rebases on the monotonic `realNow`, so time never jumps or goes back; while paused `now()` is constant. A locked clock (live, and every clock under `freeze=1`) ignores `play`, `pause` and `setSpeed`, logging one `[data]` line per call.
+  - Clock ownership (C48, E42): a source exposes `readonly clock?: SimClock`; `createMockSource({ seed, scenario, freeze })` creates the clock inside the same `App.tsx` effect that calls `connect(source)`, so every reconnect (StrictMode remount, dev scenario switch) gets a fresh clock; `connect` reads `source.clock`, or creates a locked 1x live clock when it is absent. `MockSource` reads time only from its clock; `createMockSource` no longer calls `performance.now()`. The store keeps the clock reference, actions `play`, `pause`, `setSpeed` call it, and the store mirror of `speed` and `paused` is always read back from the clock getters. Every mock `connect` starts at the end of the catch-up (sim 10 min). Ticks stay every 250 ms real time; at 60x a tick spans 15 sim s, delivered in batches of at most `MAX_BATCH`.
+  - Pause, backlog and hidden tabs (C50, C59, E37, E38): pause freezes `now()`; ticks keep draining [last, now()) under the per-tick cap, and once caught up, paused ticks deliver nothing and make no store commit. A mock or replay clock auto-pauses while `document.visibilityState` is `hidden` and resumes on `visible` (rebase, no jump); a user pause stays paused when the tab returns. One tick delivers at most 60 sim s, the guard for main-thread stalls, with hysteresis: the source reports `catching_up` only when more than one cap behind and `live` only when fully caught up.
+  - Failures and logging (C58, C60, E39): `MockSource.start` (the initial catch-up) and `tick` catch a throw from the generator or the batch callback, report `onStatus("error", detail)` once naming the scenario and sim range, and stop (no ticks scheduled). Clock transitions log one `[data]` line each (`[data] clock: 1x -> 10x`, `[data] clock: paused`, `[data] clock: playing`).
+  - URL params (C52): through the `parseParams` allowlist, `scenario` accepts the 7 names and `speed` accepts `1`, `10`, `60`; other values warn and fall back (`steady`, `1`); `speed` or `scenario` without `source=mock` warns that it is ignored. Under `freeze=1` the clock starts paused and locked at the catch-up end with speed forced to 1 whatever the URL says, so frozen captures hold exactly the catch-up events (C53). `vp run mock:dump` accepts all 7 scenarios; an unknown one exits non-zero naming the valid ones (C54).
+  - Dev Data section, `dev=1` only (C55, C56, X2; interim until chunk 27, TASTE d6 kept): scenario select, play/pause and 1x/10x/60x buttons acting through the store actions, disabled for a live source and under `freeze=1`; choosing a scenario reconnects with a fresh clock at the catch-up end, keeps the current speed, starts running (paused under `freeze=1`) and leaves the URL unchanged. These controls take precedence over "the dev menu only adds seed and debug toggles" until chunk 27 decides to remove them or keep them as debug (TODOS). The health row adds, for mock and replay sources, source time as +HH:MM:SS since `ANCHOR_MS` for the mock (+00:10:00 at the end of the catch-up; no time zone, so frozen captures match on every machine; the replay base is defined in chunk 17), plus speed and paused.
+  - Build order inside the chunk (C63, TASTE d18 kept): clock, store actions, params and the G12/G18 store halves first, then scenarios and README, so a scenario-tuning failure cannot hold up the clock that chunks 13, 17 and 27 need.
+- **Acceptance:** Each scenario produces its expected store shape within 60 s at 10x, asserted by unit tests on the reducer output (C45): "within 60 s at 10x" is 60 real s at 10x after the 10 sim-minute catch-up, so tests cover sim [0, 1,200 s); shape tests reduce in 1 sim-s steps through `applyBatch`, and a sample "at T" is the state after every event with sim ms < T + 1,000. Expected shapes (plan-chosen numbers): `steady` keeps chunk 11's fixture totals at 600 s; `burst` has exactly 10 subagents with status not `done` sharing one parent `sessionId` at 120 s, 240 s and 600 s, and 0 at 60 s and 180 s; `churn` has exactly 3 active projects at every sample from 100 s on, each 20 sim-s boundary from 120 s on swaps exactly one project in and one out, every key under `/work/`; `overflow` has one project with exactly 29 main sessions at 900 s and 40, none `done`, at 1,200 s (passing the 16- and 32-session hall thresholds live, under the D8 cap of 48), then exactly 32 sessions with status not `done` at 1,320 s, 16 at 1,560 s and 8 at 1,680 s and 1,800 s (C65; the overflow test extends its window to [0, 1,800 s)); `errors` has at least 5 sessions with status `error` at 300 s, 600 s and 900 s, and 0 at 400 s, 700 s and 1,000 s; `codex-only` has every event vendor `codex`, at least 3 projects and 5 main sessions; `waiting` has at least 3 sessions whose latest status is `waiting_user` at 600 s and 1,200 s, and no `turn_start` for those sessions in [590 s, 1,200 s). Frozen frame (E34): the state after `mockEvents(seed, scenario, 0, CATCHUP_MS)`, exactly what `freeze=1` holds, shows each scenario's signature: `burst` 10 live subagents under one parent, `churn` 3 active projects, `overflow` 8 main sessions in the growing project, `errors` at least 5 sessions with status `error`, `waiting` at least 3 sessions with latest status `waiting_user`, `steady` and `codex-only` their 600 s totals. The steady digests for seeds 1 and 42 are unchanged (E36). Split invariance holds for every scenario (C43). Pause freezes all derived values: once caught up, N paused ticks deliver zero events and make zero store commits (state reference unchanged), paused while behind still drains the backlog, and after `play()` the stream equals an unpaused run over the same sim range with no gap and no duplicate; chunk 13 keeps this for its derived selectors (C50, E37). Speed equivalence: at T = 1,200 s, `projects`, `sessions`, `subagents`, `tokens` and the ring contents are identical at 1x, 10x and 60x, excluding `dataHealth` batch counts and timings (C49). Clock unit tests with a fake `realNow` cover every transition, the invalid speed, `setSpeed(current)`, `setSpeed` while paused, locked no-ops with their log lines, and the live `max(previous, wallNow())` rule; the store mirror equals the clock getters after each action (C47, E41, E43). Hidden then visible delivers a continuous stream; advancing the fake real clock 10 real minutes at 60x in one step gives no tick over 60 sim s, `catching_up` then `live`, and the same aggregates as an uncapped run; steady 1 Hz ticks at 60x cause no status changes (C59, E38). An injected throwing `generate` at catch-up and at tick each reports status `error` once (C58, E39); clock transitions log exactly one `[data]` line each (C60). G12 store half: a `FakeSource` named `live`, then the mock, then the live fake again gives totals equal to the live fake alone with 0 duplicates; `sourceEpoch` increments on every `connect`, a same-type scenario switch included, and on `disconnect` (C51, C64). G18 store half: 10x delivers 10 times the sim range of 1x per tick, and `play`, `pause`, `setSpeed` change it as expected; the UI half is tested in chunk 27 (C51). `activeProjects` unit tests (C46). `parseParams` tests cover each accepted `scenario` and `speed`, one rejected value of each, and `speed`/`scenario` without `source=mock` (C52). `mock:dump` tests cover all 7 scenarios and an unknown one (C54). One Playwright check under `dev=1&source=mock&scenario=burst&speed=10` waits for status `live` and a rising applied count, then Pause stops the applied count over 1 s and Play resumes it (C61, E45). `11-store-debug.png` is re-captured in this PR, since the health row gains the clock fields (frozen: +00:10:00, 1x, paused) (C62). A unit test fails if a registry scenario is missing from the README table (C57).
+- **README:** "Data sources" gains a table of scenarios (name, what it shows, URL such as `?source=mock&scenario=burst&speed=10`) and how to select them (C57). Image `11-store-debug.png` re-captured (C62).
 
 #### [ ] 13. Derived and estimated metrics with provenance
 - **Goal:** Every metric is a `Metric` with value, unit, provenance, basis.
 - **Depends on:** 12.
-- **Tasks:** Session lifecycle inference (session end after 30 min idle, status, waiting_user) computed in the store from the single store clock, so live and replay behave the same (eng review A3). Jobs slice (authoritative, eng Q1) and the optional `AgentEvent` fields the job model needs, added to `src/data/schema.ts` (additive; CEO C35). Selectors for tokens/min, cost (price table), rack kW, inlet/hot-aisle °C (lagged), hall heat, cooling duty, job stage derivation (section 2 job model). `ProvenanceBadge` component per section 4b (8 px top-right glyph: solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated; tooltip on hover and focus showing `basis`; "(est.)" only on panel labels) (design D19). Type-level enforcement: selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5).
+- **Tasks:** Session lifecycle inference (session end after 30 min idle, status, waiting_user) computed in the store from the single store clock, so live and replay behave the same (eng review A3). Jobs slice (authoritative, eng Q1) and the optional `AgentEvent` fields the job model needs, added to `src/data/schema.ts` (additive; CEO C35). Selectors for tokens/min, cost (price table), rack kW, inlet/hot-aisle °C (lagged), hall heat, cooling duty, job stage derivation (section 2 job model). `ProvenanceBadge` component per section 4b (8 px top-right glyph: solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated; tooltip on hover and focus showing `basis`; "(est.)" only on panel labels) (design D19). Type-level enforcement: selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5). Inference and derived selectors read the chunk 12 store clock (`SimClock.now()`, epoch ms, one clock for every source) and treat an event `ts` later than `now()` as `now()`; derived values stay frozen while the clock is paused (chunk 12 C47, C50). Re-run chunk 12's `waiting` and `churn` shape tests with session-end inference on (TODOS, chunk 12 E46).
 - **Acceptance:** Unit tests for every formula with fixed inputs. A session idle-ends at the same sim time at 1x and 60x replay (G6). An unknown model shows cost "unknown", never 0 (G7). Debug panel shows each metric with the correct badge. A type test (`// @ts-expect-error` on passing a `number`) proves the formatter rejects raw numbers. A Playwright audit asserts every `[data-metric]` element contains a provenance badge.
 - **README:** "Provenance legend" section with badge image `13-provenance.png` and the estimation formulas.
 
@@ -660,8 +670,8 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 #### [ ] 20. Scene reconciliation, animations, and leak test
 - **Goal:** Halls appear, overflow, and disappear at runtime with no leaks.
 - **Depends on:** 18, 19, 10 (CEO C26: fibre rebuild needs chunk 10).
-- **Tasks:** Scene layer diffs layouts: `entering` halls rise from the ground (1.5 s), `retiring` halls power down LEDs then sink and fade (3 s), then all owned geometry, materials, and textures are disposed. The fade darkens through the hall's colour attribute or happens by sinking below the ground, never through a per-hall transparent material, since hall bodies share one opaque material (CEO W-RW6, W-RW22). Fibre lines, signs and overflow conduit lines (cyan, parent to overflow) rebuilt per change; existing halls never move. Delivery truck drives gate to dock to hall door on rack or hall creation (D12), queued if several at once. Automated leak test: Playwright runs `churn` at 60x for 5 min, reads `renderer.info` and heap (Chromium) via a debug hook.
-- **Acceptance:** `overflow` scenario creates `A2` and `A3` and removes them when load drops. Leak test: geometry and texture counts return to baseline (plus or minus 0) after churn; Chromium heap growth under 10%. Runs in all three browsers via `vp run e2e:local` on the Mac (eng review D6). A project that returns while its hall is sinking cancels the retire and the hall rises again with no leaked objects (G10).
+- **Tasks:** Scene layer diffs layouts: `entering` halls rise from the ground (1.5 s), `retiring` halls power down LEDs then sink and fade (3 s), then all owned geometry, materials, and textures are disposed. The fade darkens through the hall's colour attribute or happens by sinking below the ground, never through a per-hall transparent material, since hall bodies share one opaque material (CEO W-RW6, W-RW22). Fibre lines, signs and overflow conduit lines (cyan, parent to overflow) rebuilt per change; existing halls never move. Delivery truck drives gate to dock to hall door on rack or hall creation (D12), queued if several at once. When the store `sourceEpoch` changes (every `connect` and `disconnect`, chunk 12 UC1), all halls are torn down through the same dispose path before the new source's halls appear (eng re-review E3). Automated leak test: Playwright runs `churn` at 60x for 5 min, reads `renderer.info` and heap (Chromium) via a debug hook.
+- **Acceptance:** `overflow` scenario creates `A2` and `A3` and removes them when load drops (chunk 12 C65: the growing project reaches 40 sessions at 1,065 sim s, falls to 32 live at 1,320 s, 16 at 1,560 s and 8 at 1,680 s, about 18 real s after connect at 60x). Leak test: geometry and texture counts return to baseline (plus or minus 0) after churn; Chromium heap growth under 10%. Runs in all three browsers via `vp run e2e:local` on the Mac (eng review D6). A project that returns while its hall is sinking cancels the retire and the hall rises again with no leaked objects (G10). G12 scene half (moved here by chunk 12 UC1): a live fake, then the mock, then the live fake again leaves only the live source's halls, with geometry and texture counts back to that baseline.
 - **README:** Image `20-overflow.png` (hall with overflow). Short GIF optional, same folder.
 
 #### [ ] 21. Agents and subagents
@@ -1429,7 +1439,7 @@ Scope record: no feature cuts proposed. The structure gate is resolved by the ea
 
 - E1 [P2] (confidence: 8/10) chunk 04 now holds canvas, camera, lights, materials, perf HUD, loader, WebGL card, context restore, quality tiers, motion tokens, reducedMotion, themed surfaces, adaptive glass, GlassPanel, layout shell and safeArea. That is 314 words of tasks against about 100 for a typical chunk, which breaks the brief's "one sitting" rule. Pending: R12.
 - E2 [P2] (confidence: 7/10) section 4b D21 "Glass fill steps ... when scene luminance behind a panel is high". Reading rendered pixels back from the GPU every frame (`readPixels`) stalls the pipeline, worst in Safari. Pending: R13 (mechanism for the approved behaviour).
-- E3 [P1] (confidence: 8/10) D8 source switch (live / replay / mock) with D11 incremental aggregates. Switching source mid-session without clearing the store mixes mock sessions into live totals and leaves the old halls standing. Required work for the approved D8 "always know what you see is real": a source switch tears down the store aggregates, ring buffer and scene halls (through the chunk 20 dispose path), then starts the new source. Applied to chunk 12.
+- E3 [P1] (confidence: 8/10) D8 source switch (live / replay / mock) with D11 incremental aggregates. Switching source mid-session without clearing the store mixes mock sessions into live totals and leaves the old halls standing. Required work for the approved D8 "always know what you see is real": a source switch tears down the store aggregates, ring buffer and scene halls (through the chunk 20 dispose path), then starts the new source. Applied to chunk 12. (Chunk 12 UC1, 2026-10-15: chunk 12 clears the store and adds `sourceEpoch`; the scene-hall teardown and G12's scene half moved to chunk 20.)
 - E4 [P2] (confidence: 8/10) D10 catch-up plus D12 toasts and D22 `aria-live`. Backfilled historical errors would fire a toast storm and screen-reader announcements at every launch. Required work for approved D10 (no fake surges): events flagged `backfill: true` update counts silently; only live events toast or announce. Applied to chunks 14 and 32.
 - E5 [P3] (confidence: 7/10) D8 mode chip. Toasts raised during replay or mock look identical to live ones. Required for D8: toasts and alert rows carry a `REPLAY` or `MOCK` tag outside live mode. Applied to chunk 32.
 - E6 [P3] (confidence: 7/10) D5 `safeArea` is recomputed only when panels open or close; a window resize leaves it stale. Required for D5: recompute on resize (ResizeObserver on the overlay root). Applied to chunk 04.
@@ -6862,17 +6872,676 @@ Reality rows (eng):
 
 `PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=1 verdict=complete`
 
+## CEO review record: Chunk 12 (/autoplan, 2026-10-15)
+
+Target: chunk 12 only ("Mock scenarios and replay clock") of `docs/PLAN.md`, branch `main` at `8ad877b`, base `main`. Run by `/autoplan` (CEO in SELECTIVE EXPANSION, then eng; design and DX skipped by scope detection). The review worked on a git-ignored copy of the chunk; this record and the rewritten chunk 12 entry are its output. Reviewers: Claude (in-host) plus same-harness Claude subagents for the 0H spec reviews and the CEO and eng voices; Codex disabled (`codex_reviews`), so no outside coverage. Ledger rows here are the autoplan decision rows 1-33; the chunk 12 entry cites accepted work as C43-C64 (CEO) and E34-E46 (eng), mapped in "Chunk 12 obligation IDs" below.
+
+### Decision audit trail (chunk 12, CEO and eng)
+
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|----------------|-----------|-----------|----------|
+| 1 | CEO | Mode SELECTIVE EXPANSION | Mechanical | autoplan override | /autoplan fixes the CEO mode | other modes |
+| 2 | CEO | Run Phase 2 Design: skip | Mechanical | scope tool | `scope` returned uiRequired=false (1 UI term, no visual noun, no rendered file) | Design phase |
+| 3 | CEO | Run Phase 2.5 DX: skip | Mechanical | scope tool | dxRequired=false, not a developer tool | DX phase |
+| 4 | CEO | G12 test uses a `FakeSource` named `live` (no real live source until chunk 14) | Mechanical | P5 | `src/app/store/data.test.ts:8` FakeSource exists; chunk 14 is later | wait for chunk 14 |
+| 5 | CEO | Chunk 12 owns the clock and its store actions; mode chip and replay bar UI stay in chunk 27, G18 split into store half (12) and UI half (27) | Mechanical | P5, P4 | chunk 27 Tasks already list "data-mode chip with replay bar (design D8)" (docs/PLAN.md:716) | build bar in 12 |
+| 6 | CEO | Interim dev-HUD controls (scenario, play/pause, 1x/10x/60x) in the Data section, dev=1 only, until chunk 27 | TASTE | P1, P6 | without them pause/speed can only be set by URL reload; contradicts "dev menu only adds seed and debug toggles" literally, so surfaced | URL-only control |
+| 7 | CEO | "Pause freezes all derived values": in 12 means zero events and zero store commits while paused; chunk 13 inherits the obligation for its selectors | Mechanical | P5 | derived metrics are chunk 13 (docs/PLAN.md:596) | nothing |
+| 8 | CEO | Churn "vanish" = every session of the project reaches `done`; add a pure `activeProjects` selector; churn reuses the fixed fictional key list | Mechanical | P1 | `applyBatch` never removes projects or sessions (src/data/reduce.ts:239-255) | store deletion |
+| 9 | CEO | Expected store shape per scenario written as numbers in a scenario registry | Mechanical | P1, P5 | "expected store shape" had no values | prose only |
+| 10 | CEO | X1 seek/scrub: DEFER to TODOS | TASTE | P5, P3 | D8 scrubber is "showing sim time"; seek for file replay needs server re-feed (chunk 17) | accept now |
+| 11 | CEO | X2 sim clock in health row: ACCEPT | Mechanical | P2 | 1 file, S, observability | skip |
+| 12 | CEO | X3 one scenario registry feeds params, dump, dev menu, tests, README: ACCEPT | Mechanical | P4, P2 | avoids 4 copies of the scenario list | per-site lists |
+| 13 | CEO | X4 `tour` storyboard scenario: DEFER to TODOS | Mechanical | P3 | demo value only, no chunk needs it | accept |
+| 14 | CEO | UC1: scene-hall teardown on source switch moves to chunk 20 via a store `sourceEpoch`; chunk 12 keeps store clearing | USER CHALLENGE | premise wrong | chunk 20 dispose path does not exist when 12 ships (depends on 11 only) | keep as written |
+| 15 | CEO | Tick throw reports source `error` once and stops | Mechanical | P1, P2 | setInterval callback throw was logged every tick with status `live` | leave as is |
+| 16 | CEO | Per-tick cap 60 sim s with `catching_up` | TASTE | P1 | hidden tab at 60x returns with about 540k events in one tick [estimated]; alternative is auto-pause on hidden | auto-pause when hidden |
+| 17 | CEO | 0H document approval: approve (A) | Mechanical | P6 | autoplan auto-decides admin approval; spec review cap reached, fixes verified 11 of 11 | revise |
+| 18 | CEO | V8 split 12a/12b: build order inside one chunk instead | TASTE | P3, P6 | ~9 files, one PR per chunk (D18); order protects the clock | split chunk |
+| 19 | CEO | V10 bring chunk 14 forward: keep order | TASTE | P6 | chunk 13 G6 needs the replay clock; reordering is the user's call | reorder |
+| 20 | CEO | Scenario behaviour as per-lane fields, no name branching | Mechanical | P5 | `laneEvents` would pass 5 branches | if-per-scenario |
+| 21 | CEO | `done`-session growth: TODO P2, trigger chunk 13 | Mechanical | P3 | pre-existing map copy per batch; scenarios speed it up | fix now |
+| 22 | CEO | Clock transitions log one `[data]` line | Mechanical | P2 | matches S-RW40 status logging | silent |
+| 23 | CEO | Re-capture `11-store-debug.png` | Mechanical | P1 | health row changes | stale image |
+| 24 | CEO | V1 frozen-frame phases moved to cover 600 s | Mechanical | P1 | captures showed steady for 3 scenarios | keep phases |
+| 25 | Eng | Smaller arrangement: names leaf `scenarios.ts` + `clock.ts`; lane plans in mock.ts | TASTE | P5, P3 | 2 new files instead of 3; registry list still single-sourced | registry module with plans |
+| 26 | Eng | Frozen frame = catch-up range; overflow frozen 8 | Mechanical | P1 | mock.ts:236 generates [0, CATCHUP_MS) | slot-inclusive 600 s |
+| 27 | Eng | Pause freezes now(), backlog still drains | Mechanical | P1 | pause and cap contradicted | drop backlog |
+| 28 | Eng | TASTE 16 revised: auto-pause mock/replay on hidden tab, cap kept for stalls with hysteresis | TASTE | P5, P1 | cap alone recovers 1 h hidden in about 20 min and flaps at 1 Hz | cap only |
+| 29 | Eng | Guard catch-up throw in start() | Mechanical | P1 | unguarded generate in connect | tick-only guard |
+| 30 | Eng | Live clock max(previous, wallNow) | Mechanical | P1 | sleep drift vs event ts | monotonic only |
+| 31 | Eng | Locked clocks, mirror from getters | Mechanical | P5 | UI-only guard | disabled buttons only |
+| 32 | Eng | One clock owner via `source.clock` | Mechanical | P5 | clock passed twice | two parameters |
+| 33 | Eng | Steady digests + explicit lane lists per scenario | Mechanical | P1 | totals-only guard; ambiguous steady lanes | totals only |
+
+### Step 0 (chunk 12)
+
+#### Pre-review system audit (chunk 12)
+- main at 8ad877b, clean, no stashes, no open branches for chunk 12. Chunk 11 (#28) merged today; release 0.12.0 not yet cut for it (last release commit 460b7d8 is 0.11.0) [measured: git log].
+- No TODO/FIXME in `src/` or `scripts/`. TODOS.md has one chunk-11 deferral (C31 store-backed rack count, trigger chunk 18); none touch chunk 12.
+- Prior design doc: `docs/designs/chunk-11-store-mock.md` (chunk 11 CEO plan, PROMOTED). No chunk 12 design doc.
+- Retrospective: chunk 11 review spent its largest fixes on time ownership (K-F2: mock must not read `Date.now()`), source status and dedupe. Chunk 12 is the replay clock that K-F2 deferred to, so time ownership is again the risk area.
+- Taste calibration: good references `src/data/mock.ts` (pure, splittable generator; explicit comments), `src/app/store/data.ts` (single owner of source lifecycle, token guard against stale callbacks). Avoid: `createMockSource` hiding a real-time clock inside the factory (`src/data/mock.ts:275-282`), which chunk 12 must replace with an injected clock.
+- Landscape (WebSearch; Aside not installed): Layer 1, deterministic replay keeps state on a virtual clock and changes speed by driving that clock faster, not by changing step size (QEMU replay docs; bugnet "1x vs 3x" note). Layer 3: here the generator is a pure function of sim-time ranges, so any speed gives identical events by construction; the clock only decides how far each 250 ms tick advances. No eureka.
+- Prior learning applied: frozen-shots-scene-time-zero (confidence 9/10, 2026-10-14): frozen captures need closed-form state, so `freeze=1` must keep the sim clock at the catch-up end and paused.
+
+#### 0A Premise challenge (chunk 12)
+Real problem: later chunks (13 metrics, 18-23 scene binding, 24-33 UI) need reproducible store states (burst, overflow, errors, waiting, churn) on demand, at speed, without real logs. Do-nothing cost: chunk 13's G6 (idle-end same at 1x and 60x) and chunks 19-20 (overflow halls, hall vanish) have nothing to test against. The plan solves this directly.
+
+| # | Premise | Claim | Receipt | Verdict |
+|---|---|---|---|---|
+| 1 | Scene halls can be cleared "through the chunk 20 dispose path" in chunk 12 | chunk 12 Depends on: 11 only; chunk 20 builds the dispose path | docs/PLAN.md:588, docs/PLAN.md:660 | wrong: UC1 |
+| 2 | G12 "live then mock then live" is testable in 12 | no live source until chunk 14 | docs/PLAN.md:600; src/app/store/data.test.ts:8 | fixable: fake source (row 4) |
+| 3 | Replay bar and mode chip exist to drive the clock | top bar with chip and bar is chunk 27 | docs/PLAN.md:716 | clarify (row 5) |
+| 4 | "Pause freezes all derived values" | derived values arrive in chunk 13 | docs/PLAN.md:596 | clarify (row 7) |
+| 5 | "projects appear and vanish" is a store shape | reducers only add projects/sessions | src/data/reduce.ts:239-255 | clarify (row 8) |
+| 6 | "expected store shape" is defined | no numbers in the chunk | docs/PLAN.md:590 | gap (row 9) |
+| 7 | One clock serves mock and file replay | mock reads `now()` already; file replay is chunk 17 | src/data/mock.ts:192-200, docs/PLAN.md:640 | valid |
+| 8 | 1x/10x/60x and pause match D4 | D4 "Live tail and replay (1x / 10x / 60x)" | docs/PLAN.md:16 | valid |
+| 9 | "within 60 s at 10x" | 60 real s at 10x = 600 sim s, equal to the 10 sim-minute catch-up | src/data/mock.ts:9 | valid, sharpened in registry |
+unverified=0
+
+#### 0B Existing code leverage (chunk 12)
+| Sub-problem | Existing code | Reuse |
+|---|---|---|
+| Pure seeded events over sim ranges | `mockEvents`, `plan`, `laneEvents` (src/data/mock.ts:55-188) | extend: scenario switch picks a lane plan |
+| Batching, catch-up, tick, stop safety | `MockSource` (src/data/mock.ts:207-273) | reuse unchanged except `now()` from the clock |
+| Source switch clears store | `connect`/`disconnect` (src/app/store/data.ts:72-91) | reuse; add `sourceEpoch` |
+| URL allowlist | `parseParams` (src/app/params.ts) | extend allowlists |
+| Dump CLI | `scripts/mock-dump.ts` | extend scenario validation |
+| Dev Data section | `src/scene/DataSection.tsx` | extend with interim controls and clock row |
+| Seeded RNG | `src/sim/rng.ts` | reuse |
+No rebuild proposed.
+
+#### 0C Dream state (chunk 12)
+```
+  CURRENT STATE                 THIS PLAN                          12-MONTH IDEAL
+  one steady mock on a   --->   7 scenarios, one sim clock   --->  every visual state of the campus
+  hidden real-time clock        (1x/10x/60x, pause), URL and       reachable by URL, replayable from
+  store clears on connect       dev controls, store epoch          real logs at any speed, seekable,
+                                                                   identical across speeds
+```
+Moves toward the ideal; seeking is the remaining gap (X1 deferred).
+
+#### 0E Mode (chunk 12)
+Mode: SELECTIVE EXPANSION; approved decisions: none (autoplan override). Hold the chunk, cherry-pick small expansions. No new approach decision was needed.
+
+#### 0G Scope decisions (SELECTIVE) (chunk 12)
+HOLD checks: about 9 files [estimated: mock.ts, new scenarios.ts, new clock.ts, data.ts, params.ts, mock-dump.ts, DataSection.tsx, App.tsx, README.md, plus tests]; one new module (clock). Below the 15-file threshold; no cuts proposed.
+| # | Proposal | Effort | Decision | Reasoning |
+|---|---|---|---|---|
+| X1 | Seek: `clock.seek(simMs)` rebuilds the store to any sim time (D8 scrubber drag) | M | DEFERRED | D8 scrubber only shows sim time; file-replay seek needs chunk 17's server; TASTE |
+| X2 | Health row shows sim time, speed, paused | S | ACCEPTED | observability, 1 file |
+| X3 | One scenario registry used by mock, params, dump, dev menu, tests, README check | S | ACCEPTED | DRY |
+| X4 | `tour` scenario chaining all behaviours for demos | S | DEFERRED | demo only |
+
+#### 0I Temporal interrogation (chunk 12)
+- Hour 1: the clock is the only source of sim time; `createMockSource` must stop calling `performance.now()` directly (src/data/mock.ts:275-282).
+- Hour 2-3: rebasing on speed change and pause (no jump); scenario lane plans that stay splittable at any ms boundary.
+- Hour 4-5: StrictMode double mount with a running clock; dev-HUD switches while paused; freeze=1.
+- Hour 6+: per-scenario shape tests, speed-equivalence test, README table check.
+Effort: human ~2 days / CC ~1.5 h [estimated].
+
+#### Accepted obligations (CEO, chunk 12)
+
+- Accepted obligations from the CEO review (2026-10-15). This list is new work for chunk 12, not existing repo state.
+- Scenario registry `SCENARIOS` (one Node-runnable module in `src/data/`) lists exactly `steady`, `burst`, `churn`, `overflow`, `errors`, `codex-only`, `waiting`, each with a one-line description and its base plan (expected-shape numbers live in the tests); the params allowlist, `mock:dump`, the dev Data section and tests read scenario names from it. `mockEvents(seed, scenario, fromMs, toMs)` accepts each name, throws naming the valid names for any other, stays pure (no `Date.now()`, timers or env), and for every scenario the output over [0, 20 min) equals the concatenation over [0, 7 min) and [7 min, 20 min).
+- Each scenario is a lane plan in the existing slot model; the registry names each scenario's base plan. `steady` stays byte-identical to chunk 11: `plan(seed)` keeps its `createRng` draw order and chunk 11's steady fixture test stays as the guard. Scenario variants are transforms applied after `plan(seed)` has built the steady lanes (all steady draws still taken); extra lanes draw from a separate rng seeded from `seed` and the scenario name. Base plans: `burst` = steady main lanes with the steady subagent lanes dropped after planning, lane 0's vendor forced to `claude`, plus 10 subagent lanes whose parent is lane 0, starting together every 120 sim s from 90 s and living 60 s (so the cycle [570, 630) s covers the frozen frame at 600 s), each cycle with new session ids; `churn` = 6 project lanes from the fixed `/work/` list, each periodic like the existing `SUB_PERIOD`/`SUB_LIFE` lanes (period 120 sim s, active 60 sim s, phase offset 20 sim s x project index, a new `sessionId` per cycle, no turns: `session_start`, tool call/result and usage events, then `session_end`), so at every 20 sim-s boundary one project appears and one vanishes; `overflow` = one project that starts one new main lane every 15 sim s from 480 s until 40 exist (8 during the catch-up, the rest growing live), plus one second project with 2 main lanes; `errors` = the steady plan, where a storm repeats every 300 sim s: in [270 + 300n, 330 + 300n) s, so [570, 630) s covers the frozen frame at 600 s, at least 5 main lanes emit an `error` event (status `error`) at offset 990 ms of each slot with their normal events suppressed, then one `thinking` status event at the window end (after the storm at connect ends at 630 s, the next starts at 870 s, 27 real s after connect at 10x); `codex-only` = the steady plan with every lane vendor `codex`; `waiting` = the steady plan where at least 3 main lanes end a turn with `waiting_user` by 590 sim s and emit no status-bearing event after it.
+- Acceptance window: "within 60 s at 10x" means 60 real s at 10x after the 10 sim-minute catch-up, so tests cover sim [0, 1,200,000 ms). Shape tests reduce the scenario in 1 sim-s steps through `applyBatch` and sample after each step; a sample "at T" is the state after applying every event with sim ms < T + 1,000 (the whole slot that starts at T). Every scenario also asserts its signature shape at exactly 600 s, the frozen frame. Expected shapes (plan-chosen [estimated] numbers, tunable by eng review): `steady` keeps chunk 11's fixture totals at 600 s; `burst` has exactly 10 subagents with status not `done` sharing one parent `sessionId` at 120 s, 240 s and 600 s, and 0 at 60 s and 180 s; `churn` has exactly 3 active projects at every sample from 100 s on, and each 20 sim-s boundary from 120 s on swaps exactly one project in and one out, with every key under `/work/`; `overflow` has one project with exactly 9 main sessions at 600 s, 29 at 900 s and 40, none `done`, at 1,200 s, so it passes the 16- and 32-session hall thresholds live and stays under the D8 cap of 48; `errors` has at least 5 sessions with status `error` at 300 s, 600 s and 900 s, and 0 at 400 s, 700 s and 1,000 s; `codex-only` has every event vendor `codex`, at least 3 projects and 5 main sessions; `waiting` has at least 3 sessions whose latest status is `waiting_user` at 600 s and at 1,200 s, and the event stream shows no `turn_start` for those sessions in [590 s, 1,200 s).
+- Pure selector `activeProjects(state)`: projects with at least one main session whose status is not `done` (needed because reducers never remove projects; used by the churn assertion and later by the chunk 19 reconciler); unit-tested.
+- Clock contract `SimClock` in `src/data/clock.ts` (Node-runnable): `createSimClock({ realNow, startMs, speed, paused })` returns an object with `now()`, read-only getters `speed` and `paused`, and `play()`, `pause()`, `setSpeed(s)`. `now()` returns source time in epoch ms (the time base of event `ts`), so every source and chunk 13's inference share one time base: the mock starts at `ANCHOR_MS + CATCHUP_MS` and converts with sim ms = `now() - ANCHOR_MS`; a live source starts at the injected local wall clock and runs at 1x (logs are local files written on the same machine, so the only gap is delivery delay; chunk 13 treats an event `ts` later than `now()` as `now()`); file replay (chunk 17) sets its own `startMs`. `speed` is 1, 10 or 60; `setSpeed` with any other value changes nothing and logs one `[data]` warning. Pausing or changing speed rebases so source time never jumps or goes back; while paused `now()` is constant. Unit tests with a fake `realNow` cover each transition and the invalid speed.
+- Clock ownership: `App.tsx` (and the dev Data section) creates one clock per connection with `startMs` = `ANCHOR_MS + CATCHUP_MS`, passes it to `createMockSource({ seed, scenario, freeze, clock })`, and calls `connect(source, clock)`. `MockSource` reads sim time only from that clock; `createMockSource` no longer calls `performance.now()`. The store keeps the clock reference and mirrors `speed` and `paused` in state; store actions `play`, `pause`, `setSpeed` call the clock and update the mirror. `connect(source)` without a clock (a live source) creates a 1x running clock whose controls are disabled, so chunk 13 inference still reads one store clock for every source. Every mock `connect` starts at the end of the catch-up (sim 10 min). Ticks stay every 250 ms real time; at 60x one tick spans 15 sim s, still delivered in batches of at most `MAX_BATCH`.
+- Speed equivalence: after sim time T = 1,200 s (a multiple of the 15 sim-s tick at 60x), `projects`, `sessions`, `subagents`, `tokens` and the ring contents are identical whether reached at 1x, 10x or 60x (fake clock test); `dataHealth` batch counts and timings are excluded.
+- Pause: while paused, N ticks deliver zero events and make zero store commits (state reference unchanged); after `play()` the delivered events equal an unpaused run over the same sim range, with no gap and no duplicate.
+- G12 store half: connect a `FakeSource` named `live`, then the mock, then the live fake again; final totals equal the live fake alone, with 0 duplicates.
+- G18 store half: `play`, `pause` and `setSpeed` change the sim range delivered per tick as expected (10x delivers 10x the sim range of 1x per tick); the UI half (top-bar chip and replay bar) is tested in chunk 27.
+- URL params through the `parseParams` allowlist: `scenario` accepts the 7 registry names, `speed` accepts `1`, `10`, `60`; any other value warns and falls back (`steady`, `1`); `speed` or `scenario` without `source=mock` warns that it is ignored; tests cover each accepted value and one rejected value of each.
+- Under `freeze=1` the clock starts paused at the catch-up end with speed forced to 1 whatever the URL says, and each `play`/`setSpeed` call is a no-op that logs one `[data]` info line, so frozen captures hold exactly the catch-up events for any scenario and speed.
+- `vp run mock:dump` accepts all 7 scenarios; an unknown scenario exits non-zero naming the valid ones.
+- Dev Data section (dev=1 only; interim until chunk 27 builds the D8 chip and replay bar; TASTE decision 6): scenario select, play/pause and 1x/10x/60x buttons acting through the store actions, disabled for a live source and under `freeze=1`. Choosing a scenario reconnects with a new clock at the catch-up end, keeps the current speed, starts running (paused under `freeze=1`) and leaves the URL unchanged. These controls take precedence over the chunk text "the dev menu only adds seed and debug toggles" until chunk 27, unless the user overrides TASTE decision 6 at the final gate. The health row adds, for mock and replay sources, source time as +HH:MM:SS since `ANCHOR_MS` for the mock (+00:10:00 at the end of the catch-up; the replay base is defined in chunk 17; no time zone, so frozen captures match on every machine), plus speed and paused (X2).
+- README "Data sources" gains a scenarios table (name, what it shows, URL such as `?source=mock&scenario=burst&speed=10`); a unit test fails if a registry scenario is missing from the README table.
+- `MockSource.tick` catches a throw from the generator or the batch callback, reports `onStatus("error", detail)` once naming the scenario and sim range, and stops ticking; unit test with an injected `generate` that throws.
+- Per-tick cap: one tick delivers at most 60 sim s (four 60x ticks). When the clock is further ahead (a hidden tab whose timers were throttled, or a stalled main thread), the source reports `catching_up`, delivers the next 60 sim s on each tick until it reaches `now()`, then reports `live`. Unit test: advance the fake real clock by 10 real minutes at 60x in one step; no tick delivers more than 60 sim s, status goes `catching_up` then `live`, and the final aggregates equal an uncapped run.
+- Clock transitions log one `[data]` line each (`[data] clock: 1x -> 10x`, `[data] clock: paused`, `[data] clock: playing`); unit test counts the lines.
+- One Playwright check under `dev=1&source=mock&scenario=burst&speed=10`: Pause stops the applied count changing over 1 s, Play resumes it.
+- Re-capture `11-store-debug.png` in this PR, since the health row gains the clock fields (frozen: +00:10:00, 1x, paused).
+- Code layout: lane plans and scenario transforms live in the registry module; `mockEvents` and `laneEvents` stay generic and read per-lane fields (end slot, period, no-turns, error windows) instead of branching on scenario names.
+- Build order inside the chunk: clock, store actions, params and the G12/G18 store halves first, then the registry, scenarios and README, so a scenario-tuning failure cannot hold up the clock that chunks 13, 17 and 27 need.
+- TODOS.md gains four entries: P2 bound the growth of `done` sessions in the store (churn and burst add a new session id per cycle, up to 18,000 per real hour at 60x [estimated: burst adds 10 subagent ids per 120 sim s, churn 6], and `applyBatch` copies the whole sessions map per batch; trigger: chunk 13 session-end inference); when chunk 27 lands, remove the interim dev-HUD clock controls or keep them as debug-only so two control surfaces never drive the clock; and the two CEO deferrals: P3 seekable replay clock (X1; seek = reconnect at a new `startMs` with the store cleared, so no consumer ever sees time go back; trigger: chunk 27 replay bar or chunk 17 wants scrubbing) and P3 `tour` demo scenario (X4, trigger: a demo or README video needs one URL that shows everything).
+- Implementation of the source-switch scene half waits for the UC1 answer; everything else in this list can start. Original chunk 12 requirement retained pending User Challenge UC1 (decided by the user at the autoplan final gate): switching source clears aggregates, ring buffer and scene halls through the chunk 20 dispose path before the new source starts. UC1 proposes instead: chunk 12 clears the store (already done by `connect`) and adds a store `sourceEpoch` that increments on every `connect` and `disconnect`; chunk 20 tears down halls when the epoch changes and owns G12's scene half.
+
+### CEO dual voices (chunk 12)
+- Native CEO voice (Claude subagent, in-host): completed on input ceo b327a4a6 (hash matched). 10 findings: 3 HIGH, 1 MEDIUM-HIGH, 6 MEDIUM.
+- Codex CEO voice: disabled (`codex_reviews` = disabled). Outside coverage: none.
+
+| # | Finding | Severity | Disposition |
+|---|---|---|---|
+| V1 | Frozen frame at 600 s shows nothing of burst, errors, waiting | HIGH | Applied: burst cycles from 90 s, storms [270+300n, 330+300n), waiting by 590 s; every scenario asserts its shape at 600 s (arithmetic re-checked by script) |
+| V2 | Seek missing from clock contract | HIGH | Kept deferred (X1, TASTE 10); TODO records seek = reconnect at new `startMs`, so no consumer sees time go back |
+| V3 | Accept UC1 | HIGH | Stays a User Challenge for the gate; voice agrees with the proposal |
+| V4 | Shape tests partly circular | MED-HIGH | Applied in part: overflow asserts the 16/32 hall thresholds and 48 cap; recorded-trace fixtures belong to chunk 17 (NOT in scope) |
+| V5 | Churn assertion weak | MEDIUM | Applied: exactly 3 active, one in and one out per boundary |
+| V6 | Sample inclusion rule | MEDIUM | Applied: sample at T = all events with sim ms < T + 1,000 |
+| V7 | Live clock basis | MEDIUM | Applied: local wall clock, chunk 13 clamps future `ts` to `now()` |
+| V8 | Split chunk into 12a/12b | MEDIUM | TASTE 18: build order inside the chunk instead of a split |
+| V9 | Interim dev controls are throwaway | MEDIUM | Applied: TODO for chunk 27 |
+| V10 | Bring chunk 14 forward | MEDIUM | TASTE 19: keep order; chunk 13's G6 needs the replay clock |
+
+```
+CEO DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Premises valid?                   mostly  N/A    N/A (dispose-path premise wrong: UC1)
+  2. Right problem to solve?           yes     N/A    N/A
+  3. Scope calibration correct?        heavy   N/A    N/A (build order, TASTE 18)
+  4. Alternatives sufficiently explored? no (seek) N/A N/A
+  5. Competitive/market risks covered? partly  N/A    N/A
+  6. 6-month trajectory sound?         yes w/ seek note N/A N/A
+Outside voice disabled: all Consensus cells N/A, never CONFIRMED. [subagent-only]
+```
+
+### CEO review sections (chunk 12)
+
+Current scope: mode SELECTIVE EXPANSION (autoplan override, row 1). Accepted: X2, X3, clarifications rows 4-9, TASTE 6 (provisional). Deferred: X1, X4. Pending: UC1.
+
+#### Section 1: Architecture (chunk 12)
+```
+ URL ─► parseParams (scenario, speed, seed, freeze) ─► App.tsx
+                                                         │ creates per connection
+                                                         ▼
+              SCENARIOS registry ◄──────────── SimClock(realNow, startMs, speed, paused)
+   (names, base plans, transforms)                ▲ play/pause/setSpeed     │ now() epoch ms
+     │        │         │       │                 │                         ▼
+     ▼        ▼         ▼       ▼          store clock actions     MockSource.tick (250 ms real)
+ mock.ts  params.ts  mock-dump DataSection ──────┘                  mockEvents(seed, scenario,
+ (generic lanes)                (dev=1)                              last, min(now, last+60 s))
+                                                                            │ ≤ 500 per batch
+                                                                            ▼
+                         store.connect(source, clock) ─► ingest ─► applyBatch ─► aggregates, ring
+                                                                     selectors: activeProjects, sessionList
+```
+Clock state machine:
+```
+            play()                     setSpeed(1|10|60): rebase, keep state
+  PAUSED ─────────────► RUNNING(speed) ◄──┐
+     ▲                      │             │ setSpeed (rebase)
+     └──────── pause() ─────┘─────────────┘
+  FROZEN (freeze=1): PAUSED, speed 1; play/setSpeed = no-op + one [data] line
+  Invalid: speed outside {1,10,60} -> no change + warning; now() going back -> impossible (rebase anchors
+  sim time at the transition instant)
+```
+Findings: the dev scenario switch creates a new clock and source and goes through `connect`, so the existing token guard (src/app/store/data.ts:46-56) drops callbacks of the old pair; no new coupling beyond `params.ts` importing the registry from `src/data` (Node-runnable, allowed direction). Scaling at 60x with `overflow` [estimated: 40 lanes x 15 slots x about 1.5 events = about 900 events per tick, 2 batches, about 3,600 events/s]: `applyBatch` copies three Maps per batch of at most ~50 sessions, fine; the 50,000-event ring turns over in about 14 s, eviction is O(1). Single point of failure: the clock; covered by transition tests. Rollback: revert the PR, minutes; no data or schema change. No artifact-about-the-work added.
+
+#### Section 2: Error & Rescue Map (chunk 12)
+```
+  CODEPATH                    | WHAT CAN GO WRONG                       | CLASS
+  mockEvents(unknown name)    | name not in registry                    | Error (names valid ones)
+  MockSource.tick             | generator or callback throws            | any Error
+  MockSource.tick             | clock far ahead (hidden tab, stall)     | huge range, main-thread freeze
+  SimClock.setSpeed           | value not 1/10/60                       | invalid input
+  mock:dump                   | unknown scenario / bad flags            | argument error
+  parseParams                 | bad scenario/speed, speed without mock  | invalid input
+  connect(source, clock)      | old source's late callback              | stale delivery
+
+  CLASS                 | RESCUED? | ACTION                                   | USER SEES
+  Error unknown name    | Y        | allowlist upstream; dump exits 1          | warning, steady
+  tick throw            | Y (new)  | onStatus error once, stop ticking         | status error in health row
+  huge range            | Y (new)  | 60 sim s per tick cap, catching_up        | catching_up, then live
+  invalid speed         | Y        | no change, one [data] warning             | unchanged speed
+  dump argument error   | Y        | exit non-zero naming valid values         | CLI message
+  bad URL value         | Y        | warn, fall back                           | [params] warning
+  stale delivery        | Y        | token guard (existing)                    | nothing
+```
+Gaps found and closed: tick throw (before: setInterval callback throw logged every 250 ms with status still `live`, silent in the UI; now rescued, row 15) and the hidden-tab burst (row 16). 0 open gaps.
+
+#### Section 3: Security & Threat Model (chunk 12)
+New inputs are two URL params, both allowlisted by `parseParams` with warn-and-fallback; no new endpoint, file path or dependency. Mock names stay fictional `/work/` keys (C37). `mock:dump --out` is unchanged from chunk 11. No findings.
+
+#### Section 4: Data Flow & Interaction Edge Cases (chunk 12)
+```
+ URL/dev control ─► VALIDATE (allowlist) ─► SimClock ─► tick range ─► mockEvents ─► validate ─► applyBatch ─► set()
+   shadow: bad value -> fallback   paused -> empty range, no set()   range > 60 s -> capped, catching_up
+           speed w/o mock -> warn  invalid speed -> unchanged         throw -> status error, stop
+           empty range -> no batch duplicate id -> skipped (existing)
+```
+| Interaction | Edge case | Handled? | How |
+|---|---|---|---|
+| Play/Pause | double click | Y | idempotent clock methods |
+| setSpeed while paused | stays paused, speed updates | Y | rebase on resume |
+| Scenario switch while paused | new clock running (paused under freeze) | Y | accepted bullet |
+| StrictMode double mount | two clocks | Y | disconnect stops the first source |
+| Tab hidden at 60x | one huge tick | Y (new) | per-tick cap |
+| Switch to live while mock paused | live clock 1x running | Y | live clock created on connect |
+Async ordering: one shared state (the store) and one writer per connection; the token guard excludes the old source's late ticks after `connect`; both orders (old tick before or after connect) end with only the new source's batches applied, as chunk 11's E30 test shows.
+
+#### Section 5: Code Quality (chunk 12)
+`laneEvents` already branches on sub/main; adding seven scenario `if`s would pass 5 branches. Accepted: per-lane fields read generically, scenarios as transforms in the registry module (row 20). No duplication: the scenario list exists once. No over-engineering: no plugin system for scenarios.
+
+#### Section 6: Test Review (chunk 12)
+```
+ NEW                                      TYPE         HAPPY / FAILURE / EDGE
+ SCENARIOS registry + 7 lane plans        unit         split-invariance, shapes at 600 s and window / unknown name throws / steady byte-identical
+ activeProjects                           unit         churn counts / empty store / all done
+ SimClock                                 unit         each transition / invalid speed / pause-resume no jump
+ MockSource + clock                       unit         10x range per tick / tick throw -> error / per-tick cap
+ store clock actions, G12, G18            unit         live-mock-live totals / freeze no-ops / live controls disabled
+ parseParams scenario, speed              unit         7 names, 3 speeds / rejected values / speed without mock
+ mock:dump                                unit         each scenario / unknown scenario exit
+ README table check                       unit         all names present / missing name fails
+ dev controls                             Playwright   pause stops applied count / play resumes
+ 11-store-debug.png                       screenshot   frozen capture re-taken
+```
+No test reads real time or randomness without a seed. Friday-2am test: speed equivalence at T = 1,200 s across 1x/10x/60x. Hostile-QA test: hidden-tab jump. Chaos test: generator throw mid-tick. no_claim: synthetic shapes do not prove real logs look like this (fixtures from chunk 17).
+
+#### Section 7: Performance (chunk 12)
+Memory: ring capped at 50,000 (existing); sessions map grows by up to 18,000 ids per real hour at 60x under burst [estimated], and `applyBatch` copies it per batch, so an all-day 60x tab slows; deferred as P2 TODO with trigger chunk 13 (row 21). Slowest new paths: the catch-up of `overflow` (600 sim s, about 8 lanes during catch-up) and a capped 60-sim-s tick (at most 4 ticks of work); both bounded by `MAX_BATCH` splitting.
+
+#### Section 8: Observability (chunk 12)
+Clock transitions log one `[data]` line each (row 22); the health row shows source time, speed and paused (X2); source status `catching_up` and `error` show the two new failure modes. A bug report can be reproduced from the URL alone (seed, scenario, speed), which is the main debugging win of this chunk.
+
+#### Section 9: Deployment & Rollout (chunk 12)
+No migration, flag or server. Risk: `createMockSource` signature change has two call sites (App.tsx:56, DataSection.tsx:97); both change in the PR. The health row change alters `11-store-debug.png`, so it is re-captured in the PR (row 23). Post-merge check: open `?dev=1&source=mock&scenario=errors&speed=10` and see a storm within 30 s.
+
+#### Section 10: Long-Term Trajectory (chunk 12)
+Reversibility 4/5 (clock contract is the one-way part; seek reserved as reconnect). Debt: interim dev controls (TODO), `done`-session growth (TODO). Platform: the clock contract serves 13 (inference), 17 (file replay) and 27 (chip and bar). Cherry-pick retrospective: X3 carries the most weight; X1 deferred with its semantics written down so it does not leak backward time later.
+
+#### Section 11: Design & UX (chunk 12)
+SKIPPED (no UI scope: Phase 0 `scope` returned uiRequired=false). The interim dev controls are dev=1 debug UI under the existing HUD section style.
+
+#### NOT in scope (chunk 12)
+- Seek/scrub (X1): deferred to TODOS, D8 scrubber only shows time.
+- `tour` scenario (X4): deferred to TODOS.
+- Recorded-trace fixtures from real logs: chunk 17.
+- Mode chip and replay bar UI, G18 UI half: chunk 27.
+- Scene-hall teardown: chunk 20 if UC1 is approved.
+- Bounding `done`-session growth: TODOS, chunk 13.
+
+#### What already exists (chunk 12)
+`mockEvents`/`MockSource` (pure, splittable, batched, stop-safe), `connect`/`disconnect` with token guard, `parseParams` allowlist, `mock:dump`, Data section, `src/sim/rng.ts`. All reused; nothing rebuilt.
+
+#### Dream state delta (chunk 12)
+After chunk 12 every synthetic campus state is a URL at any speed and identical across speeds; missing versus the 12-month ideal: seeking, recorded real-log replay (17) and live data (14).
+
+#### Error & Rescue Registry (chunk 12)
+7 rows (Section 2), 0 CRITICAL GAPS.
+
+#### Failure Modes Registry (chunk 12)
+```
+  CODEPATH             | FAILURE MODE           | RESCUED? | TEST? | USER SEES?            | LOGGED?
+  mockEvents           | unknown scenario       | Y        | Y     | warning, steady        | Y
+  MockSource.tick      | generator throws       | Y        | Y     | status error           | Y
+  MockSource.tick      | clock jumps ahead      | Y        | Y     | catching_up            | Y
+  SimClock.setSpeed    | invalid value          | Y        | Y     | nothing changes        | Y
+  freeze controls      | play under freeze      | Y        | Y     | nothing changes        | Y
+  connect              | stale source callback  | Y        | Y     | nothing                | n/a
+  store growth         | done sessions pile up  | N (TODO) | N     | slower tab after hours | N
+```
+Critical gaps: 0 (the last row is visible as slowness and has a TODO; not silent data loss).
+
+#### Reality rows (chunk 12)
+REALITY: premise-table finding 9 premises, 1 wrong (UC1), 4 clarified, unverified=0 docs/PLAN.md:588
+REALITY: already-done pass no chunk 12 work on origin/main since 2026-10-14 (only #28 chunk 11) src/data/mock.ts:165
+REALITY: surface-check pass `vp run mock:dump` exists as package.json script node scripts/mock-dump.ts package.json:11
+REALITY: binding-decisions pass chunk 11 CEO/eng decisions (MAX_BATCH 500, connect owns lifecycle, injected clock) and re-review E3 honoured; E3's scene half raised as UC1 src/app/store/data.ts:72
+REALITY: numbers pass timing samples re-derived by script [measured: python check of burst/errors windows]; growth and throughput marked [estimated] src/data/mock.ts:9
+REALITY: deferred-asks finding the asks are the chunk text plus E3/G12/G18; left out of chunk 12: scene-hall half of E3/G12 (UC1, gate) and G18 UI half (chunk 27), both listed in the gate docs/PLAN.md:589
+REALITY: pr-count pass no .gstack/ship-policy.json, default one PR per chunk (D18) docs/PLAN.md:31
+PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=0 verdict=complete
+
+## Implementation Tasks (CEO review, chunk 12)
+Synthesized from this review's findings. Effort ratios: features ~30x, tests ~50x.
+
+- [ ] **T1 (P1, human: ~3h / CC: ~10min)** — data — `SimClock` contract, store clock actions, live 1x clock
+  - Surfaced by: Step 0 premise 7, spec review 2 (time base), V7
+  - Files: src/data/clock.ts, src/app/store/data.ts, src/app/App.tsx
+  - Verify: `vp test` clock transition, invalid speed, freeze no-op, live-controls-disabled tests
+- [ ] **T2 (P1, human: ~2h / CC: ~10min)** — data — MockSource on the clock with per-tick cap and tick-error rescue
+  - Surfaced by: Section 2 and 4 (hidden tab, tick throw)
+  - Files: src/data/mock.ts
+  - Verify: `vp test` cap test (10 real min at 60x), throw test, pause zero-commit, speed equivalence at 1,200 s
+- [ ] **T3 (P1, human: ~6h / CC: ~25min)** — data — Scenario registry, lane transforms, 7 scenarios
+  - Surfaced by: Step 0 rows 8-9, spec reviews, V1
+  - Files: src/data/scenarios.ts (new), src/data/mock.ts, src/data/reduce.ts (`activeProjects`)
+  - Verify: `vp test` split invariance per scenario, shapes at 600 s and over [0, 1,200 s), steady fixture unchanged
+- [ ] **T4 (P1, human: ~1h / CC: ~5min)** — app — params `scenario`/`speed`, mock:dump scenarios
+  - Surfaced by: chunk text, Section 3
+  - Files: src/app/params.ts, scripts/mock-dump.ts
+  - Verify: `vp test` params and dump tests
+- [ ] **T5 (P1, human: ~2h / CC: ~10min)** — store — G12 and G18 store halves
+  - Surfaced by: premises 2-3
+  - Files: src/app/store/data.test.ts
+  - Verify: `vp test`
+- [ ] **T6 (P2, human: ~2h / CC: ~10min)** — dev HUD — interim controls, clock health row, clock log lines
+  - Surfaced by: TASTE 6, X2, Section 8
+  - Files: src/scene/DataSection.tsx
+  - Verify: Playwright pause/play check under dev=1; re-captured `11-store-debug.png`
+- [ ] **T7 (P2, human: ~1h / CC: ~5min)** — docs — README scenarios table and its test; TODOS entries
+  - Surfaced by: chunk README line, X1, X4, V9, Section 7
+  - Files: README.md, TODOS.md, a unit test reading README.md
+  - Verify: `vp test` README table check
+- [ ] **T8 (P1, blocked on UC1)** — store/scene — source-switch scene half: `sourceEpoch` now (UC1 approved) or chunk 20 dispose path (UC1 rejected)
+  - Surfaced by: premise 1
+  - Files: src/app/store/data.ts
+  - Verify: epoch test (UC1) or chunk 20 test
+
+### Completion summary (CEO, chunk 12)
+```
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | clean main 8ad877b; chunk 11 merged; mock   |
+  |                      | clock hidden in createMockSource            |
+  | Step 0               | 9 premises, 1 wrong (UC1); 4 proposals      |
+  | Section 1  (Arch)    | 0 issues (diagrams produced)                |
+  | Section 2  (Errors)  | 7 error paths mapped, 2 GAPS closed         |
+  | Section 3  (Security)| 0 issues found, 0 High severity             |
+  | Section 4  (Data/UX) | 6 edge cases mapped, 0 unhandled            |
+  | Section 5  (Quality) | 1 issue found                               |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps                    |
+  | Section 7  (Perf)    | 1 issue found (deferred)                    |
+  | Section 8  (Observ)  | 1 gap found (closed)                        |
+  | Section 9  (Deploy)  | 2 risks flagged                             |
+  | Section 10 (Future)  | Reversibility: 4/5, debt items: 2           |
+  | Section 11 (Design)  | SKIPPED (no UI scope)                       |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (6 items)                           |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 7 rows, 0 CRITICAL GAPS                     |
+  | Failure modes        | 7 total, 0 CRITICAL GAPS                    |
+  | TODOS.md updates     | 4 items proposed (written at approval)      |
+  | Scope proposals      | 4 proposed, 2 accepted                      |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex disabled                              |
+  | Lake Score           | N/A (no scored questions asked)             |
+  | Diagrams produced    | 4 (architecture, clock state, data flow,    |
+  |                      | error map)                                  |
+  | Stale diagrams found | 0                                           |
+  | Unresolved decisions | 1 (UC1, user at final gate)                 |
+  | Reality rows         | 7/7 rows (PLAN_REALITY), 0 unverified       |
+  +====================================================================+
+```
+
+## Design and DX reviews: Chunk 12
+
+- Design review: SKIPPED (no UI scope: autoplan `scope` returned uiRequired=false). Recorded skip, not a completed review.
+
+- DX review: SKIPPED (no developer-facing scope: dxRequired=false, not a developer tool). Recorded skip, not a completed review.
+
+## Eng review record: Chunk 12 (/autoplan, 2026-10-15)
+
+Scope gate: autoplan target, reviewing the chunk 12 working copy (git-ignored). Design doc: none for chunk 12 (chunk 11's is context). Prior learnings applied: frozen-shots-scene-time-zero (9/10, 2026-10-14) and e2e-runs-production-build (9/10, 2026-10-13: the Playwright pause check must gate on `dev=1`, never `import.meta.env.DEV`).
+Retrospective: `git log -- src/data src/app` shows only #28 for this code and no reverts.
+
+### Accepted obligations (eng, chunk 12)
+
+- Accepted obligations from the eng review (2026-10-15). Where a bullet says "replaces", it supersedes the named CEO bullet; everything else in the CEO list stands.
+- Frozen frame (replaces "Every scenario also asserts its signature shape at exactly 600 s"): the frozen-frame assertion is the state after applying `mockEvents(seed, scenario, 0, CATCHUP_MS)`, exactly what `freeze=1` holds. Expected frozen shapes: `burst` 10 live subagents under one parent; `churn` 3 active projects; `overflow` 8 main sessions in the growing project (replaces "exactly 9 main sessions at 600 s"); `errors` at least 5 sessions with status `error`; `waiting` at least 3 sessions with latest status `waiting_user`; `steady` and `codex-only` their 600 s totals. Slot-inclusive samples "at T" keep their meaning for every other T.
+- Base plans list exactly which steady lanes survive: `churn` and `overflow` drop all steady lanes; `codex-only` keeps the steady main lanes with vendor `codex` and drops the steady subagent lanes (they are hard-coded `claude`); `burst`, `errors` and `waiting` keep the steady main lanes as stated.
+- Steady guard: before the lane refactor, commit SHA-256 digests of the JSON-serialised `steady` stream for seeds 1 and 42 over [0, 1,200 s); a test asserts them after the refactor.
+- Pause and backlog (replaces the CEO pause bullet): pause freezes `now()`; ticks keep draining [last, now()) under the per-tick cap; once caught up, N paused ticks deliver zero events and make zero store commits, and `play()` resumes with no gap and no duplicate. The pause test first reaches the caught-up state.
+- Hidden tab (replaces the CEO hidden-tab rationale; TASTE 16 revised): a mock or replay clock auto-pauses while `document.visibilityState` is `hidden` and resumes on `visible` (rebase, no jump); a user pause stays paused when the tab becomes visible again. The per-tick cap of 60 sim s stays as the guard for main-thread stalls, with hysteresis: the source reports `catching_up` only when more than one cap behind and `live` only when fully caught up. Tests: hidden then visible delivers a continuous stream; steady 1 Hz ticks at 60x cause no status changes.
+- Catch-up throw: `MockSource.start` applies the same catch as `tick` around the initial catch-up, reporting `onStatus("error", detail)` once with scenario and range and not scheduling ticks; the injected-`generate` test covers both paths.
+- Live clock: the live (1x, no controls) clock reads `now() = max(previous, wallNow())` from the injected wall clock, so laptop sleep or clock adjustment cannot leave it behind event time; mock and replay clocks keep rebasing on the monotonic `realNow`.
+- Locked clocks: the clock has a `locked` flag (live, and every clock under `freeze=1`); a locked `play`, `pause` or `setSpeed` changes nothing and logs one `[data]` line per call. The store mirror of `speed` and `paused` is always read back from the clock getters after an action, never set from the requested value.
+- One clock owner (replaces "`connect(source, clock)`"): a source exposes `readonly clock?: SimClock`; `createMockSource` creates the clock inside the same `App.tsx` effect that calls `connect(source)`; `connect` reads `source.clock` and creates a locked 1x live clock when it is absent. Each reconnect, including a StrictMode remount and a dev scenario switch, gets a fresh clock.
+- Clock edge cases pinned in tests: `setSpeed` while paused changes the speed and stays paused; `setSpeed(current)` changes nothing and logs nothing.
+- Module layout (TASTE 25, smaller arrangement): `src/data/scenarios.ts` is a leaf module with the scenario names and descriptions only (imported by `params.ts`, `mock-dump.ts`, the dev section, tests and the README check); lane plans and transforms live in `src/data/mock.ts`. New files: `src/data/clock.ts`, `src/data/scenarios.ts`. This replaces "lane plans and scenario transforms live in the registry module".
+- Playwright pause check precondition: wait for status `live` and an increasing applied count before pressing Pause.
+- UC1 detail (approved at the final gate): `sourceEpoch` increments on every `connect` (including a scenario switch on the same source type) and on `disconnect`; both are unit-tested.
+- TODOS.md also gains: chunk 13 must re-run the `waiting` and `churn` shape tests after session-end inference lands, since 30-minute idle-end marks waiting sessions `done` at about 2,390 sim s (waiting lanes may need a non-status heartbeat).
+
+### Step 0: Scope Challenge (eng, chunk 12)
+A. What exists: `mockEvents`/`laneEvents`/`plan` (src/data/mock.ts:55-188) already give pure, splittable ranges; `MockSource` (src/data/mock.ts:207-273) already has generation guards, batch splitting and `now() <= last` skip; `connect` (src/app/store/data.ts:72-86) already clears and token-guards; `pick()` (src/app/params.ts) already allowlists with `Object.hasOwn`; `e2e/data.spec.ts` already drives the dev Data section; `FakeSource` (src/app/store/data.test.ts:8) exists.
+Minimum change: one clock module, one names leaf, lane fields in mock.ts, store clock actions; nothing deferrable without breaking the chunk goal.
+Complexity [estimated]: changed files 10 (src/data/clock.ts new, src/data/scenarios.ts new, src/data/mock.ts, src/data/reduce.ts, src/app/store/data.ts, src/app/App.tsx, src/app/params.ts, scripts/mock-dump.ts, src/scene/DataSection.tsx, README.md) plus TODOS.md and tests; new modules 2. Gate B trips (8+ files).
+Search: virtual clock with speed as drive rate is the standard approach [Layer 1] (CEO landscape); Page Visibility API is the built-in for hidden tabs [Layer 1].
+TODOS cross-reference: no TODO blocks this; C31 (store-backed rack count) stays with chunk 18.
+Distribution: no new artifact.
+
+B. Complexity selectors (auto-decided): no feature cuts proposed (P2: never reduce). Structure: Original arrangement = registry module with names, plans and transforms (`scenarios.ts`) plus a names leaf, 3 new files; Smaller arrangement = names leaf `scenarios.ts` plus `clock.ts`, plans stay in `mock.ts`, 2 new files. Chosen: Smaller (TASTE 25, P5/P3). Scope record: feature answers: none (no cuts); structure: B (autoplan TASTE 25); accepted scope: CEO list plus eng list; pending remedies: UC1.
+
+C. Findings (native eng voice, verified by the parent against code where cited):
+- [P1] (confidence: 9/10) src/data/mock.ts:236 `const all = generate(seed, scenario, 0, CATCHUP_MS);` frozen frame excludes slot 600, so `overflow` shows 8, not 9. Accepted (eng block, frozen frame).
+- [P1] (confidence: 8/10) pause bullet vs per-tick cap: paused while behind would drop the backlog. Accepted (eng block, pause and backlog).
+- [P2] (confidence: 9/10) src/data/mock.ts:236 catch-up generate runs inside `connect`, unguarded. Accepted.
+- [P2] (confidence: 7/10) per-tick cap recovers about 180 sim s per real s at 60x; 1 h hidden takes about 20 min [estimated]; status flaps at 1 Hz. Accepted: auto-pause on hidden plus hysteresis (TASTE 16 revised).
+- [P2] (confidence: 6/10) live clock on monotonic time drifts from wall time across sleep. Medium confidence, verify this is actually an issue; accepted cheaply (max(previous, wallNow)).
+- [P2] (confidence: 8/10) disabled controls are UI-only. Accepted (locked flag).
+- [P2] (confidence: 8/10) clock passed twice. Accepted (`source.clock`).
+- [P2] (confidence: 8/10) steady guarded by totals only. Accepted (digests).
+- [P2] (confidence: 9/10) src/data/mock.ts:85 `vendor: "claude",` steady sub lanes stay claude under codex-only; churn/overflow keep steady lanes ambiguous. Accepted (lane lists).
+- [P3] (confidence: 7/10) waiting/churn decay under chunk 13 inference. Accepted as TODO.
+- [P3] low items 11-14 accepted.
+Scope Challenge result: scope accepted as-is.
+
+REALITY: premise-table pass 6 eng premises checked (catch-up range, sub-lane vendor, connect clears, token guard, allowlist hasOwn, FakeSource), unverified=0 src/data/mock.ts:236
+REALITY: already-done pass no chunk 12 commits on origin/main; e2e/data.spec.ts exists to extend src/app/store/data.ts:72
+REALITY: surface-check pass `mock:dump` script present; `vp test`/Playwright configured (playwright.config.ts) package.json:11
+REALITY: binding-decisions pass chunk 11 eng decisions (connect owns lifecycle, MAX_BATCH 500, src/data Node-runnable) kept; clock.ts and scenarios.ts are Node-runnable src/data/schema.ts:42
+REALITY: numbers pass overflow frozen count 8 [measured: python over lane starts]; recovery time and growth [estimated] src/data/mock.ts:9
+REALITY: deferred-asks finding scene half of E3/G12 (UC1) and G18 UI half (chunk 27) left out, listed at the gate docs/PLAN.md:589
+REALITY: pr-count pass one PR for chunk 12 (D18 default; no ship-policy.json) docs/PLAN.md:31
+
+### Eng Dual Voices (eng, chunk 12)
+Claude SUBAGENT (eng, independent review): completed on input eng ccaa681c (hash matched); 14 findings (2 high, 8 medium, 4 low), all listed above.
+Codex SAYS (eng, architecture challenge): disabled (`codex_reviews` = disabled); no outside process.
+```
+ENG DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Architecture sound?               yes*    N/A    N/A
+  2. Test coverage sufficient?         gaps    N/A    N/A
+  3. Performance risks addressed?      partly  N/A    N/A
+  4. Security threats covered?         yes     N/A    N/A
+  5. Error paths handled?              gaps    N/A    N/A
+  6. Deployment risk manageable?       yes     N/A    N/A
+Outside disabled: N/A, never CONFIRMED. [subagent-only] Single-voice highs: frozen frame, pause vs cap (both verified by parent).
+```
+
+### Section 1: Architecture (eng, chunk 12)
+```
+                         ┌──────────────── src/data (Node-runnable) ────────────────┐
+  src/app/params.ts ───► │ scenarios.ts (names, descriptions; leaf)                 │ ◄── scripts/mock-dump.ts
+                         │      ▲                                                   │
+                         │ mock.ts: plan(seed) + transforms ─► laneEvents ─► mockEvents
+                         │      │ MockSource { clock, tick (cap 60 sim s, hysteresis), start (guarded) }
+                         │      ▼                                                   │
+                         │ clock.ts: SimClock { now, speed, paused, locked, play, pause, setSpeed }
+                         │ reduce.ts: applyBatch, activeProjects                    │
+                         └───────────────────────────────▲──────────────────────────┘
+  src/app/App.tsx effect: createMockSource({seed,scenario,freeze}) ─► connect(source) ─┐
+  src/app/store/data.ts: connect reads source.clock (or locked live clock), mirrors speed/paused, actions
+  src/scene/DataSection.tsx (dev=1): scenario select, play/pause, 1x/10x/60x, health row ─► store actions
+  document visibilitychange ─► mock/replay clock auto-pause / resume (user pause wins)
+```
+Coupling: `params.ts` gains one import from `src/data/scenarios.ts` (leaf, no cycle). Failure scenario per new path: hidden tab (handled), generator throw (handled), stale clock after reconnect (fresh clock per effect, handled). No security boundary change. Distribution: none.
+Dispositions: all accepted by autoplan auto-decision (rows 25-33).
+
+### Section 2: Code Quality (eng, chunk 12)
+- [P2] (confidence: 8/10) src/data/mock.ts:96-188 `laneEvents` grows per-lane fields (end slot, period, no-turns, error windows); keep each field one guard, no scenario-name branches (CEO row 20). Accepted.
+- [P3] (confidence: 7/10) src/scene/DataSection.tsx:97 hard-codes `scenario: "steady"`; replace with the selected scenario from the registry. Accepted.
+- No shared-code extraction proposed: the only duplicate list (scenario names) is removed by the leaf.
+Stale diagrams in touched files: none (mock.ts has prose comments only).
+
+### Section 3: Test Review (eng, chunk 12)
+Framework: Vitest (`vp test`, node, no DOM) and Playwright (`e2e/`, production build per learning).
+```
+CODE PATHS                                                   USER FLOWS
+[+] src/data/clock.ts                                        [+] Dev Data section (dev=1)
+  ├── play/pause/setSpeed + rebase       [GAP→PLANNED ★★★]     ├── [GAP→PLANNED] [→E2E] Pause/Play stops/resumes applied (e2e/data.spec.ts)
+  ├── invalid speed, setSpeed(current)   [GAP→PLANNED ★★★]     ├── [GAP→PLANNED] Scenario select reconnects (unit via store)
+  ├── locked (live, freeze)              [GAP→PLANNED ★★★]     └── [GAP→PLANNED] Controls disabled under freeze (e2e)
+  └── live max(previous, wallNow)        [GAP→PLANNED ★★]    [+] URL selection
+[+] src/data/mock.ts                                            ├── [GAP→PLANNED] each scenario/speed accepted (params.test.ts)
+  ├── 7 lane plans + transforms          [GAP→PLANNED ★★★]     └── [GAP→PLANNED] rejected values, speed without mock
+  ├── steady digests (CRITICAL regression)[GAP→PLANNED ★★★]  [+] Frozen capture
+  ├── split invariance per scenario      [GAP→PLANNED ★★★]     └── [GAP→PLANNED] 11-store-debug.png re-captured
+  ├── start catch-up throw               [GAP→PLANNED ★★]
+  ├── tick throw                         [GAP→PLANNED ★★]
+  ├── per-tick cap + hysteresis          [GAP→PLANNED ★★★]
+  ├── visibility auto-pause              [GAP→PLANNED ★★]
+  └── existing: stop safety, batches, freeze catch-up [★★★ TESTED mock.test.ts]
+[+] src/data/reduce.ts activeProjects    [GAP→PLANNED ★★]
+[+] src/app/store/data.ts
+  ├── connect reads source.clock / live clock [GAP→PLANNED ★★]
+  ├── mirror from getters                [GAP→PLANNED ★★]
+  ├── G12 live-mock-live                 [GAP→PLANNED ★★★]
+  ├── G18 per-tick range ratio           [GAP→PLANNED ★★]
+  └── existing: clear on connect, sticky error [★★★ TESTED data.test.ts]
+[+] scripts/mock-dump.ts all names / unknown [GAP→PLANNED ★★]
+[+] README table check                   [GAP→PLANNED ★★]
+COVERAGE (planned): 26/26 new paths have a planned test; existing paths 2 groups covered.
+QUALITY target: ★★★:12 ★★:14 | GAPS open: 0 | E2E: 2
+```
+Tests made obsolete: the chunk 11 assertion that `mockEvents` throws for any non-steady scenario becomes "throws for an unknown name". Test plan artifact: ~/.gstack/projects/bjorkgard-ai-center/nathanael-main-eng-review-test-plan-20261015-121924.md.
+Dispositions: all planned tests accepted (autoplan P1).
+
+### Section 4: Performance (eng, chunk 12)
+- [P2] (confidence: 9/10) src/data/reduce.ts:211-212 `new Map(state.sessions)` / `new Map(state.subagents)` per batch with unbounded `done` sessions; scale up to 18,000 new ids per real hour at 60x under burst [estimated]. Deferred to TODOS (P2, chunk 13).
+- [P3] (confidence: 7/10) shape tests apply about 8,400 batches per run [estimated: 7 scenarios x 1,200 one-second steps]; fine for Vitest. No action.
+- Hidden-tab spike removed by auto-pause; stall spike bounded by the 60 sim s cap.
+
+### NOT in scope (eng, chunk 12)
+- Seek/scrub (X1), `tour` scenario (X4): TODOS.
+- Real-log fixtures: chunk 17. Mode chip and replay bar UI: chunk 27. Scene-hall teardown: chunk 20 (UC1).
+- Pruning `done` sessions: TODOS, chunk 13.
+
+### What already exists (eng, chunk 12)
+Reused unchanged: `applyBatch`, ring, dedupe, `validate`, MockSource generation guards and batch splitting, `connect`/`disconnect` token guard, `pick()` allowlist, `e2e/data.spec.ts` harness, `FakeSource`. Extended: `plan`/`laneEvents`, params allowlist, mock-dump validation, DataSection. New: `clock.ts`, `scenarios.ts`.
+
+### Failure modes (eng, chunk 12)
+```
+  PATH                     | REALISTIC FAILURE                     | TEST | HANDLING            | USER SEES
+  scenario lane plan       | bad transform shifts steady output    | Y    | digest test fails   | CI red
+  MockSource.start         | generator throws at catch-up          | Y    | status error        | error in health row
+  MockSource.tick          | generator throws mid-run              | Y    | status error        | error in health row
+  MockSource.tick          | main-thread stall, clock far ahead    | Y    | cap + catching_up   | catching_up then live
+  visibility               | hidden tab at 60x                     | Y    | auto-pause          | no jump on return
+  SimClock locked          | console speeds up live clock          | Y    | no-op + log         | nothing
+  live clock               | laptop sleep                          | Y    | max(prev, wall)     | correct time
+  store growth             | done sessions pile up over hours      | N    | TODO chunk 13       | slower tab (visible)
+```
+Critical gaps: 0.
+
+### Worktree parallelization strategy (eng, chunk 12)
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| Clock + store actions + params | src/data (clock), src/app | — |
+| Scenarios + mock refactor | src/data (mock, scenarios, reduce), scripts | Clock (MockSource reads it) |
+| Dev section + e2e + README | src/scene, e2e, README | both above |
+Sequential implementation, no parallelization opportunity: every step touches src/data or depends on the clock contract.
+
+## Implementation Tasks (eng review, chunk 12)
+- [ ] **E1 (P1, human: ~2h / CC: ~10min)** — data — Clock locked flag, live wall clock, edge-case tests
+  - Surfaced by: Section 1, eng voice 5, 6, 11
+  - Files: src/data/clock.ts
+  - Verify: `vp test src/data/clock.test.ts`
+- [ ] **E2 (P1, human: ~2h / CC: ~10min)** — data — Guard catch-up throw, pause-drains-backlog, hysteresis, visibility auto-pause
+  - Surfaced by: eng voice 2, 3, 4
+  - Files: src/data/mock.ts, src/app/App.tsx
+  - Verify: `vp test src/data/mock.test.ts`
+- [ ] **E3 (P1, human: ~1h / CC: ~5min)** — store — `source.clock` single owner; mirror from getters
+  - Surfaced by: eng voice 6, 7, 14
+  - Files: src/data/schema.ts (Source.clock), src/app/store/data.ts, src/app/App.tsx
+  - Verify: `vp test src/app/store/data.test.ts`
+- [ ] **E4 (P1, human: ~1h / CC: ~5min)** — data — Steady digests before refactor; per-scenario lane lists
+  - Surfaced by: eng voice 8, 9
+  - Files: src/data/mock.test.ts, src/data/mock.ts
+  - Verify: digests unchanged after refactor
+- [ ] **E5 (P1, human: ~30min / CC: ~5min)** — data — Frozen-frame assertions from the catch-up range
+  - Surfaced by: eng voice 1
+  - Files: src/data/mock.test.ts
+  - Verify: overflow frozen = 8
+- [ ] **E6 (P2, human: ~1h / CC: ~5min)** — app — Names leaf module; DataSection uses selected scenario
+  - Surfaced by: Section 2, eng voice 12
+  - Files: src/data/scenarios.ts, src/app/params.ts, src/scene/DataSection.tsx
+  - Verify: `vp check` (no cycle), params tests
+- [ ] **E7 (P2, human: ~30min / CC: ~5min)** — e2e — Pause check waits for live and rising count
+  - Surfaced by: eng voice 13
+  - Files: e2e/data.spec.ts
+  - Verify: `vp run e2e:local`
+- [ ] **E8 (P3)** — docs — TODOS entries incl. chunk 13 waiting/churn re-check
+  - Surfaced by: eng voice 10, Section 4
+  - Files: TODOS.md
+  - Verify: entries present
+
+### Completion summary (eng, chunk 12)
+- Step 0: Scope Challenge — scope accepted as-is (structure: smaller arrangement, TASTE 25)
+- Reality rows: 7/7 applicable rows emitted (PLAN_REALITY below), 0 unverified premises
+- Architecture Review: 3 issues found (hidden tab, clock owner, locked controls)
+- Code Quality Review: 2 issues found
+- Test Review: diagram produced, 26 gaps identified (all planned)
+- Performance Review: 1 issue found (deferred)
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 5 items (auto-written by autoplan)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review (UC1 is the gate's)
+- Outside voice: codex, disabled
+- Parallelization: 1 lane, 0 parallel / 3 sequential
+- Lake Score: N/A (no scored questions asked)
+PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=0 verdict=complete
+
+### Chunk 12 obligation IDs
+
+The chunk 12 entry cites accepted work by these IDs (continuing the C and E series from chunk 11):
+
+| ID | Obligation | Source |
+|---|---|---|
+| C43 | Scenario names leaf, `mockEvents` accepts the 7 names, split invariance | CEO X3, eng E44 |
+| C44 | Lane plans as post-`plan(seed)` transforms, per-lane fields | CEO Step 0 rows 8-9, row 20 |
+| C45 | Acceptance window and expected shapes | CEO rows 9, 24 |
+| C46 | `activeProjects` selector | CEO row 8 |
+| C47 | `SimClock` contract, epoch-ms time base | CEO, spec review 2 |
+| C48 | Clock ownership | CEO, replaced by E42 |
+| C49 | Speed equivalence at 1,200 s | CEO |
+| C50 | Pause semantics | CEO row 7, replaced by E37 |
+| C51 | G12 and G18 store halves | CEO rows 4-5 |
+| C52 | `scenario` and `speed` URL params | CEO |
+| C53 | Freeze: paused, locked, speed 1 | CEO |
+| C54 | `mock:dump` all scenarios | CEO |
+| C55 | Interim dev controls | TASTE d6 |
+| C56 | Health row clock fields | CEO X2 |
+| C57 | README scenarios table and check | chunk README line |
+| C58 | Tick error rescue | CEO row 15 |
+| C59 | Per-tick cap | CEO row 16, revised by E38 |
+| C60 | Clock transition log lines | CEO row 22 |
+| C61 | Playwright pause check | CEO Section 6 |
+| C62 | Re-capture `11-store-debug.png` | CEO row 23 |
+| C63 | Build order inside the chunk | TASTE d18 |
+| C64 | `sourceEpoch` (UC1) | User Challenge UC1, approved |
+| C65 | `overflow` shrink phase (40 down to 8 from 1,215 s) | user request after the gate, 2026-10-15 |
+| E34 | Frozen frame = catch-up range | eng row 26 |
+| E35 | Steady lanes kept or dropped per scenario | eng row 33 |
+| E36 | Steady digests | eng row 33 |
+| E37 | Pause drains backlog | eng row 27 |
+| E38 | Auto-pause on hidden tab, cap hysteresis | eng row 28 |
+| E39 | Catch-up throw guard | eng row 29 |
+| E40 | Live clock `max(previous, wallNow())` | eng row 30 |
+| E41 | Locked clocks, mirror from getters | eng row 31 |
+| E42 | One clock owner via `source.clock` | eng row 32 |
+| E43 | Clock edge cases | eng low findings |
+| E44 | Module layout (smaller arrangement) | TASTE d25 |
+| E45 | Playwright precondition | eng low findings |
+| E46 | Chunk 13 re-check of `waiting` and `churn` | eng finding 10 (TODOS) |
+
+## Final approval gate: Chunk 12 (/autoplan, 2026-10-15)
+
+Reply: `all` (gate_rev 1). Plan APPROVED. UC1 approved: chunk 12 adds `sourceEpoch`; scene-hall teardown and G12's scene half move to chunk 20. Taste decisions kept at their recommendations: d6 interim dev controls, d10 seek deferred, d28 auto-pause on hidden tab, d18 one chunk with clock first, d19 chunk order unchanged, d25 smaller file arrangement.
+
+After the gate (user request, 2026-10-15): the folded plan showed chunk 20's acceptance "`overflow` ... removes them when load drops" had no data, since `overflow` only grew. Added C65: from 1,215 sim s the growing project ends one session every 15 sim s until 8 remain (1,680 s), and the chunk 12 overflow test covers [0, 1,800 s). The frozen frame and the 600, 900 and 1,200 s samples are unchanged.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 3 proposals, 2 accepted, 1 deferred (chunk 11, 2026-10-15) |
-| Outside Review | codex via `/plan-ceo-review` and `/plan-eng-review` | Independent 2nd opinion | 5 | disabled | `codex_reviews` disabled; no completed external review |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 3 | ISSUES OPEN | 8 issues, 0 critical gaps (this run: chunk 11; all mapped to E30-E33 or implementation notes, 0 unresolved) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (2026-10-12) |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| CEO Review | `/plan-ceo-review` (via /autoplan for chunk 12) | Scope & strategy | 2 | CLEAR | 4 proposals, 2 accepted, 2 deferred (chunk 12, 2026-10-15) |
+| Outside Review | codex via `/plan-ceo-review`, `/plan-eng-review` and /autoplan | Independent 2nd opinion | 6 | disabled | `codex_reviews` disabled; no completed external review |
+| Eng Review | `/plan-eng-review` (via /autoplan for chunk 12) | Architecture & tests (required) | 4 | ISSUES OPEN | 20 issues, 0 critical gaps (this run: chunk 12; all accepted as E34-E46 or chunk 12 obligations, 0 unresolved) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (2026-10-12); skipped for chunk 12 (no UI scope) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | skipped for chunk 12 (no developer-facing scope) |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled for the chunk 11 CEO review (2026-10-15T06:39:20Z) and this eng review; no native replacement. The CEO 0H spec reviews were same-harness Claude subagents, not outside coverage.
-- **VERDICT:** CEO CLEARED for chunk 11. Eng Review ISSUES OPEN means 8 mapped findings with 0 unresolved decisions and 0 critical gaps, all resolved by E30-E33 or recorded as implementation notes; chunk 11 is ready to implement. eng review required.
+- **OUTSIDE COVERAGE:** codex disabled for the chunk 12 CEO and eng phases; design and DX phases skipped. The CEO and eng voices and the three 0H spec reviews were same-harness Claude subagents, not outside coverage.
+- **VERDICT:** CEO CLEARED for chunk 12. Eng Review ISSUES OPEN means 20 found issues, all accepted into the chunk 12 entry with 0 unresolved decisions and 0 critical gaps; chunk 12 is ready to implement. eng review required.
 
 NO UNRESOLVED DECISIONS
