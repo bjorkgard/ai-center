@@ -111,7 +111,7 @@ test("removing a hall slot removes its fibre line, and the geometry and texture 
   expect(back.frameErrors).toBe(0);
 });
 
-test("the Network section is collapsed and last, and its slider and hook drive the packet rate", async ({
+test("the Network section is collapsed and before Data, and its slider and hook drive the packet rate", async ({
   page,
 }) => {
   const warnings: string[] = [];
@@ -125,7 +125,7 @@ test("the Network section is collapsed and last, and its slider and hook drive t
   const sections = await hud
     .locator("section")
     .evaluateAll((all) => all.map((s) => (s as HTMLElement).dataset.testid));
-  expect(sections.at(-1)).toBe("dev-network");
+  expect(sections.at(-2)).toBe("dev-network");
   const header = hud.getByRole("button", { name: /^Network/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await header.click();

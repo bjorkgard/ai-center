@@ -273,6 +273,7 @@ test("the Hall dev section starts collapsed, after Camera, and toggles the roof"
     "dev-campus",
     "dev-cooling",
     "dev-network",
+    "dev-data",
   ]);
   const header = hud.getByRole("button", { name: /^Hall/ });
   await expect(header).toHaveAttribute("aria-expanded", "false");

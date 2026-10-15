@@ -38,6 +38,17 @@ export const views: ShotView[] = [
   },
   { name: "cooling", file: "docs/img/09-cooling.png", ready: readyExpression },
   { name: "power", file: "docs/img/10-power-network.png", ready: readyExpression },
+  // The frozen mock catch-up in the open Data section: the perf rows and the other sections are hidden so the section fits.
+  {
+    name: "home",
+    file: "docs/img/11-store-debug.png",
+    ready: readyExpression,
+    query: "dev=1",
+    setup:
+      'document.querySelector("[data-testid=perf-hud] dl").style.display = "none"; document.querySelectorAll("[data-testid=perf-hud] section").forEach((s) => { if (s.dataset.testid !== "dev-data") s.style.display = "none"; }); document.querySelector("[data-testid=dev-data] button").click();',
+    settled:
+      'document.querySelector("[data-testid=data-health]")?.textContent.includes("live") && document.querySelectorAll("[data-testid=data-session-row]").length > 0',
+  },
 ];
 
 export const viewport = { width: 1280, height: 720 };

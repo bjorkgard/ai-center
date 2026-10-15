@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { installDataDev } from "../scene/devHooks.ts";
+import { createMockSource } from "../data/mock.ts";
 import { PerfHud } from "../scene/PerfHud.tsx";
 import { SceneCanvas } from "../scene/SceneCanvas.tsx";
 import { CardLayer } from "../scene/cards/CardLayer.tsx";
@@ -47,6 +49,21 @@ export function App() {
 
   useEffect(() => watchReducedMotion((value) => useStore.getState().setReducedMotion(value)), []);
 
+  // The data slice owns the source; StrictMode's double mount ends connect, disconnect, connect.
+  useEffect(() => {
+    if (params.source !== "mock") return;
+    useStore.getState().connect(
+      createMockSource({
+        seed: params.seed,
+        scenario: params.scenario ?? "steady",
+        freeze: params.freeze,
+      }),
+    );
+    return () => useStore.getState().disconnect();
+  }, [params.source, params.seed, params.scenario, params.freeze]);
+
+  useEffect(() => (params.dev ? installDataDev() : undefined), [params.dev]);
+
   const stage = (
     <>
       <SceneCanvas params={params} onReady={onReady} />
@@ -78,7 +95,7 @@ export function App() {
       >
         <CardLayer />
         {!lookdev && <FocusBrackets />}
-        {params.dev && !lookdev && <PerfHud frozen={params.freeze} />}
+        {params.dev && !lookdev && <PerfHud frozen={params.freeze} seed={params.seed} />}
       </div>
       {!lookdev && <ToastHost />}
     </main>
