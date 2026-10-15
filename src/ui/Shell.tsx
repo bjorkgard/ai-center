@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useStore } from "../app/store/index.ts";
+import { ConnectionBanner } from "./ConnectionBanner.tsx";
+import { ConnectionPill } from "./ConnectionPill.tsx";
 import { GlassPanel } from "./GlassPanel.tsx";
 import { carveSafeArea, createSafeAreaWatcher, type Rect } from "./safeArea.ts";
 
@@ -105,7 +107,9 @@ export function Shell({ stage }: { stage: ReactNode }) {
         <span data-testid="wordmark" className="text-body-strong font-semibold text-text">
           Synapse Horizon
         </span>
+        <ConnectionPill />
       </GlassPanel>
+      <ConnectionBanner />
       {stage}
       <div data-panel className="absolute top-[72px] left-4 flex gap-3">
         {KPI_TITLES.map((t) => (

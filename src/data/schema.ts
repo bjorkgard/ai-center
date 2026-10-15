@@ -1,5 +1,6 @@
 import * as z from "zod/mini";
 import type { SimClock } from "./clock.ts";
+import type { ServerMessage } from "./wire.ts";
 
 // The normalised event model of PLAN section 2, shared by the log server (Node), the browser
 // store and the mock. Only Node-runnable imports here (CEO C30, eng E31).
@@ -45,7 +46,16 @@ export type AgentEvent = z.infer<typeof AgentEvent>;
 // Every source delivers batches of at most this many events (eng E32).
 export const MAX_BATCH = 500;
 
-export type SourceStatus = "connecting" | "catching_up" | "live" | "closed" | "error";
+export type SourceStatus =
+  | "connecting"
+  | "catching_up"
+  | "live"
+  | "reconnecting"
+  | "closed"
+  | "error";
+
+// What the log server reports besides events: per-file line totals, backfill progress and roots.
+export type LogMessage = Extract<ServerMessage, { type: "lines" | "progress" | "roots" }>;
 
 // A stream of event batches (CEO C34). stop() is idempotent; once it returns, no event or
 // status is delivered. Callbacks are set before start().
@@ -60,5 +70,7 @@ export interface Source {
   // such knowledge (the live one) omits it and the store uses the clock. An empty batch may
   // carry it alone.
   onEvents(callback: (events: unknown[], deliveredThrough?: number) => void): void;
+  // Only the live source reports these; the store keeps them apart from the events.
+  onLog?(callback: (message: LogMessage) => void): void;
   onStatus(callback: (status: SourceStatus, detail?: string) => void): void;
 }

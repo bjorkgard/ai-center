@@ -16,6 +16,18 @@ The campus, built in code from pure layouts and closed-form fake signals, chunk 
 ![The cooling plant at night: three towers with vapour and two chillers](docs/img/09-cooling.png)
 ![The power yard and the fibre with packets leaving the vault](docs/img/10-power-network.png)
 
+## Quick start
+
+```sh
+vp install
+vp dev          # development: http://localhost:5173
+vp run serve    # the built app: builds, then serves it on 127.0.0.1
+```
+
+The log server runs under `vp dev`, `vp preview` (what Playwright uses) and the release binary alike, so the page counts the lines of your real Claude Code and Codex log files from the first load. Without logs the page shows a first-run card with the folders it is watching and a "Try the demo" button, which opens the seeded mock (`?source=mock&scenario=steady`). Where to look and how to change it: [Configuration](#configuration).
+
+The page connects the live source by default. `?source=mock` selects the mock instead, and `?freeze=1` without a `source` connects nothing, which is what the screenshot baselines use. The top bar's connection pill reads Connecting, Catching up n/N files, Connected, Reconnecting or Off; an amber banner under it appears when the log server cannot be reached.
+
 ## Development setup
 
 Install Vite+ (`vp`); it installs the Node version pinned in `.node-version`. Then:
@@ -35,6 +47,8 @@ vp run e2e         # smoke tests in Chromium and Firefox (what CI runs)
 vp run e2e:local   # all three engines, then regenerates the screenshots
 vp run shots       # builds, then writes docs/img/*.png (1280x720, under 200 KB)
 ```
+
+The `logserver` Playwright project starts a second preview on port 4174 that watches only `e2e/.tmp/logs` (never your home folder) and checks the live source against it: the first-run card, appended lines in the `?dev=1` Data section, the banner texts, reconnecting and the token refresh.
 
 The smoke spec waits for the scene's ready signal, then checks the page title, the canvas, the `app-version` meta tag and that
 the console stays clean. A repeat-run spec captures the same view twice and asserts the two
@@ -136,6 +150,14 @@ Done sessions leave the store once the 50,000-event ring no longer holds them; p
 
 ![The Data section's metrics with their provenance badges, the tokens tooltip open](docs/img/13-provenance.png)
 
+## Data sources and privacy
+
+What is read: only the log files under the folders listed in [Configuration](#configuration), only those modified in the last 24 h at startup and everything appended to them afterwards. Everything stays on your machine: the log server binds to `127.0.0.1` (`localhost` under `vp dev`) and the page talks to it over a local WebSocket.
+
+What reaches the browser in this version: per-file line counts and the folder paths with their file counts. No log content leaves the files. Chunk 15 adds session ids, model names, token counts, tool names and a `currentTask` truncated to 120 characters and redacted.
+
+What the token is for: the page carries a random per-run token, and the server also checks the Origin header (a page on another origin cannot open the socket) and the Host header (which stops DNS rebinding). That protects against other web pages. It does not protect against other programs on your machine: any local process can fetch the page or `/api/session` and read the token, and could read the log files directly anyway.
+
 ## Configuration
 
 The dev server (`vp dev`), the preview server (`vp preview`) and the release binary tail Claude Code and Codex log folders and stream per-file line counts to the app over a WebSocket at `/api/stream`. Nothing leaves your machine: the server binds to `127.0.0.1` (`localhost` under `vp dev`), refuses other Host and Origin headers, and the page needs a per-run token. In this version the stream carries counts and folder paths only.
@@ -164,7 +186,7 @@ synapse-horizon --no-logs            # serve the app, watch nothing
 
 On start the binary prints the version, `listening on http://127.0.0.1:<port>/` and one `[logs]` line per folder: its resolved path and how many files changed in the last 24 h, or why it is missing or unreadable. Only files modified in the last 24 h are read at startup, in 64 KiB chunks.
 
-If a `[logs]` line says the inotify watch limit was reached (`ENOSPC`, Linux), the folder is polled every 5 s instead; raise the limit with `sudo sysctl fs.inotify.max_user_watches=524288`. A `permission denied (EACCES)` line names a file the server could not read; check its owner. Quick start and "Data sources and privacy" arrive with the live source.
+If a `[logs]` line says the inotify watch limit was reached (`ENOSPC`, Linux), the folder is polled every 5 s instead; raise the limit with `sudo sysctl fs.inotify.max_user_watches=524288`. A `permission denied (EACCES)` line names a file the server could not read; check its owner. What reaches the browser is described in [Data sources and privacy](#data-sources-and-privacy).
 
 ## Controls
 

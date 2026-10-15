@@ -11,7 +11,7 @@ test("no parameters gives the defaults and no warnings", () => {
       webgl: true,
       calm: true,
       view: "home",
-      source: null,
+      source: "live",
       scenario: null,
       speed: 1,
       seed: 1,
@@ -68,7 +68,7 @@ test("junk in each key falls back and the warning names that key", () => {
     ["calm", "no", true],
     ["freeze", "true", false],
     ["view", "foo", "home"],
-    ["source", "a b!", null],
+    ["source", "a b!", "live"],
     ["scenario", "x".repeat(40), "steady"],
     ["speed", "5", 1],
     ["seed", "-3", 1],
@@ -123,13 +123,37 @@ test("source=mock and scenario=steady are accepted", () => {
   });
 });
 
-test("an unknown source warns and falls back to null; scenario and speed are then ignored", () => {
-  const { params, warnings } = parseParams("?source=live&scenario=burst");
-  expect(params).toMatchObject({ source: null, scenario: "burst" });
+test("source defaults to live without freeze=1 and to none with it", () => {
+  expect(parseParams("")).toMatchObject({ params: { source: "live" }, warnings: [] });
+  expect(parseParams("?dev=1&view=hall").params.source).toBe("live");
+  expect(parseParams("?freeze=1")).toMatchObject({ params: { source: null }, warnings: [] });
+});
+
+test("source=live is accepted, with or without freeze=1", () => {
+  expect(parseParams("?source=live")).toMatchObject({ params: { source: "live" }, warnings: [] });
+  expect(parseParams("?source=live&freeze=1")).toMatchObject({
+    params: { source: "live", freeze: true },
+    warnings: [],
+  });
+});
+
+test("source=mock without a scenario selects steady", () => {
+  expect(parseParams("?source=mock")).toMatchObject({
+    params: { source: "mock", scenario: "steady" },
+    warnings: [],
+  });
+  expect(parseParams("?source=mock&scenario=burst").params.scenario).toBe("burst");
+});
+
+test("an unknown source warns and falls back to the default; scenario is then ignored", () => {
+  const { params, warnings } = parseParams("?source=cloud&scenario=burst");
+  expect(params).toMatchObject({ source: "live", scenario: "burst" });
   expect(warnings).toHaveLength(2);
   expect(warnings[0]).toContain("source");
+  expect(warnings[0]).toContain("live or mock");
   expect(warnings[1]).toContain("scenario");
   expect(warnings[1]).toContain("ignored");
+  expect(parseParams("?source=cloud&freeze=1").params.source).toBeNull();
 });
 
 test.each(SCENARIO_NAMES)("scenario=%s is accepted with source=mock", (name) => {
