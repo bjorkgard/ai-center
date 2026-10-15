@@ -8,7 +8,8 @@ import {
   type ApplyOptions,
   type DataState,
 } from "../../data/reduce.ts";
-import type { AgentEvent, Source, SourceStatus } from "../../data/schema.ts";
+import type { AgentEvent, LogMessage, Source, SourceStatus } from "../../data/schema.ts";
+import type { RootInfoMessage } from "../../data/wire.ts";
 
 export type SourceState = SourceStatus | "idle";
 
@@ -17,6 +18,30 @@ export interface SourceInfo {
   status: SourceState;
   detail?: string;
 }
+
+// One log file's absolute line total, as the log server last reported it (chunk 14c).
+export interface LogLine {
+  path: string;
+  fileId: string;
+  total: number;
+}
+
+// What the log server says besides events. Kept out of the event reducer: the totals are
+// absolute, so a re-read replaces the value. Keyed by path + fileId.
+export interface LogState {
+  logLines: Record<string, LogLine>;
+  logProgress: { done: number; total: number } | null;
+  logRoots: RootInfoMessage[] | null;
+  // True once the server has answered on this connection, so a later loss is not a first failure.
+  logSeen: boolean;
+}
+
+const emptyLog = (): LogState => ({
+  logLines: {},
+  logProgress: null,
+  logRoots: null,
+  logSeen: false,
+});
 
 export type ApplyFn = (state: DataState, events: AgentEvent[], options?: ApplyOptions) => DataState;
 
@@ -50,9 +75,11 @@ export interface DataActions {
   // `nowMs`; a no-op while the clock is paused, when `nowMs` is not later than the last call
   // and while the source catches up; commits only when something changed (CEO C77, E51).
   advanceTo(nowMs: number): void;
+  // Files one of the log server's non-event messages.
+  ingestLog(message: LogMessage): void;
 }
 
-export type DataSlice = DataState & { source: SourceInfo } & ClockInfo & DataActions;
+export type DataSlice = DataState & { source: SourceInfo } & ClockInfo & LogState & DataActions;
 
 const IDLE: SourceInfo = { name: null, status: "idle" };
 
@@ -65,8 +92,8 @@ const mirror = (clock: SimClock): Pick<ClockInfo, "clock" | "speed" | "paused" |
   locked: clock.locked,
 });
 
-export function initialData(): DataState & { source: SourceInfo } & ClockInfo {
-  return { ...emptyData(), source: IDLE, ...NO_CLOCK, sourceEpoch: 0 };
+export function initialData(): DataState & { source: SourceInfo } & ClockInfo & LogState {
+  return { ...emptyData(), ...emptyLog(), source: IDLE, ...NO_CLOCK, sourceEpoch: 0 };
 }
 
 // One warning per source and issue path per minute; the clock is injectable (eng review).
@@ -137,6 +164,7 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       setWarnClock(clock);
       set({
         ...emptyData(),
+        ...emptyLog(),
         source: { name: source.name, status: "idle" },
         ...mirror(source.clock ?? createLiveClock()),
         sourceEpoch: get().sourceEpoch + 1,
@@ -145,6 +173,9 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       active = { source, token };
       source.onEvents((raw, through) => {
         if (token === tokens) get().ingest(source.name, raw, undefined, through);
+      });
+      source.onLog?.((message) => {
+        if (token === tokens) get().ingestLog(message);
       });
       source.onStatus((status, detail) => {
         if (token === tokens) setStatus(source.name, status, detail);
@@ -157,7 +188,13 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
     },
     disconnect: () => {
       detach();
-      set({ ...emptyData(), source: IDLE, ...NO_CLOCK, sourceEpoch: get().sourceEpoch + 1 });
+      set({
+        ...emptyData(),
+        ...emptyLog(),
+        source: IDLE,
+        ...NO_CLOCK,
+        sourceEpoch: get().sourceEpoch + 1,
+      });
     },
     play: () => act((clock) => clock.play()),
     pause: () => act((clock) => clock.pause()),
@@ -170,6 +207,21 @@ export const createDataSlice: StateCreator<DataSlice, [], [], DataSlice> = (set,
       lastAdvance = nowMs;
       const next = advance(state, nowMs);
       if (next !== state) set(next);
+    },
+    ingestLog: (message) => {
+      if (!get().logSeen) set({ logSeen: true });
+      if (message.type === "lines") {
+        const { path, fileId, total } = message;
+        // One row per path: a new identity (rotation, or an id that moves) replaces the old one.
+        const kept = Object.entries(get().logLines).filter(([, line]) => line.path !== path);
+        set({
+          logLines: { ...Object.fromEntries(kept), [path + fileId]: { path, fileId, total } },
+        });
+      } else if (message.type === "progress") {
+        set({ logProgress: { done: message.done, total: message.total } });
+      } else {
+        set({ logRoots: message.roots });
+      }
     },
     ingest: (name, raw, apply = applyBatch, deliveredThrough) => {
       if (deliveredThrough !== undefined)

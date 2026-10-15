@@ -16,6 +16,18 @@ test("accepts every message type of the protocol", () => {
       type: "roots",
       roots: [{ path: "/r", files: 0, reason: "root not found", source: "default" }],
     },
+    {
+      type: "roots",
+      roots: [
+        {
+          path: "/c.json",
+          files: 0,
+          reason: "invalid config file",
+          source: "config",
+          configError: true,
+        },
+      ],
+    },
     { type: "heartbeat" },
   ]) {
     expect(ServerMessage.safeParse(message).success).toBe(true);

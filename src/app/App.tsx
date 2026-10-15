@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { installDataDev } from "../scene/devHooks.ts";
+import { createLiveSource } from "../data/liveSource.ts";
 import { createMockSource } from "../data/mock.ts";
 import { PerfHud } from "../scene/PerfHud.tsx";
 import { SceneCanvas } from "../scene/SceneCanvas.tsx";
 import { CardLayer } from "../scene/cards/CardLayer.tsx";
 import { backdropFor } from "../scene/cards/select.ts";
+import { FirstRunCard } from "../ui/FirstRunCard.tsx";
 import { Loader } from "../ui/Loader.tsx";
 import { Shell } from "../ui/Shell.tsx";
 import { ToastHost } from "../ui/ToastHost.tsx";
@@ -51,14 +53,16 @@ export function App() {
 
   // The data slice owns the source; StrictMode's double mount ends connect, disconnect, connect.
   useEffect(() => {
-    if (params.source !== "mock") return;
+    if (params.source === null) return;
     useStore.getState().connect(
-      createMockSource({
-        seed: params.seed,
-        scenario: params.scenario ?? "steady",
-        freeze: params.freeze,
-        speed: params.speed,
-      }),
+      params.source === "live"
+        ? createLiveSource()
+        : createMockSource({
+            seed: params.seed,
+            scenario: params.scenario ?? "steady",
+            freeze: params.freeze,
+            speed: params.speed,
+          }),
     );
     return () => useStore.getState().disconnect();
   }, [params.source, params.seed, params.scenario, params.freeze, params.speed]);
@@ -95,6 +99,7 @@ export function App() {
         }}
       >
         <CardLayer />
+        {!lookdev && <FirstRunCard />}
         {!lookdev && <FocusBrackets />}
         {params.dev && !lookdev && (
           <PerfHud

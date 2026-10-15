@@ -264,6 +264,7 @@ export function createLogServer(options: LogServerOptions): LogServer {
           files: 0,
           reason: `${resolution.message}; fix or remove the file (see ${README})`,
           source: "config",
+          configError: true,
         },
       ];
     }

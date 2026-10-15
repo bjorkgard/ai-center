@@ -116,7 +116,8 @@ test("clicking a session row lists its events", async ({ page }) => {
 });
 
 test("60 sessions show 50 rows and +10 more; none shows the empty text", async ({ page }) => {
-  await openData(page, "dev=1");
+  // No source: without freeze=1 the page connects the live one.
+  await openData(page, "dev=1&freeze=1");
   await expect(page.locator("[data-testid=data-empty]")).toHaveText(
     "No sessions yet (source: idle)",
   );

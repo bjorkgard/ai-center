@@ -8,7 +8,7 @@ export interface AppParams {
   webgl: boolean;
   calm: boolean;
   view: ViewName;
-  source: string | null;
+  source: "live" | "mock" | null;
   scenario: string | null;
   speed: Speed;
   seed: number;
@@ -58,9 +58,14 @@ export function parseParams(search: string): ParsedParams {
     "home",
   );
   const freeze = pick("freeze", { 1: true }, false);
-  const source = pick<string | null>("source", { mock: "mock" }, null);
+  // Live is the default; a frozen page connects nothing unless it asks for a source (C79).
+  const source = pick<"live" | "mock" | null>(
+    "source",
+    { live: "live", mock: "mock" },
+    freeze ? null : "live",
+  );
   const speed = pick<Speed>("speed", { 1: 1, 10: 10, 60: 60 }, 1);
-  let scenario: string | null = null;
+  let scenario: string | null = source === "mock" ? "steady" : null;
   const rawScenario = q.get("scenario");
   if (rawScenario !== null) {
     if (isScenario(rawScenario)) scenario = rawScenario;

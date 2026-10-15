@@ -14,7 +14,7 @@
     "release:dry": "semantic-release --dry-run --no-ci",
     "preview": "vp preview",
     "prepare": "vp config",
-    "e2e": "playwright test --project=chromium --project=firefox",
+    "e2e": "playwright test --project=chromium --project=firefox --project=logserver",
     "shots": "vp build && node scripts/shots.ts",
     "e2e:local": "playwright test && vp run shots"
   },

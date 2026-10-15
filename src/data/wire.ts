@@ -37,6 +37,8 @@ export const RootInfoMessage = z.object({
   files: Count,
   reason: z.optional(z.string()),
   source: RootSource,
+  // Set when `path` is the config file itself and it could not be used (instead of a folder).
+  configError: z.optional(z.boolean()),
 });
 export type RootInfoMessage = z.infer<typeof RootInfoMessage>;
 

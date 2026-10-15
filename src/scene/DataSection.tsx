@@ -46,6 +46,7 @@ function pick() {
     tokens: s.tokens,
     modelTokens: s.modelTokens,
     unknownSessions: s.unknownSessions,
+    logLines: s.logLines,
     // The whole second the store has advanced to: what the metrics are read at.
     at: Math.floor(metricsTime(s.clock) / 1000) * 1000,
     ring: s.ring,
@@ -64,6 +65,7 @@ const same = (a: Snapshot, b: Snapshot) =>
   a.tokens === b.tokens &&
   a.modelTokens === b.modelTokens &&
   a.unknownSessions === b.unknownSessions &&
+  a.logLines === b.logLines &&
   a.at === b.at &&
   a.version === b.version &&
   a.time === b.time &&
@@ -108,6 +110,15 @@ function sinceAnchor(ms: number): string {
   const part = (n: number) => String(n).padStart(2, "0");
   return `+${part(Math.floor(total / 3600))}:${part(Math.floor(total / 60) % 60)}:${part(total % 60)}`;
 }
+
+// A log file's line total as a real metric: the whole file, so the 24 h window applies to which
+// files are read, not to the lines (per-line windows arrive with the chunk 15 timestamps).
+const logLineMetric = (total: number): Metric => ({
+  value: total,
+  unit: "lines",
+  provenance: "real",
+  basis: "whole file; files modified in the last 24 h",
+});
 
 // The metrics the section lists, each as [data-metric name, row label, Metric] (spec 3.6). Hall
 // rows read the hottest hall.
@@ -236,6 +247,25 @@ export const DataSection = memo(function DataSection({ frozen, seed, scenario }:
           </div>
         ))}
       </dl>
+      {source.name === "live" && Object.keys(snap.logLines).length > 0 && (
+        <dl className="m-0 mt-2 text-text-2" data-testid="data-loglines">
+          {Object.entries(snap.logLines).map(([key, line]) => (
+            <div
+              key={key}
+              data-testid="data-logline"
+              data-path={line.path}
+              className="flex justify-between gap-2"
+            >
+              <dt className="truncate" title={line.path}>
+                {line.path.split(/[\\/]/).at(-1)}
+              </dt>
+              <dd className="m-0 shrink-0">
+                <MetricValue name="logLines" metric={logLineMetric(line.total)} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {list.rows.length === 0 ? (
         <p className="mt-2 text-text-2" data-testid="data-empty">
           {noSessionsText(source.status)}
