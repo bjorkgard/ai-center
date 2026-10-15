@@ -49,7 +49,7 @@ interface Word {
   quoted: boolean;
 }
 
-const HEREDOC = /(?<!<)<<(-?)\s*(['"]?)([A-Za-z_]\w*)\2/;
+const HEREDOC = /(?<!<)<<(-?)\s*(['"]?)([A-Za-z_][\w-]*)\2/;
 
 /**
  * Drops heredoc bodies: after `<<WORD` (also `<<'WORD'`, `<<"WORD"`, `<<-WORD`) every line up to
@@ -176,12 +176,21 @@ const CHECKERS = new Set(["eslint", "tsc", "ruff", "biome"]);
 const TEST_PAIRS = new Set(["vp", "go", "cargo", "playwright", "deno", "make", "just", "bun"]);
 
 function classifySegment(words: Word[]): ToolClass {
-  // A subshell `(cd app && vitest)`: the opening bracket belongs to the first command word.
-  const head = words[0];
-  const unwrapped =
-    head && !head.quoted && head.text.startsWith("(") && head.text.length > 1
-      ? [{ ...head, text: head.text.replace(/^\(+/, "").replace(/\)+$/, "") }, ...words.slice(1)]
-      : words;
+  // A subshell `(cd app && vitest)`: the opening bracket sits on a segment's first word and the
+  // closing one on its last word.
+  const unwrapped = words
+    .map((w, i) =>
+      w.quoted
+        ? w
+        : {
+            ...w,
+            text: (i === 0 ? w.text.replace(/^\(+/, "") : w.text).replace(
+              i === words.length - 1 ? /\)+$/ : /$^/,
+              "",
+            ),
+          },
+    )
+    .filter((w) => w.quoted || w.text !== "");
   const rest = stripWrappers(unwrapped);
   if (rest.length === 0 || rest[0].quoted) return "other";
   const name = basename(rest[0].text);

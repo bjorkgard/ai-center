@@ -131,6 +131,15 @@ describe("documented v1 limits", () => {
   test("a subshell is looked into", () => {
     expect(classifyCommand("(cd app && vitest run)")).toBe("test");
     expect(classifyCommand("(vitest)")).toBe("test");
+    expect(classifyCommand("(cd app && vitest)")).toBe("test");
+    expect(classifyCommand("(cd app && npm test)")).toBe("test");
+    expect(classifyCommand("(cd app && tsc)")).toBe("lint");
+    expect(classifyCommand("(cd app && vp check)")).toBe("lint");
+    expect(classifyCommand("( cd app && pytest )")).toBe("test");
+  });
+
+  test("a heredoc marker may contain a hyphen", () => {
+    expect(classifyCommand("cat <<'END-X'\ngit commit -m x\nEND-X")).toBe("other");
   });
 
   test("a newline separates commands like ;", () => {
