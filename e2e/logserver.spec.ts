@@ -1,20 +1,20 @@
 /// <reference lib="dom" />
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
 
 // The live source against the real log server of the logserver project (playwright.config.ts):
 // a `vp preview` on its own port watching only e2e/.tmp/logs (PLAN chunk 14c, C70). The specs
-// run in order on one worker; the first one needs the directory still empty, as the project's
-// webServer leaves it.
+// run in order on one worker; the D9 spec empties the directory itself.
 test.describe.configure({ mode: "serial" });
 
 const ROOT = resolve("e2e/.tmp/logs");
 const STREAM = /\/api\/stream/;
 let sequence = 0;
-// PLAN: within 1 s. macOS delivers recursive fs.watch events through FSEvents, which measured
-// 0.2 to 2.1 s here, so the 1 s bound holds where inotify is used (Linux, CI) and macOS gets 5 s.
-const APPEND_MS = process.platform === "darwin" ? 5000 : 1000;
+// PLAN: within 1 s, which holds where inotify is used (Linux, CI). macOS delivers recursive
+// fs.watch events through FSEvents, measured 0.19 to 2.1 s here, so macOS gets 6 s: the 14a
+// watcher also rescans every 5 s and catches any append the events miss.
+const APPEND_MS = process.platform === "darwin" ? 6000 : 1000;
 
 // A fixture log file with `count` lines; every spec uses its own file name.
 function fixture(count: number): string {
@@ -22,6 +22,14 @@ function fixture(count: number): string {
   const path = join(ROOT, "proj", `spec-${Date.now()}-${sequence++}.jsonl`);
   writeFileSync(path, Array.from({ length: count }, (_, i) => `{"n":${i}}\n`).join(""));
   return path;
+}
+
+// Removes every fixture so the roots hold no files; the server forgets them on its next rescan.
+function emptyRoot(): void {
+  // Files only: removing the watched folder itself would break its recursive watch.
+  const dir = join(ROOT, "proj");
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) rmSync(join(dir, name), { force: true });
 }
 
 const pill = (page: Page) => page.getByTestId("connection-pill");
@@ -44,9 +52,13 @@ test("a page without source opens the stream WebSocket", async ({ page }) => {
 test("D9: empty roots show the first-run card naming the roots, and Try the demo opens the mock", async ({
   page,
 }) => {
-  await page.goto("/?dev=1");
+  emptyRoot();
   const card = page.getByTestId("first-run-card");
-  await expect(card).toBeVisible();
+  // The server's 5 s rescan drops the removed files; reload until it has.
+  await expect(async () => {
+    await page.goto("/?dev=1");
+    await expect(card).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
   await expect(page.getByTestId("first-run-roots")).toContainText(`${ROOT} (SYNAPSE_LOG_ROOTS)`);
   await expect(card).toContainText("No sessions in the last 24 h");
   await expect(card.getByRole("button")).toHaveText(["Try the demo"]);
@@ -57,7 +69,8 @@ test("D9: empty roots show the first-run card naming the roots, and Try the demo
 
 test("an appended line reaches the dev HUD logLines row within 1 s", async ({ page }) => {
   const path = fixture(2);
-  await page.goto("/?dev=1");
+  // webgl=0 keeps the main thread free of scene frames, so the HUD timing is the stream's.
+  await page.goto("/?dev=1&webgl=0");
   await openDataSection(page);
   const metric = lineRow(page, path).locator("[data-metric=logLines]");
   await expect(metric).toContainText("2 lines");

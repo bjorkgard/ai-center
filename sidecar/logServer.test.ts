@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocketClient from "ws";
 import { afterAll, afterEach, describe, expect, test } from "vite-plus/test";
-import type { ServerMessage } from "../src/data/wire.ts";
+import { createLiveSource, type SocketLike } from "../src/data/liveSource.ts";
+import { parseServerMessage, type ServerMessage } from "../src/data/wire.ts";
 import {
   allowedHost,
   BUFFER_LIMIT,
@@ -229,7 +230,31 @@ describe("streaming line totals", () => {
       expect.objectContaining({ path: "/cfg.json", files: 0, source: "config" }),
     ]);
     expect(broken.rootsMessage()[0].reason).toContain("invalid config file: x");
+    expect(broken.rootsMessage()[0].configError).toBe(true);
+    // The client recognises exactly what the server sends.
+    const socket: SocketLike = {
+      onopen: null,
+      onmessage: null,
+      onclose: null,
+      send: () => {},
+      close: () => {},
+    };
+    const live = createLiveSource({ url: "ws://x", token: () => "t", createSocket: () => socket });
+    const seen: { status: string; detail?: string }[] = [];
+    live.onStatus((status, detail) => seen.push({ status, detail }));
+    live.start();
+    const text = JSON.stringify({ type: "roots", roots: broken.rootsMessage() });
+    expect(parseServerMessage(text)).toBeDefined();
+    socket.onmessage?.({ data: text });
+    expect(seen.at(-1)).toMatchObject({ status: "error" });
+    expect(seen.at(-1)?.detail).toContain("invalid config file: x");
+    expect(seen.at(-1)?.detail).toContain("/cfg.json");
     await broken.stop();
+  });
+
+  test("an ordinary root never carries the config-error flag", async () => {
+    const { logServer } = await startServer(freshRoot());
+    expect(logServer.rootsMessage().some((root) => root.configError !== undefined)).toBe(false);
   });
 
   test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(

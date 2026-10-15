@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../app/store/index.ts";
 import { pageMeta } from "../data/liveSource.ts";
-import { RECONNECT_BANNER_MS, bannerShown, bannerText } from "./connection.ts";
+import { RECONNECT_BANNER_MS, bannerReload, bannerShown, bannerText } from "./connection.ts";
 
 // "vp dev" and "vp run serve" are commands: set them in code type.
 function withCode(text: string) {
@@ -21,6 +21,7 @@ function withCode(text: string) {
 export function ConnectionBanner() {
   const live = useStore((s) => s.source.name === "live");
   const status = useStore((s) => s.source.status);
+  const detail = useStore((s) => s.source.detail);
   const seen = useStore((s) => s.logSeen);
   const [elapsed, setElapsed] = useState(false);
 
@@ -40,8 +41,8 @@ export function ConnectionBanner() {
       data-testid="connection-banner"
       className="pointer-events-auto absolute inset-x-0 top-14 z-10 flex items-center justify-center gap-4 border-b border-status-waiting-user/40 bg-bg px-4 py-2 text-label text-status-waiting-user"
     >
-      <span>{withCode(bannerText(pageMeta("synapse-mode"), status))}</span>
-      {status === "error" && (
+      <span>{withCode(bannerText(pageMeta("synapse-mode"), status, detail))}</span>
+      {bannerReload(status, detail) && (
         <button
           type="button"
           className="h-7 rounded-control border border-status-waiting-user px-3 text-label hover:bg-status-waiting-user/10"

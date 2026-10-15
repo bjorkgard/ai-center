@@ -5,6 +5,7 @@ import { parseServerMessage, STREAM_PATH, type Cursor, type ServerMessage } from
 // A dropped socket or a down server is retried in here, so the store never reconnects and
 // sourceEpoch never moves.
 export const SESSION_EXPIRED = "Session expired. Reload the page.";
+export const WIRE_MISMATCH = "the log server sent a message this page does not understand";
 export const BACKOFF_MS = [1000, 2000, 4000, 10_000] as const;
 const TOKEN_REJECTED = 4401;
 
@@ -65,11 +66,11 @@ const defaultUrl = () => {
   return `${protocol === "https:" ? "wss" : "ws"}://${host}${STREAM_PATH}`;
 };
 
-// The server sends an invalid config file as the single root of its roots message (G5).
-const configError = (message: Extract<ServerMessage, { type: "roots" }>): string | undefined =>
-  message.roots.find(
-    (root) => root.source === "config" && root.reason?.includes("config file") === true,
-  )?.reason;
+// The server sends an unusable config file as a root flagged `configError` (G5).
+const configError = (message: Extract<ServerMessage, { type: "roots" }>): string | undefined => {
+  const root = message.roots.find((entry) => entry.configError === true);
+  return root === undefined ? undefined : `${root.reason ?? "invalid config file"} (${root.path})`;
+};
 
 export function createLiveSource(options: LiveOptions = {}): Source {
   const url = options.url ?? defaultUrl();
@@ -119,8 +120,8 @@ export function createLiveSource(options: LiveOptions = {}): Source {
   };
 
   // One fresh token, then straight back to the socket; the caller counted the rejection.
-  const renewToken = () => {
-    status("reconnecting");
+  const renewToken = (announce: boolean) => {
+    if (announce) status("reconnecting");
     fetchSession().then(
       (fresh) => {
         if (stopped || failed) return;
@@ -158,7 +159,7 @@ export function createLiveSource(options: LiveOptions = {}): Source {
   function connect(): void {
     if (stopped || failed) return;
     if (token === null) {
-      renewToken();
+      renewToken(false);
       return;
     }
     const sent = token;
@@ -172,8 +173,7 @@ export function createLiveSource(options: LiveOptions = {}): Source {
     own.onmessage = (event) => {
       if (socket !== own || stopped || failed) return;
       const message = typeof event.data === "string" ? parseServerMessage(event.data) : undefined;
-      if (message === undefined)
-        return fail("the log server sent a message outside the wire schema");
+      if (message === undefined) return fail(WIRE_MISMATCH);
       if (!accepted) {
         accepted = true;
         attempt = 0;
@@ -187,7 +187,7 @@ export function createLiveSource(options: LiveOptions = {}): Source {
       if (event.code !== TOKEN_REJECTED) return retry();
       if (refreshed) return fail(SESSION_EXPIRED);
       refreshed = true;
-      renewToken();
+      renewToken(true);
     };
   }
 

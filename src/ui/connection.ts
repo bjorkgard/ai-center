@@ -1,4 +1,4 @@
-import { SESSION_EXPIRED } from "../data/liveSource.ts";
+import { SESSION_EXPIRED, WIRE_MISMATCH } from "../data/liveSource.ts";
 import type { RootInfoMessage, RootSource } from "../data/wire.ts";
 import type { SourceInfo, SourceState } from "../app/store/data.ts";
 
@@ -51,10 +51,22 @@ const BANNER: Record<string, string> = {
   preview: "Log server not running. Start it with vp run serve.",
 };
 
-export function bannerText(mode: string | null, status: SourceState): string {
-  if (status === "error") return SESSION_EXPIRED;
+// An error banner states problem, cause and fix: an expired session, a server this page cannot
+// read, or (anything else) the config file the server could not use.
+export function bannerText(mode: string | null, status: SourceState, detail?: string): string {
+  if (status === "error") {
+    if (detail === SESSION_EXPIRED) return SESSION_EXPIRED;
+    if (detail === WIRE_MISMATCH) {
+      return "This page could not understand the log server: server and page versions differ. Update or restart the server, then reload the page.";
+    }
+    return `Log folders not set: ${detail ?? "invalid config file"}. Fix or remove the config file, then restart the server (README #configuration).`;
+  }
   return BANNER[mode ?? ""] ?? BANNER.dev;
 }
+
+/** A reload fixes an expired session or a version mismatch; a broken config file needs an edit. */
+export const bannerReload = (status: SourceState, detail?: string): boolean =>
+  status === "error" && (detail === SESSION_EXPIRED || detail === WIRE_MISMATCH);
 
 /** `waitedMs` is how long the status has been reconnecting. */
 export function bannerShown(status: SourceState, everLive: boolean, waitedMs: number): boolean {

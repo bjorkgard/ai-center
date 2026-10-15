@@ -1,10 +1,11 @@
 import { expect, test } from "vite-plus/test";
-import { SESSION_EXPIRED } from "../data/liveSource.ts";
+import { SESSION_EXPIRED, WIRE_MISMATCH } from "../data/liveSource.ts";
 import type { SourceStatus } from "../data/schema.ts";
 import type { RootInfoMessage } from "../data/wire.ts";
 import {
   RECONNECT_BANNER_MS,
   bannerShown,
+  bannerReload,
   bannerText,
   demoUrl,
   firstRun,
@@ -68,9 +69,31 @@ test.each([
   expect(bannerText(mode, "reconnecting")).toBe(text);
 });
 
-test("an unknown or missing mode falls back to the dev text; a rejected session overrides it", () => {
+test("an unknown or missing mode falls back to the dev text", () => {
   expect(bannerText(null, "reconnecting")).toBe(bannerText("dev", "reconnecting"));
-  expect(bannerText("preview", "error")).toBe("Session expired. Reload the page.");
+});
+
+test("only a second token rejection says Session expired and offers Reload", () => {
+  expect(bannerText("preview", "error", SESSION_EXPIRED)).toBe("Session expired. Reload the page.");
+  expect(bannerReload("error", SESSION_EXPIRED)).toBe(true);
+});
+
+test("a wire mismatch states problem, cause and fix, with Reload", () => {
+  const text = bannerText("dev", "error", WIRE_MISMATCH);
+  expect(text).toContain("could not understand");
+  expect(text).toContain("versions differ");
+  expect(text).toContain("restart the server");
+  expect(bannerReload("error", WIRE_MISMATCH)).toBe(true);
+});
+
+test("a config-file error names the problem, the file and the README, with no Reload", () => {
+  const detail = "invalid config file: roots must be an array (/home/u/.config/c.json)";
+  const text = bannerText("dev", "error", detail);
+  expect(text).toContain(detail);
+  expect(text).toContain("README #configuration");
+  expect(text).not.toContain("Session expired");
+  expect(bannerReload("error", detail)).toBe(false);
+  expect(bannerReload("reconnecting")).toBe(false);
 });
 
 test("the banner shows on a failed first connection at once and on later loss after 3 s", () => {

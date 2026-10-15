@@ -2,6 +2,7 @@ import { expect, test } from "vite-plus/test";
 import {
   BACKOFF_MS,
   SESSION_EXPIRED,
+  WIRE_MISMATCH,
   SessionRejected,
   createLiveSource,
   type SocketLike,
@@ -287,13 +288,23 @@ test("a page without a token meta asks /api/session before the first socket", as
   expect(r.last().sent).toMatchObject([{ type: "hello", token: "tok-2" }]);
 });
 
+test("renewing the token on the first connection keeps the status connecting", async () => {
+  const r = rig({ token: null });
+  r.source.start();
+  await flush();
+  expect(r.statuses).toEqual(["connecting"]);
+  r.last().open();
+  r.last().say({ type: "progress", done: 1, total: 1 });
+  expect(r.statuses).toEqual(["connecting", "live"]);
+});
+
 test("a message outside the wire schema sets error and closes the socket", () => {
   const r = rig();
   r.source.start();
   r.last().open();
   r.last().say({ type: "events", events: [] });
   expect(r.statuses.at(-1)).toBe("error");
-  expect(r.details.at(-1)).toContain("wire");
+  expect(r.details.at(-1)).toBe(WIRE_MISMATCH);
   expect(r.last().closed).toBe(true);
   r.last().drop();
   r.fire();
@@ -312,11 +323,24 @@ test("an invalid config file in the roots message sets error with its reason", (
         files: 0,
         source: "config",
         reason: "invalid config file: roots must be an array; fix or remove the file",
+        configError: true,
       },
     ],
   });
   expect(r.statuses.at(-1)).toBe("error");
   expect(r.details.at(-1)).toContain("invalid config file");
+  expect(r.details.at(-1)).toContain("/home/u/.config/synapse/config.json");
+});
+
+test("a root reason that merely mentions a config file is not a config error", () => {
+  const r = rig();
+  r.source.start();
+  r.last().open();
+  r.last().say({
+    type: "roots",
+    roots: [{ path: "/x", files: 0, source: "config", reason: "root not found: see config file" }],
+  });
+  expect(r.statuses).not.toContain("error");
 });
 
 test("a missing root is reported through roots and is not an error", () => {
