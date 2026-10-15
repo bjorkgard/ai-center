@@ -113,7 +113,8 @@ function laneEvents(seed: number, lanes: Lane[], lane: Lane, slot: number): Agen
   const out: { off: number; make: (id: string, ts: string) => AgentEvent }[] = [];
   const add = (off: number, type: AgentEvent["type"], extra: Partial<AgentEvent> = {}) => {
     out.push({
-      off,
+      // A session's first slot starts it at 10 ms; nothing else may land at or before that.
+      off: pos === 0 && type !== "session_start" ? Math.max(off, 11) : off,
       make: (id, ts) => ({
         id,
         vendor: lane.vendor,
@@ -241,6 +242,8 @@ export class MockSource implements Source {
     }
     if (generation !== this.generation) return;
     this.statusCb("live");
+    // A live callback may have stopped the source; scheduling now would leak the timer.
+    if (generation !== this.generation) return;
     if (!freeze)
       this.cancel = (this.options.schedule ?? realSchedule)(() => this.tick(generation), TICK_MS);
   }

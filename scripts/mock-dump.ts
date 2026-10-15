@@ -26,14 +26,15 @@ const value = (flag: string): string => given.get(flag) ?? fail(`${flag} is requ
 const seedText = value("--seed");
 if (!/^\d{1,9}$/.test(seedText)) fail(`--seed must be a whole number, got "${seedText}"`);
 const minutesText = value("--minutes");
-if (!/^\d+$/.test(minutesText) || Number(minutesText) < 1) {
+const minutes = Number(minutesText);
+if (!/^\d+$/.test(minutesText) || !Number.isSafeInteger(minutes * 60_000) || minutes < 1) {
   fail(`--minutes must be a whole number above 0, got "${minutesText}"`);
 }
 const scenario = value("--scenario");
 if (scenario !== "steady") fail(`unknown scenario "${scenario}" (only steady)`);
 const out = value("--out");
 
-const events = mockEvents(Number(seedText), scenario, 0, Number(minutesText) * 60_000);
+const events = mockEvents(Number(seedText), scenario, 0, minutes * 60_000);
 for (const event of events) {
   if (!AgentEvent.safeParse(event).success) fail(`the mock made an invalid event ${event.id}`);
 }

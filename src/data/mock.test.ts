@@ -55,6 +55,34 @@ test("an unknown scenario throws", () => {
   expect(() => mockEvents(1, "burst", 0, 1000)).toThrow("unknown scenario");
 });
 
+test("every event of a session is strictly after its session_start, over seeds 1-50", () => {
+  const check = (seed: number, from: number, to: number) => {
+    const starts = new Map<string, number>();
+    for (const e of mockEvents(seed, "steady", 0, to)) {
+      const ms = Date.parse(e.ts) - ANCHOR_MS;
+      if (e.type === "session_start") starts.set(e.sessionId, ms);
+      else if (ms >= from) {
+        const start = starts.get(e.sessionId);
+        expect(start, `${e.sessionId} ${e.type} before its start`).toBeDefined();
+        expect(ms).toBeGreaterThan(start!);
+      }
+    }
+  };
+  for (let seed = 1; seed <= 50; seed++) check(seed, 0, 12 * MIN);
+  check(3, 0, 90 * 1000);
+});
+
+test("seed 23 lane 8: the tool call in the sub's first slot comes after its session_start", () => {
+  const events = mockEvents(23, "steady", 123_000, 124_000).filter((e) =>
+    e.sessionId.includes("sub"),
+  );
+  const start = events.find((e) => e.type === "session_start");
+  expect(start).toBeDefined();
+  for (const e of events) {
+    if (e !== start) expect(Date.parse(e.ts)).toBeGreaterThan(Date.parse(start!.ts));
+  }
+});
+
 // A fake sim clock and timer: nothing here waits for real time.
 function harness(options: Partial<MockSourceOptions> = {}) {
   let clock = CATCHUP_MS;
@@ -238,4 +266,13 @@ test("stopping and restarting 20 times, then one more start, ends in the state o
   expect(h.log).toEqual(fresh.log);
   expect(h.log.at(-1)).toBe("live");
   expect(h.hasTimer()).toBe(true);
+});
+
+test("a stop() inside the live callback leaves no timer running", () => {
+  const h = harness();
+  h.source.onStatus((s) => {
+    if (s === "live") h.source.stop();
+  });
+  h.source.start();
+  expect(h.hasTimer()).toBe(false);
 });
