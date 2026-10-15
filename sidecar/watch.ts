@@ -76,6 +76,8 @@ export function createWatcher(options: WatchOptions): Watcher {
 
   const entries: RootEntry[] = options.roots.map((path) => ({ path, state: "missing" }));
   const known = new Map<string, Known>();
+  // Files seen but older than 24 h: not listed again by the new-file sweep of a watched root.
+  const tooOld = new Set<string>();
   let timer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
   let rescanning = false;
@@ -107,14 +109,19 @@ export function createWatcher(options: WatchOptions): Watcher {
     if (!info.isFile()) return;
     const mtimeMs = Number(info.mtimeMs);
     const previous = known.get(path);
-    if (previous === undefined && now() - mtimeMs > maxAgeMs) return;
+    if (previous === undefined && now() - mtimeMs > maxAgeMs) {
+      tooOld.add(path);
+      return;
+    }
+    tooOld.delete(path);
     const signature = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}`;
     known.set(path, { root, mtimeMs, signature });
     if (notify && previous === undefined) filesChanged();
     if (notify && (force || previous?.signature !== signature)) onFile(path);
   }
 
-  async function listRoot(entry: RootEntry, notify: boolean): Promise<void> {
+  /** Lists a root. `onlyNew` skips files already known (a watched root stats those separately). */
+  async function listRoot(entry: RootEntry, notify: boolean, onlyNew = false): Promise<void> {
     let names: string[];
     try {
       names = await readdir(entry.path, { recursive: true });
@@ -122,8 +129,11 @@ export function createWatcher(options: WatchOptions): Watcher {
       markUnreadable(entry, error);
       return;
     }
+    const paths = names.filter(isJsonl).map((name) => join(entry.path, name));
     await Promise.all(
-      names.filter(isJsonl).map((name) => scanFile(entry.path, join(entry.path, name), notify)),
+      paths
+        .filter((path) => !onlyNew || !(known.has(path) || tooOld.has(path)))
+        .map((path) => scanFile(entry.path, path, notify)),
     );
   }
 
@@ -217,6 +227,9 @@ export function createWatcher(options: WatchOptions): Watcher {
           await probe(entry, true);
         } else if (entry.state === "polling") {
           await listRoot(entry, true);
+        } else {
+          // A create event can be lost too: sweep a watched root for files not yet known.
+          await listRoot(entry, true, true);
         }
       }
       // Backstop for missed events: stat every known file of a watched root.
