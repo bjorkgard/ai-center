@@ -1,3 +1,11 @@
+# [0.16.0](https://github.com/bjorkgard/ai-center/compare/v0.15.0...v0.16.0) (2026-10-15)
+
+
+### Features
+
+* add Claude Code parser, log probe and fixture tools ([#36](https://github.com/bjorkgard/ai-center/issues/36)) ([e7de029](https://github.com/bjorkgard/ai-center/commit/e7de02974971d73ff82b94bbfe4d7803e46b41cd))
+* add live source, connection pill, banner and first-run card ([#35](https://github.com/bjorkgard/ai-center/issues/35)) ([3e39009](https://github.com/bjorkgard/ai-center/commit/3e390094d1f704194000289287c643c81e7f8a71))
+
 # [0.15.0](https://github.com/bjorkgard/ai-center/compare/v0.14.0...v0.15.0) (2026-10-15)
 
 
