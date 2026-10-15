@@ -112,6 +112,7 @@
   - Depends on: chunk 15.
 
 - **P3: Retire the `logLines` slice when parsers land** (added by /autoplan chunks 13-14b CEO review Section 10, 2026-10-15)
+  - Decided by /autoplan chunks 15-16 review (X1, 2026-10-15): keep the slice and repurpose it as per-file parser health (lines, events, ignored, unknown, malformed, oversize, newest version); this entry closes when chunk 15 merges.
   - What: remove the per-file line-count slice and its HUD row once chunk 15 streams `AgentEvent`s, or keep it as a dev-only diagnostic.
   - Why: two data paths from one server confuse tests and the HUD.
   - Context: chunk 14a pass-3 1.1 requirement, `src/data/wire.ts`.
@@ -126,3 +127,59 @@
   - Effort: human S / CC S.
   - Trigger to pick up: first user report of an empty first run or stale prices.
   - Depends on: chunks 13, 14a.
+
+- **P3: Session title for rack labels** (deferred by /autoplan chunks 15-16 CEO review X3, 2026-10-15)
+  - What: a redacted `title?` field from Claude `custom-title`, `ai-title` and `agent-name` lines, so racks and panels can show a human name instead of a session id.
+  - Why: a rack labelled "fix auth redirect" is recognisable at a glance; a uuid is not.
+  - Context: chunk 15 ignores these line types (known-ignored list in `docs/log-formats/claude.md`); chunk 24 owns labels. Titles are user text, so they go through `redact` and the 120-character cut.
+  - Effort: human S / CC S.
+  - Trigger to pick up: chunk 24 starts.
+  - Depends on: chunks 15, 24.
+
+- **P3: Vendor cost cross-check from Claude `cost-state`** (deferred by /autoplan chunks 15-16 CEO spec review X6, 2026-10-15)
+  - What: read `cost-state` lines (`totalCostUSD`, `modelUsage`) and compare them with the chunk 13 estimated cost; consider showing them as a `real` metric where present.
+  - Why: a vendor-computed cost calibrates the price table and could replace an estimate with a fact.
+  - Context: 189 `cost-state` lines in 204 Claude sessions on the author's Mac (2026-10-15); chunk 15 ignores the type.
+  - Effort: human S / CC S.
+  - Trigger to pick up: chunk 28 KPI cards.
+  - Depends on: chunks 13, 15.
+
+- **P2: Run `logs:probe` on other machines before 14b** (deferred by /autoplan chunks 15-16 CEO voice F5, X7, 2026-10-15)
+  - What: collect `vp run logs:probe -- --json` output (keys and counts only) from 2-3 other machines and merge their type lists into the parsers' ignored lists and `TESTED_VERSIONS`.
+  - Why: the format rules come from one machine (n=1); the public binary meets other setups.
+  - Context: `docs/log-formats/*.md`, chunk 15 X2/DX10.
+  - Effort: human S / CC S (needs other people).
+  - Trigger to pick up: chunk 14b starts.
+  - Depends on: chunk 15.
+
+- **P3: Persist parser state per file** (deferred by /autoplan chunks 15-16 CEO voice F7, X8, 2026-10-15)
+  - What: save parser state keyed by `fileId` and offset so a restart does not re-read 24 h of logs.
+  - Why: startup time grows with log volume.
+  - Context: C96 budget (15 s on the author's Mac, 186 MB measured on 2026-10-15); becomes P1 if the measured backfill exceeds it.
+  - Effort: human M / CC S.
+  - Trigger to pick up: measured backfill over 15 s.
+  - Depends on: chunk 15.
+
+- **P3: Option to hide prompt text** (deferred by /autoplan chunks 15-16 CEO voice F9, X9, TASTE T6, 2026-10-15)
+  - What: `--no-task-text` (and env/config equivalents) so `currentTask` only shows plan items, never prompt text.
+  - Why: prompts can hold names or internal URLs that pattern redaction misses.
+  - Context: D16 (120-character redacted task text) stays the default.
+  - Effort: human S / CC S.
+  - Trigger to pick up: a user asks, or the binary ships to people other than the author.
+  - Depends on: chunk 15.
+
+- **P3: User-extendable toolClass patterns** (deferred by /autoplan chunks 15-16 DX review X10, TASTE T7, 2026-10-15)
+  - What: a `toolClasses` config key that adds test and lint runner patterns to the built-in lists.
+  - Why: custom runners (`make ci`, project scripts) show as `other`, so Evaluating never lights.
+  - Context: `sidecar/parsers/toolClass.ts`, chunk 14a config file.
+  - Effort: human S / CC S.
+  - Trigger to pick up: first report of a missed runner.
+  - Depends on: chunk 15.
+
+- **P3: Monorepo sub-path to hall mapping** (deferred by /autoplan chunks 15-16 DX review X11, 2026-10-15)
+  - What: config that maps a repository sub-path to its own hall (or merges two keys).
+  - Why: a monorepo is one hall today (C81 uses the git root).
+  - Context: `sidecar/sessionKeys.ts`, D5.
+  - Effort: human S / CC S.
+  - Trigger to pick up: a user asks.
+  - Depends on: chunk 15.
