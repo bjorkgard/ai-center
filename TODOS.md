@@ -43,3 +43,11 @@
   - Priority: P3.
   - Trigger to pick up: chunk 36's M1 Air runs show calm mode GPU-bound or the shadow pass dominating frame time.
   - Depends on: chunk 08 campus and chunk 36 measurements.
+
+- **P3: Store-backed rack count before chunk 18** (deferred by /plan-ceo-review C31, 2026-10-15, chunk 11 review)
+  - What: with `source=mock`, a store-backed `rackCount(hall)` in `SceneSignals` for halls A and B, counted from the mock's live main sessions; LEDs, duty and packets stay on `src/scene/fake.ts`.
+  - Why deferred: chunk 18 owns the store-backed `SceneSignals`, its render-count test (eng G11) and leak checks, and mapping projects to halls needs the chunk 19 reconciler, so an early version would be rewritten.
+  - Context: `src/scene/sceneSignals.ts` (the one place that picks the signal implementation), `src/scene/signals.ts`, chunk 11 data slice, `docs/PLAN.md` "CEO review record: Chunk 11", C31.
+  - Trigger to pick up: chunk 18 starts, or a demo needs the campus to react to mock data before then.
+  - Effort: M (human ~3h / CC ~20 min).
+  - Depends on: chunk 11 data slice.

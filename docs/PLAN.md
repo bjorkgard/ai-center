@@ -579,9 +579,9 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 #### [ ] 11. Schema, store, and steady mock source
 - **Goal:** One store fed by a mock stream, visible in a debug panel.
 - **Depends on:** 04a, for the store module it extends (CEO S-RW1); can run in parallel with 04b-10.
-- **Tasks:** `schema.ts` with zod types from section 2. Zustand store: incremental reducers into `projects`, `sessions`, `subagents`, `jobs` (authoritative), plus a capped ring buffer for the recent timeline only (eng review Q1). Source interface `{ start, stop, onEvents }` delivering events in batches; reducers apply a whole batch in one store update so subscribers fire once per batch, not once per event (eng review P3). Seeded deterministic mock generator, scenario `steady` (3 projects, Claude + Codex mix, a few subagents). Dev menu source switch. Raw debug panel listing sessions.
-- **Acceptance:** Unit tests: same seed gives same event sequence; reducers produce expected session counts and token totals for a fixed fixture. Debug panel updates live. No React re-render storm: React Profiler shows the debug panel re-rendering at most a few times per second.
-- **README:** "Data sources" section (mock only for now). Image `11-store-debug.png`.
+- **Tasks:** `src/data/schema.ts` with zod types from section 2, using zod 4's `zod/mini` entry; add `zod` to `package.json` (CEO C40). Zustand store: incremental reducers into `projects`, `sessions`, `subagents` and token totals (authoritative; the jobs slice comes in chunk 13, CEO C35), plus a capped ring buffer for the recent timeline only (eng review Q1). Source interface `{ start, stop, onEvents, onStatus }` delivering events in batches; `onStatus(status, detail?)` reports `connecting`, `catching_up`, `live`, `closed` or `error`, the store keeps `source.status`, and `stop()` is idempotent with no event or status delivered after it (CEO C34); reducers apply a whole batch in one store update so subscribers fire once per batch, not once per event (eng review P3). Every event from a source passes `AgentEvent.safeParse` before reducing: invalid events are dropped, counted per source and zod issue path in `dataHealth.invalid`, and the first per path per minute logs one `[data]` warning naming the source, event id, issue path and code (never the field's value, D16); the rest of the batch applies. `applyBatch` builds the next state and commits it with one `set()`; if it throws, nothing commits, one `[data]` error names the source, batch size and first event id, and `source.status` becomes `error`. Later batches still apply, each all-or-nothing; the status stays `error` with the first failure's detail until the next `connect()`, ignoring later `live` reports, and `dataHealth.failedBatches` counts failures (eng E33). `MockSource` ignores a `now()` not later than its last tick (CEO C36). The ring buffer is a fixed-size circular array with a head index (no `Array.shift`), evicting each event's id from the seen-id set as it goes (eng chunk 11 Performance note). Reducers skip an event whose `id` is in a seen-id set bounded to the ring buffer's ids (evicted with them) and count skips in `dataHealth.duplicates`; per-session `lastSeen` and `status` follow the event with the greatest `ts`, not arrival order; an empty batch makes no `set()` (CEO C38). The data slice owns the source lifecycle: `connect(source)` stops any previous source, clears aggregates, ring buffer, seen ids and health, then starts it; `disconnect()` stops and clears; the `App.tsx` effect calls `connect` and returns `disconnect`, so StrictMode's double mount ends in a clean state (eng E30). Each source status change logs one `[data]` line (`[data] mock: catching_up -> live`), as `[scene]` transitions do (CEO S-RW40); the debug panel's header row shows source, status, events applied, batches, last batch size and apply time in ms, invalid and duplicate counts (CEO C41). Seeded deterministic mock generator, scenario `steady` (3 projects, Claude + Codex mix, a few subagents; project keys, titles and task text from fixed fictional lists such as `/work/orbit-api`, never the machine, `cwd` or env, CEO C37): a pure `mockEvents(seed, scenario, fromMs, toMs)` in `src/data/mock.ts` over sim milliseconds, using `src/sim/rng.ts`, with `ts` = the fixed anchor 2026-01-01T09:00:00Z + sim ms; it never reads `Date.now()` or timers. `MockSource` takes an injected sim clock `now()`, sends the first 10 sim minutes as catch-up on start, then every 250 ms sends the events between its last and current `now()`; under `freeze=1` it sends only the catch-up (CEO C33). Every source delivers batches of at most `MAX_BATCH` = 500 events (`schema.ts`), so the mock splits its catch-up and stays `catching_up` until the last piece (eng E32). Dev menu source switch; `source` accepts `mock` and `scenario` accepts `steady` through the `params.ts` allowlist, other values warn and fall back (CEO S-RW2). Raw debug panel as a collapsed "Data" section in the `dev=1` HUD menu after Network (Geist Mono 12 px, like the Phase 3 sections): the source switch, the C41 health row, and sessions sorted by `lastSeen` newest first, capped at 50 rows with "+N more", or "No sessions yet (source: <status>)" when empty (CEO C42); clicking a session row lists, under it, its last 20 events (time, type, tool name, status) from the ring buffer, `dev=1` only (CEO C32). `vp run mock:dump -- --seed N --scenario steady --minutes M --out <file>` writes the mock's normalised events as JSONL to `<file>` (a file, not stdout, so `vp run` output cannot mix in), one event per line in generator order, covering M sim minutes from sim time 0; an unknown scenario, or a missing or invalid `--seed`, `--minutes` (a whole number above 0) or `--out`, exits non-zero naming the problem (only `steady` until chunk 12); `scripts/mock-dump.ts` runs under plain Node like `scripts/serve.ts`, so the generator and schema import only Node-runnable modules (explicit `.ts` extensions, no Vite aliases), enforced by adding `"src/data"` to `tsconfig.node.json`'s include so `tsc -b` rejects DOM or Vite-only APIs there (eng E31); for chunk 12 and store tests (CEO C30).
+- **Acceptance:** Unit tests: same seed gives same event sequence; `mockEvents` over [0, 10 min) equals the concatenation over [0, 4 min) and [4 min, 10 min) (no event lost or doubled at a tick boundary); a fake clock drives `MockSource` with no real timers; under `freeze=1` the store holds exactly the catch-up events and two frozen captures of `11-store-debug.png` match (C33); the mock reports `catching_up` then `live`, calling `stop()` twice is safe, and with a fake clock advanced past several ticks after `stop()` no batch or status arrives (C34); a batch with one invalid event among 499 valid ones applies the 499, raises `dataHealth.invalid` by 1 and logs one warning without the value; a reducer forced to throw leaves the state unchanged and sets status `error`; a clock that repeats or goes back sends no events (C36); every mock `projectKey` starts with `/work/` (C37); applying the same batch twice leaves every total unchanged and raises `dataHealth.duplicates` by its size, and a shuffled batch gives the same state as the `ts`-sorted one (C38); each status transition logs exactly one `[data]` line (C41); connect, disconnect, connect gives the same state as one connect, with 0 duplicates (E30); a catch-up of 1,200 events arrives as batches of 500, 500 and 200, with status `catching_up` until the last (E32); when batch 2 of 3 throws, batches 1 and 3 apply, `failedBatches` is 1 and the status stays `error` (E33); with 60 sessions the list shows 50 rows and "+10 more", and with none it shows the empty text (C42); the mock dump for a seed equals the generator's events, compared after `JSON.parse` of each line (C30); a pure selector unit test shows the peek lists that session's events only, in arrival order (newest last), at most 20, and that with a small ring cap injected by the test a session whose events were all evicted gives the empty state "No recent events (older than the buffer)"; one Playwright check under `dev=1` clicks a row and sees its events (the repo has no DOM test environment in `vp test`) (C32); reducers produce expected session counts and token totals for a fixed fixture. Debug panel updates live. No React re-render storm: the panel reads the store through selectors throttled to one update per 250 ms, and a Playwright test under `dev=1` reads the dev-only counter `__dataDev.renders()`: with the mock at 4 batches/s for 5 s the panel renders at most 25 times, and with the mock stopped 0 times over 2 s (CEO C39, replacing the manual Profiler check). Evicting from the ring buffer leaves every aggregate unchanged (eng Q1; test with a small injected cap). The PR records the main bundle's gzip size from `vp build` before and after; the increase stays within 15 KB gzip [estimated budget] (C40). `parseParams` tests cover `source=mock`, `scenario=steady` and one rejected value of each (S-RW2).
+- **README:** "Data sources" section (mock only for now). Image `11-store-debug.png` (`dev=1&source=mock&freeze=1`, the Data section open; C33, C42).
 
 #### [ ] 12. Mock scenarios and replay clock
 - **Goal:** Every later behaviour can be triggered on demand.
@@ -593,7 +593,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 #### [ ] 13. Derived and estimated metrics with provenance
 - **Goal:** Every metric is a `Metric` with value, unit, provenance, basis.
 - **Depends on:** 12.
-- **Tasks:** Session lifecycle inference (session end after 30 min idle, status, waiting_user) computed in the store from the single store clock, so live and replay behave the same (eng review A3). Selectors for tokens/min, cost (price table), rack kW, inlet/hot-aisle °C (lagged), hall heat, cooling duty, job stage derivation (section 2 job model). `ProvenanceBadge` component per section 4b (8 px top-right glyph: solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated; tooltip on hover and focus showing `basis`; "(est.)" only on panel labels) (design D19). Type-level enforcement: selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5).
+- **Tasks:** Session lifecycle inference (session end after 30 min idle, status, waiting_user) computed in the store from the single store clock, so live and replay behave the same (eng review A3). Jobs slice (authoritative, eng Q1) and the optional `AgentEvent` fields the job model needs, added to `src/data/schema.ts` (additive; CEO C35). Selectors for tokens/min, cost (price table), rack kW, inlet/hot-aisle °C (lagged), hall heat, cooling duty, job stage derivation (section 2 job model). `ProvenanceBadge` component per section 4b (8 px top-right glyph: solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated; tooltip on hover and focus showing `basis`; "(est.)" only on panel labels) (design D19). Type-level enforcement: selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5).
 - **Acceptance:** Unit tests for every formula with fixed inputs. A session idle-ends at the same sim time at 1x and 60x replay (G6). An unknown model shows cost "unknown", never 0 (G7). Debug panel shows each metric with the correct badge. A type test (`// @ts-expect-error` on passing a `number`) proves the formatter rejects raw numbers. A Playwright audit asserts every `[data-metric]` element contains a provenance badge.
 - **README:** "Provenance legend" section with badge image `13-provenance.png` and the estimation formulas.
 
@@ -6155,18 +6155,724 @@ None.
 
 - (confidence: 4/10) Per-frame `SceneSignals` getter calls for about 2,500 LEDs could cost CPU; at this count a plain function call per instance is negligible [unverified], so not reported.
 
+## CEO review record: Chunk 11 (/plan-ceo-review, 2026-10-15)
+
+Target: chunk 11 only ("Schema, store, and steady mock source") of `docs/PLAN.md`, branch `main` at `460b7d8`, base `main`. Scope chosen by the user (KQ0: "Chunk 11 only", 2026-10-15) over the whole of Phase 4. Reviewer: Claude (in-host). Review depth: implementation-ready. No chunk 11 design doc exists; the finder returns `docs/designs/phase-3-world-building.md` (the Phase 3 CEO summary), which does not cover the data layer. Questions are numbered KQ1, KQ2... (shown in chat as D1, D2...); ledger rows continue the CEO series at C30. Findings are K-F1, K-F2..., required work K-RW1, K-RW2...
+
+### 0A. Premise (chunk 11)
+
+- Real problem: every data chunk after this one (12-33) needs one place where agent activity lands, in one shape, fed in batches, testable without real logs. Today nothing exists [measured: `src/data/` is empty; `package.json:20-29` has no `zod`; `src/app/params.ts:10-11` parses `source` and `scenario` but nothing reads them].
+- Target outcome: a shared zod schema, data slices in the existing store (`src/app/store/`, D11, CEO S-RW1), a source interface that later carries mock, replay and live data unchanged, a seeded `steady` mock, and a dev panel that shows the store filling.
+- Do-nothing cost: Phases 4-7 cannot start; chunk 12 depends on 11.
+- Chunk 11 as written aims at this directly, with these gaps (pending until decided below):
+  - K-F1 [P1] The README image cannot be stable [measured: section 4b "data uses event time, not scene time" (`docs/PLAN.md:4426`); prior learning `frozen-shots-scene-time-zero`, `src/scene/loop/driver.ts:101-104`]. A mock that streams on wall-clock timers gives a different `11-store-debug.png` each run, and under `freeze=1` it has no defined state at all.
+  - K-F2 [P1] Nobody owns time for the mock [measured: chunk 11 Acceptance "same seed gives same event sequence"; chunk 12 builds the replay clock; chunk 13 puts inference on "the single store clock"]. If the mock reads `Date.now()` or `setInterval`, the determinism test depends on real time and chunk 12 rewrites the generator.
+  - K-F3 [P2] Chunk 11 lists `jobs (authoritative)`, but the schema carries no job data [measured: section 2 `AgentEvent` has `currentTask` and `toolName` only; the job model (section 2 "Job model") needs todo state, turn boundaries, file edits, git commits and test commands]. Chunk 13 would have to change the wire schema shared with the Node log server.
+  - K-F4 [P2] Reducers are not stated to be idempotent or order-tolerant. Section 2 gives every event a stable `id`, and chunk 14 reads several files per session (main plus subagent transcripts), so events reach the store out of `ts` order and may repeat after a reconnect overlap.
+  - K-F5 [P2] The source interface has no status or error channel [measured: chunk 11 `{ start, stop, onEvents }`; design D10 catch-up progress and D11 server-down banner need connecting, catching up, live, closed and error states]. Chunk 14 would change the interface every source implements.
+  - K-F6 [P2] The re-render check is manual [measured: chunk 11 Acceptance "React Profiler shows the debug panel re-rendering at most a few times per second"]; eng review G11 already replaced the same manual Profiler check in chunk 18 with a render-count assertion.
+  - K-F7 [P2] No rule for invalid events. A batch with one bad event could be dropped whole, crash a reducer or pass through unvalidated; nothing counts or logs it (Prime Directive 1).
+  - K-F8 [P3] Mock project names would land in a committed image. Phase 3 fixed scene sign names to fictional strings (CEO W-RW34); the mock has no such rule.
+
+### 0B. Existing code leverage (chunk 11)
+
+| Sub-problem | Existing code | Plan as written | Reuse |
+|---|---|---|---|
+| Store module, one file per slice, reset helper | `src/app/store/index.ts:1-18` (`useStore`, `resetStore`), `ui.ts`, `toasts.ts` | "Zustand store" | add `src/app/store/data.ts` as a slice; extend `resetStore` |
+| Seeded RNG | `createRng`, `hash01` in `src/sim/rng.ts:9-38` (comment names chunk 11) | "Seeded deterministic mock generator" | use it; no second RNG (CEO W-RW37) |
+| URL parameters `source`, `scenario`, `seed` | `parseParams` in `src/app/params.ts:52-71` (allowlist, warnings) | "Dev menu source switch" | read them; narrow `source` and `scenario` to allowlists |
+| Dev menu sections | `src/scene/PerfHud.tsx:39-60` (collapsible sections), `window.__sceneDev` in `src/scene/devHooks.ts` | "Dev menu source switch", "Raw debug panel" | one new collapsed "Data" section and hooks, as Phase 3 did |
+| Toasts | `src/app/store/toasts.ts` | none in chunk 11 | not used (backfill stays silent, eng E4) |
+| Shots | `scripts/shots.config.ts` | image `11-store-debug.png` | one entry |
+
+New dependency: `zod` (absent from `package.json:20-29`).
+
+Reality rows:
+- REALITY: premise-table finding unverified=2 (zod bundle cost in the browser; render cost of the debug panel at backfill scale) docs/PLAN.md:579
+- REALITY: already-done pass `git log origin/main -- src/data` is empty and `--grep "schema\|mock source\|zod"` finds nothing; store slices exist only for ui and toasts src/app/store/index.ts:5
+- REALITY: surface-check finding `zod` is not installed (`package.json:20-29`); `vp test` and `vp check` are the D18 commands; `source` and `scenario` accept any short word, not an allowlist (`src/app/params.ts:68-69`) src/app/params.ts:68
+- REALITY: binding-decisions pass D4, D5, D6, D11, D16, eng Q1 (aggregates authoritative), P3 (batches of up to 500, one store update each), P4 (ring cap 50,000), A3 (inference on the store clock, chunk 13), re-review E3 (source switch clears, chunk 12) honoured; `gstack-decision-search --scope branch --recent 50` returns the two 2026-10-12 eng decisions, both consistent docs/PLAN.md:31
+- REALITY: numbers finding "a few times per second" has no number; batch size 500 and ring cap 50,000 are from eng P3 and P4 [estimated there, not measured]; "3 projects" is a scenario setting docs/PLAN.md:583
+- REALITY: deferred-asks pass TODOS.md has no item triggered by chunk 11 (E18 triggers before chunk 14) TODOS.md:12
+- REALITY: pr-count pass no `.gstack/ship-policy.json`; one PR for chunk 11 (D18) docs/PLAN.md:31
+
+### 0C. Dream state (chunk 11)
+
+```text
+  CURRENT STATE                   THIS PLAN (chunk 11)                 12-MONTH IDEAL
+  a static campus on seeded  -->  one schema shared by Node and   -->  the campus is a live map of your
+  fake signals; a store with      browser; data slices fed in          real Claude and Codex work, with
+  ui and toasts only; no          batches through one source           replay and mock on the same
+  data, no schema, no source      interface; a seeded steady mock;     pipeline, every number badged,
+                                  a dev panel showing it fill          and nothing silently dropped
+```
+
+Chunk 11 moves toward the ideal. Gaps: who owns time (K-F2), whether the schema can carry jobs (K-F3), and whether the source interface survives chunk 14 (K-F5).
+
+### Mode (chunk 11)
+
+SELECTIVE EXPANSION, chosen by the user (KQ1, 2026-10-15; question answer, not auto-decided). The recommendation was SCOPE REDUCTION by the file-count rule: about 19 changed files [estimated]. Chunk 11 scope is held and hardened; each addition is offered separately for Add, Defer or Skip. No approach decision was needed before the mode. Hold-scope checks: two new modules (source interface, mock generator), both required by the chunk's goal; no deferral proposed; K-F1 to K-F8 become chunk 11 work only once decided in the review sections below.
+
+### 0H. CEO plan and spec review (chunk 11)
+
+CEO summary: `~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-15-chunk-11-store-mock.md`. Spec review: 2 reviewer launches (Claude subagent, same harness), scores 6/10 then 7/10, neither PASS. Review 1 raised 16 issues: 8 were the pending K-F findings (decided in the sections below), 8 were fixed in this record and chunk 11 text. Review 2 confirmed the C30 and C32 fixes and raised 6 more (dump flag errors, Node-runnable imports, C32 test mechanics, ledger and summary drift), all applied but not re-reviewed; the sim-time to ISO `ts` anchor moved to K-F2. Scope documents approved by the user (KQ5, "Approve, continue", 2026-10-15).
+
+### 0I. Temporal interrogation (chunk 11)
+
+```text
+  HOUR 1 (foundations):   zod schema from section 2, shared by Node and browser (Node-runnable imports);
+                          store slice file and resetStore; where sim time comes from (K-F2)
+  HOUR 2-3 (core logic):  reducers: one store update per batch (eng P3), aggregates authoritative,
+                          ring buffer separate (eng Q1); duplicates and out-of-order events (K-F4);
+                          invalid events (K-F7); what "jobs" means before chunk 13 (K-F3)
+  HOUR 4-5 (integration): source interface and its status (K-F5); mock source on a clock; dev
+                          menu source switch; params allowlist for source and scenario
+  HOUR 6+ (polish/tests): debug panel and C32 peek; render-count check (K-F6); frozen README image
+                          (K-F1); mock dump (C30); fictional names (K-F8)
+```
+
+Effort: human ~2 days / CC ~1.5 h [estimated: about 19 files, about half tests]. Feasibility blockers: none found; `zod` must be added (Section 7). Pending choices go to Sections 1-11 below.
+
+### Section 1: Architecture (chunk 11)
+
+```text
+  src/data/schema.ts (zod; Node + browser; Node-runnable imports)
+        ▲                    ▲                         ▲
+  src/data/mock.ts      src/data/source.ts        scripts/mock-dump.ts (C30)
+  mockEvents(seed,      Source { start, stop,           uses mockEvents
+  scenario, from, to)   onEvents, onStatus } (C34)
+  uses src/sim/rng.ts   MockSource(now) (C33)
+                              │ batches (<= 500, eng P3)      onStatus
+                              ▼                                  ▼
+  src/app/store/data.ts  applyBatch: projects / sessions / subagents / tokens (authoritative, eng Q1)
+                         ring buffer timeline (cap 50,000, eng P4)       source.status
+        │ joined in src/app/store/index.ts (useStore, resetStore)
+        ▼
+  dev=1 debug panel + C32 peek (React selectors)       src/scene/*: unchanged (C31 deferred)
+  src/app/params.ts: source (mock), scenario (steady), seed
+```
+
+```text
+  Source status (C34)                 invalid: anything after closed except a fresh start()
+  idle ──start()──► connecting ──► catching_up ──► live ──stop()──► closed
+                        │               │            │
+                        └──────────────►└──► error ◄─┘   (error ──stop()──► closed)
+  The mock skips connecting (nothing to connect to). stop() from any state ends in closed, is idempotent,
+  and drops any batch or status produced after it (a generation counter checked before delivery).
+```
+
+- K-F2/K-F1 resolved by C33; K-F5 by C34; K-F3 by C35.
+- Parameter hardening (cites CEO S-RW2, the approved allowlist parser): `source` accepts only `mock` and `scenario` only `steady` in chunk 11; other values warn and fall back, as for `view`. Chunks 12 and 14 extend the lists. Applied to chunk 11 without a new question.
+- Coupling: data code meets the scene nowhere in chunk 11; the store gains one slice file. Justified by D11.
+- Scaling: a 10x mock (30 projects) is trivial; 100x is the chunk 14 backfill case, covered by eng P3 batching and Section 7.
+- Single point of failure: `applyBatch`. A throw inside it would lose the whole batch; Section 2 covers it.
+- Security: no endpoint, no network; Section 3.
+- Rollback: revert the chunk 11 PR; nothing else depends on it yet. Minutes.
+- Platform: the schema, source interface and pure mock are the base for chunks 12-17.
+
+### Section 2: Error & Rescue Map (chunk 11)
+
+| Codepath | What can go wrong | Class | Rescued | Action | User sees |
+|---|---|---|---|---|---|
+| `AgentEvent.safeParse` per event | missing field, wrong type, unknown enum | `ZodError` (as a result, not thrown) | Y (C36) | drop, count in `dataHealth.invalid`, one `[data]` warning per path per minute, no value logged | invalid count in the debug panel; console line |
+| `applyBatch` | reducer bug throws | `TypeError`, `RangeError` | Y (C36) | no commit, one `[data]` error (source, batch size, first id), status `error` | status `error` in the panel |
+| `MockSource` tick | `now()` repeats or goes back | logic | Y (C36) | tick ignored | nothing (correct) |
+| `MockSource` after `stop()` | late timer | logic | Y (C34) | generation check drops it | nothing (correct) |
+| `parseParams` | unknown `source` or `scenario` | warning | Y (S-RW2) | fall back, `[params]` warning | default mock steady |
+| `scripts/mock-dump.ts` | bad flags, unwritable `--out` | usage error, `ENOENT`, `EACCES` | Y (C30) | exit non-zero naming the problem | terminal message |
+| ring buffer | over cap | by design | Y | evict oldest; aggregates untouched (eng Q1) | C32 empty state for evicted sessions |
+
+No catch-all: the only `try` is around `applyBatch`, which reports with context and commits nothing. Gaps found: 3, all closed by C36.
+
+### Section 3: Security & threat model (chunk 11)
+
+| Threat | Likelihood | Impact | Mitigated |
+|---|---|---|---|
+| Real names in committed image or dump | Med | Med | Y, C37 |
+| Field values (task text) echoed in `[data]` warnings | Low | Med | Y, C36 logs path and code only (D16) |
+| Arbitrary `source` / `scenario` strings | Low | Low | Y, S-RW2 allowlist |
+| Dev hooks reachable in production | Low | Low | Y, only under `dev=1`, as Phase 3 |
+| `zod` supply chain | Low | Med | MIT, no runtime dependencies; pinned by the lockfile |
+
+No endpoint, no network, no secrets in chunk 11.
+
+### Section 4: Data flow and interaction edge cases (chunk 11)
+
+```text
+  source batch ─► safeParse per event ─► dedupe by id ─► reduce (pure) ─► one set() ─► selectors ─► panel
+     │ empty: no set() (C38)  │ invalid: drop+count (C36)  │ dup: skip+count (C38)  │ throw: no commit, status error (C36)
+     │ out of order: lastSeen/status by max ts; sums order-free (C38)
+     └ after stop(): dropped by generation check (C34)
+```
+
+Async ordering. Invariant: after any batches, totals equal the totals of the distinct valid events, and each session's `lastSeen` and `status` equal those of its greatest-`ts` event. Schedules: (1) `e2(ts 10)` then `e1(ts 5)`: with C38 `lastSeen` stays 10; (2) `e1` twice (reconnect overlap): the second is skipped by id. Single-threaded `applyBatch` with one `set()` means no interleaving inside a batch; across batches, C38's rules are order-free. Regression proof: the duplicate and shuffle tests (C38) and the after-stop test (C34).
+
+| Interaction | Edge case | Handled | How |
+|---|---|---|---|
+| Dev source switch (off / mock) | double click | Y | `stop()` idempotent, `start()` on a running source is a no-op (C34) |
+| Dev source switch | switch off mid-tick | Y | generation check (C34) |
+| Session row click (C32) | session's events evicted | Y | empty state (C32) |
+| Session list | zero sessions | needs rule | Section 11 |
+| Session list | large list (chunk 14 backfill, thousands) | needs rule | Section 11 |
+| Reload under `freeze=1` | same image | Y | catch-up batch only (C33) |
+
+### Section 5: Code quality (chunk 11)
+
+- Fits existing patterns: one slice file (`src/app/store/data.ts`) beside `ui.ts` and `toasts.ts`; `resetStore` resets it.
+- Guidance (no new behaviour): keep the reducers as pure functions in `src/data/reduce.ts`, so they run in Node tests and in `mock:dump` without the store; the slice only calls them and commits.
+- Duplicated behaviour: none; the RNG is reused (`src/sim/rng.ts`, CEO W-RW37).
+- Complexity: `reduce` will branch on 9 event types; split one handler per type to keep each under 5 branches.
+- Over-engineering check: the status channel (C34) is used by 3 later sources; the seen-set (C38) is bounded. No abstractions without a caller.
+
+No issues beyond those decided above.
+
+### Section 6: Test review (chunk 11)
+
+```text
+NEW CODEPATHS / FLOWS                                  TEST (type)                         STATUS
+schema.ts (Node + browser)                             mock-dump runs it under Node (unit)  PLANNED (C30)
+mockEvents(seed, scenario, from, to)                   same seed same events; split ranges  PLANNED (C33)
+                                                       concatenate exactly (unit)
+MockSource(now)                                        fake clock, catch-up, ticks (unit)   PLANNED (C33)
+  ├ status catching_up -> live; stop twice; after-stop  (unit)                              PLANNED (C34)
+  └ now() repeats or goes back                          (unit)                              PLANNED (C36)
+applyBatch / reduce                                    fixture counts and token totals      PLANNED (chunk 11)
+  ├ invalid event among valid                           (unit)                              PLANNED (C36)
+  ├ reducer throws: no commit, status error              (unit)                              PLANNED (C36)
+  ├ same batch twice; shuffled batch                     (unit)                              PLANNED (C38)
+  └ ring eviction leaves aggregates                      (unit, injected cap)                PLANNED (eng Q1)
+params source / scenario                               allowlist (unit)                     PLANNED (S-RW2)
+mock names                                             every projectKey under /work/ (unit)  PLANNED (C37)
+debug panel renders                                    counted renders (Playwright)          PLANNED (C39)
+C32 peek                                               selector (unit) + click (Playwright)  PLANNED (C32)
+11-store-debug.png under freeze=1                      two captures match (Playwright)       PLANNED (C33)
+mock:dump                                              equals generator; bad flags exit 1    PLANNED (C30)
+COVERAGE: 16/16 new paths have a planned test | unit 12, Playwright 4
+```
+
+Assertion notes (no_claim): the mock tests prove determinism of the generator, not that real logs look like it (no_claim=real log shapes, chunks 15-16); the render test proves the panel's render count, not scene frame cost (no_claim=scene binding, chunk 18).
+
+- 2am Friday test: the shuffle-plus-duplicate reducer test on a 500-event fixture.
+- Hostile QA: a batch of 500 where every event is invalid; expected: no `set()` of aggregates, invalid count 500, one warning per issue path.
+- Chaos: stop and restart the source 20 times in one second with a fake clock; expected: no batch after any stop, final state equals one clean run.
+- Flakiness: no test reads real time (C33 fake clock); the Playwright render test allows 5 renders of slack.
+- Pyramid: 12 unit, 4 Playwright. Not inverted.
+
+Gaps: 1 (K-F6), closed by C39. Directly determined tests added without a question: ring eviction (eng Q1), params allowlist (S-RW2).
+
+### Section 7: Performance (chunk 11)
+
+- Memory: ring buffer 50,000 events at about 0.5 KB each, about 25 MB [estimated]; the C38 seen-id set about 2 MB [estimated]; aggregates scale with sessions (hundreds), negligible.
+- Per batch: `safeParse` per event (C36) plus reduce; cost at 500 events per batch is unmeasured [estimated well under one frame]; chunk 14's backfill is where it matters, and its acceptance already measures load.
+- Bundle: zod enters through `zod/mini` with a measured +15 KB gzip budget (C40).
+- Renders: throttled to 250 ms and counted (C39).
+- Slow paths: (1) a 500-event batch with many new sessions (map copies), (2) the C32 peek scanning the ring buffer (50,000 scan per click, about 1 ms [estimated]; acceptable for a dev click), (3) `mock:dump --minutes` large (Node only).
+
+### Section 8: Observability (chunk 11)
+
+- In place from decisions: `dataHealth.invalid` and `dataHealth.duplicates` counters (C36, C38), `source.status` (C34), `[data]` warning and error lines with context (C36).
+- Gap: no record of source status changes, applied totals or batch timing outside the panel, so a report like "totals froze after an hour" cannot be traced from the console. Pending C41.
+
+Resolved by C41: status transition lines and a health row in the panel. Alerts and dashboards: none for a dev-only chunk; the user-facing server-down banner and catch-up bar are chunks 14 and 32 (design D10, D11), and they read the C34 status. Runbook: "totals look wrong" means check the health row (invalid, duplicates), then the `[data]` lines.
+
+### Section 9: Deployment and rollout (chunk 11)
+
+- No migration, no persisted data, no server change. The chunk ships as one `feat:` PR; semantic-release cuts a minor release (D19), and the downloadable build carries it from chunk 14b.
+- Feature flag: the debug panel, peek and `__dataDev` exist only under `dev=1`; without it, users see no change.
+- Rollback: revert the PR; no later chunk depends on it until chunk 12. Minutes.
+- Post-merge check: `vp run e2e:local` on the Mac with `dev=1&source=mock` shows the panel filling and the health row at status `live`; the `[data]` lines show `catching_up -> live`.
+- Risk window: none (single static app).
+
+### Section 10: Long-term trajectory (chunk 11)
+
+- Debt: the fixed 2026-01-01 anchor in mock `ts` (C33) reads oddly until chunks 12-13 show times relative to the source clock; recorded, not a defect.
+- Path dependency: the source interface (C34) and the schema are now contracts for chunks 12-17; both are additive-friendly (optional fields, extra status detail).
+- Reversibility: 4/5 (one PR; the schema becomes harder to change once chunk 14's server speaks it).
+- After this ships: chunk 12 adds scenarios and the replay clock behind the same `now()`; chunk 13 adds jobs (C35) and inference on the source clock; chunk 14 adds a live source with the same status values.
+- Cherry-pick retrospective: C30 (dump) helps chunk 12 and store tests; C32 (peek) helps chunks 15-16 debugging; C31 (deferred) was not needed by either accepted item.
+
+### Section 11: Design and UX (chunk 11)
+
+UI scope: dev-only (the Data section, its list, the peek). Resolved by C42.
+
+```text
+  dev=1 HUD ─► [Data ▸] collapsed ─click─► [Data ▾]
+                                             source: mock  status: live   (switch off/mock)
+                                             applied 1,204 · batches 41 · last 12 / 0.4 ms · invalid 0 · dup 0
+                                             sessions (newest first, max 50, "+N more")
+                                               ├ empty: "No sessions yet (source: catching_up)"
+                                               └ row ─click─► peek: last 20 events, or
+                                                               "No recent events (older than the buffer)"
+```
+
+| Feature | Loading | Empty | Error | Success | Partial |
+|---|---|---|---|---|---|
+| Data section | status `catching_up` in the health row | "No sessions yet (source: <status>)" | status `error`, invalid count | list fills | "+N more" past 50 |
+| Peek (C32) | n/a (in memory) | evicted text | n/a | last 20 events | fewer than 20 shown as is |
+
+Accessibility: the section header is a button like the other HUD sections; rows are buttons so keyboard users can open the peek. The full keyboard path into data tables is chunk 31 (design D22). No user-facing UI in this chunk, so `/plan-design-review` is not needed for it.
+
+### Decision ledger (CEO, chunk 11)
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C30 (user) | Cherry-pick X1: mock fixture dump | not in plan | `vp run mock:dump -- --seed N --scenario steady --minutes M --out <file>` (full behaviour in chunk 11 Tasks) writes the mock's normalised events as JSONL; chunk 12 scenario tests and store tests reuse such files (chunk 17 imports raw vendor logs, so it cannot) | approved | KQ2 (D2) "Add to scope", 2026-10-15. Scope: the dump script, its package.json entry and a unit test that the dump for a seed equals the generator's events. Benefit narrowed after the answer: the dump holds normalised events, so it serves chunk 12 and store tests; chunk 17 imports raw vendor logs and cannot use it as is (told to the user in chat) |
+| C31 (user) | Cherry-pick X2: store-backed rack count now | chunk 18 binds racks to the store | a store-backed `rackCount(hall)` in `SceneSignals` for halls A and B from mock sessions, behind `source=mock`; other signals stay on `fake.ts` | deferred | KQ3 (D3) "Defer to TODOS.md", 2026-10-15. TODO added; chunk 18 owns it |
+| C32 (user) | Cherry-pick X3: session event peek | chunk 31 builds the agent table | clicking a session row in the debug panel lists its last 20 events from the ring buffer | approved | KQ4 (D4) "Add to scope", 2026-10-15. Scope: dev=1 only, last 20 events of the clicked session (time, type, tool name, status), read from the ring buffer |
+| C33 (Section 1) | K-F1, K-F2: mock time and a stable README image | mock time unspecified | A: pure `mockEvents(seed, scenario, fromMs, toMs)` over sim ms; `ts` = fixed anchor 2026-01-01T09:00:00Z + sim ms; `MockSource` takes an injected sim clock (`now()`), starts by sending the first 10 sim minutes as one catch-up batch, then ticks every 250 ms; under `freeze=1` it sends only that catch-up batch. B: wall-clock timers, mask the image. C: drop the image | approved | KQ6 (D5) "Pure mock + injected clock", 2026-10-15. Scope: option A as written, its determinism and freeze tests, and the frozen `11-store-debug.png` |
+| C34 (Section 1) | K-F5: source status channel | `{ start, stop, onEvents }` | A: add `onStatus(status, detail?)` with status `connecting`, `catching_up`, `live`, `closed`, `error`; the mock emits `catching_up` then `live`; the store keeps `source.status`; `stop()` is idempotent and no event or status arrives after it. B: leave status to chunk 14 | approved | KQ7 (D6) "Add onStatus now", 2026-10-15. Scope: option A and its two tests |
+| C35 (Section 1) | K-F3: jobs before the job model | chunk 11 lists `jobs (authoritative)`; `AgentEvent` has no job fields | A: chunk 11 builds `projects`, `sessions`, `subagents` and token totals only; chunk 13 adds the jobs slice and the optional schema fields it needs (additive; the Node server and the app ship in one build, D19). B: add job fields and a jobs slice now, ahead of the job model | approved | KQ8 (D7) "Jobs move to chunk 13", 2026-10-15. Scope: option A; chunk 11 and 13 text updated |
+| C36 (Section 2) | K-F7: invalid events, reducer throws, clock going backwards | no rule | A: every event from a source passes `AgentEvent.safeParse` before reducing; invalid ones are dropped, counted per source and issue path in `dataHealth.invalid`, and the first per path per minute logs one `[data]` warning with the source, event id and zod issue; the batch continues. `applyBatch` computes the next state first and commits with one `set()`; if it throws, nothing commits, one `[data]` error logs the source, batch size and first event id, and `source.status` becomes `error`. `MockSource` ignores a `now()` that is not later than its last tick. B: reject a whole batch on any invalid event | approved | KQ9 (D8) "Drop and count per event", 2026-10-15. Scope: option A and one test per failure |
+| C37 (Section 3) | K-F8: mock names in committed images | no rule for the mock | A: mock project keys, session titles and task text come from fixed fictional lists in `src/data/mock.ts` (for example `/work/orbit-api`), never from the machine, `process.cwd()` or env; a unit test asserts every `projectKey` starts with `/work/`. B: no rule | approved | KQ10 (D9) "Fictional names + test", 2026-10-15. Scope: option A and its test. Process note: this row was saved after the question was asked, because the save before it failed on a text mismatch |
+| C38 (Section 4) | K-F4: duplicate and out-of-order events | not stated | A: reducers skip an event whose `id` is already in a seen-id set bounded to the ring buffer's ids (cap 50,000, evicted with it), counting skips in `dataHealth.duplicates`; per-session `lastSeen` and `status` follow the event with the greatest `ts`, not arrival; token sums are order-free; an empty batch makes no `set()`. Tests: the same batch twice leaves totals unchanged; a shuffled batch gives the same state as the sorted one. B: trust chunk 14's cursor for duplicates; order rule only | approved | KQ11 (D10) "Dedupe by id + newest-ts rule", 2026-10-15. Scope: option A and its two tests |
+| C39 (Section 6) | K-F6: render-storm check | manual React Profiler, "a few times per second" | A: the panel reads the store through selectors throttled to one update per 250 ms; a dev-only render counter (`__dataDev.renders()`, `dev=1`) lets a Playwright test run the mock at its normal 4 batches/s for 5 s and assert at most 25 panel renders (5 s x 4/s + 5 slack); with the mock stopped, 0 renders over 2 s. B: keep the manual Profiler check | approved | KQ12 (D11) "Throttle + counted e2e", 2026-10-15. Scope: option A, its dev counter and Playwright test |
+| C40 (Section 7) | zod in the browser bundle | `zod` not installed; cost unmeasured | A: `zod` 4 with the `zod/mini` entry in `src/data/schema.ts` (tree-shakable functions); the chunk 11 PR records the gzip size of the main bundle before and after (`vp build` output) and fails review above +15 KB gzip [estimated budget]. B: classic `zod` import, measure only. C: hand-written type guards, no dependency | approved | KQ13 (D12) "zod/mini + size budget", 2026-10-15. Scope: option A |
+| C41 (Section 8) | Source lifecycle and batch visibility | counters only | A: one `[data]` line per source status transition (`[data] mock: catching_up -> live`), as `[scene]` transition lines do (CEO S-RW40); the debug panel's header row shows source, status, events applied, batches, last batch size and apply time (ms), invalid and duplicate counts; unit test asserts one log line per transition. B: counters only | approved | KQ14 (D13) "Transition log + health row", 2026-10-15. Scope: option A and its unit test |
+| C42 (Section 11) | Debug panel placement and list states | "Raw debug panel listing sessions", no place or states | A: a collapsed "Data" section in the `dev=1` HUD menu (after Network, Geist Mono 12 px, as Phase 3 sections), holding the source switch, the C41 health row and a session list sorted by `lastSeen` newest first, capped at 50 rows with "+N more"; zero sessions shows "No sessions yet (source: <status>)"; clicking a row opens the C32 peek under it; the README image frames the open section. B: a separate floating dev panel in the right slot | approved | KQ15 (D14) "Data section in dev HUD", 2026-10-15. Scope: option A |
+
+Approval readiness: PASS. Checked C30 (KQ2), C31 (KQ3, deferral settled), C32 (KQ4), C33 (KQ6), C34 (KQ7), C35 (KQ8), C36 (KQ9), C37 (KQ10), C38 (KQ11), C39 (KQ12), C40 (KQ13), C41 (KQ14), C42 (KQ15); scope documents KQ5; mode KQ1; review scope KQ0. Applied without a question, citing prior approvals: the `source`/`scenario` allowlist (CEO S-RW2), ring-eviction and params tests (eng Q1, S-RW2). Each plan edit matches its answer's scope.
+
+### Outside voice (chunk 11)
+
+Codex outside review disabled (`codex_reviews` = disabled); no native replacement, by design. Recorded as skipped. The two spec-review launches in 0H were same-harness subagents, not outside coverage.
+
+### TODOS.md (chunk 11)
+
+One item added: "P3: Store-backed rack count before chunk 18" (C31, KQ3). No other TODO proposals remain.
+
+### NOT in scope (chunk 11)
+
+- Deferred: store-backed rack count for halls A and B (C31, KQ3): chunk 18 owns store-backed `SceneSignals`; in TODOS.md.
+- Moved, not cut: the jobs slice and job schema fields go to chunk 13 (C35, KQ8): the job model is defined there.
+- Not offered (later chunks own them): scenarios other than `steady` and the replay clock (12), inference and metrics (13), live and replay sources (14, 17), source-switch clearing (12, eng E3).
+
+### What already exists (chunk 11)
+
+See 0B: the store module and reset helper, the seeded RNG, the params allowlist, the dev HUD sections and `__sceneDev` pattern, and the shots config are all reused. Nothing is rebuilt.
+
+### Dream state delta (chunk 11)
+
+After chunk 11: one schema, one source interface with status, a pure seeded mock, authoritative order-safe aggregates and a visible data health row. Still missing from the 12-month ideal: real logs (14-16), replay (12, 17), metrics with provenance (13), and any link from data to the campus (18 onward).
+
+### Error and rescue registry (chunk 11)
+
+See Section 2 table: 7 codepaths, 3 gaps found, all rescued by C34, C36 and S-RW2. 0 critical gaps.
+
+### Failure modes registry (chunk 11)
+
+| Codepath | Failure mode | Rescued | Test | User sees | Logged |
+|---|---|---|---|---|---|
+| `safeParse` | invalid event | Y | Y (C36) | invalid count | Y `[data]` warning |
+| `applyBatch` | reducer throws | Y | Y (C36) | status `error` | Y `[data]` error |
+| reducers | duplicate event | Y | Y (C38) | duplicates count | count only |
+| reducers | out-of-order event | Y | Y (C38) | correct `lastSeen` | n/a |
+| `MockSource` | clock repeats or goes back | Y | Y (C36) | nothing (correct) | n/a |
+| `MockSource` | event after `stop()` | Y | Y (C34) | nothing (correct) | n/a |
+| ring buffer | eviction | Y | Y (eng Q1) | peek empty state | n/a |
+| panel | render storm | Y | Y (C39) | smooth panel | n/a |
+| `mock:dump` | bad flags or `--out` | Y | Y (C30) | terminal message | stderr |
+| `parseParams` | unknown source or scenario | Y | Y (S-RW2) | default | Y `[params]` |
+
+10 rows, 0 critical gaps.
+
+### Scope expansion decisions (chunk 11)
+
+CEO plan: `~/.gstack/projects/bjorkgard-ai-center/ceo-plans/2026-10-15-chunk-11-store-mock.md`.
+- Accepted: C30 mock dump, C32 session event peek.
+- Deferred: C31 store-backed rack count (TODOS.md).
+- Skipped: none.
+
+### Diagrams produced (chunk 11)
+
+System architecture and source state machine (Section 1), data flow with shadow paths (Section 4), error map (Section 2), UI states (Section 11). Deployment and rollback are one revert (Section 9), so no separate diagram.
+
+### Stale diagram audit (chunk 11)
+
+`docs/PLAN.md` section 3 "Architecture in one picture": still accurate (mock feeds the same `AgentEvent` stream; "jobs" in the store arrives with chunk 13, C35). No code diagrams in the files chunk 11 touches.
+
+### Reality rows (chunk 11)
+
+- REALITY: premise-table finding unverified=2 (zod/mini bundle cost; panel render cost at backfill scale, now capped by C39 and C42) docs/PLAN.md:579
+- REALITY: already-done pass `git log origin/main -- src/data` empty docs/PLAN.md:579
+- REALITY: surface-check finding `zod` not installed (`package.json:20-29`), resolved by C40; `source`/`scenario` not allowlisted (`src/app/params.ts:68`), resolved by S-RW2 src/app/params.ts:68
+- REALITY: binding-decisions pass D4, D5, D11, D16, eng Q1, P3, P4, A3, E3 honoured docs/PLAN.md:31
+- REALITY: numbers finding "a few times per second" replaced by 25 renders in 5 s docs/PLAN.md:583; batch of 500 docs/PLAN.md:950 and cap 50,000 docs/PLAN.md:951 from eng P3/P4 [estimated there]; +15 KB gzip budget [estimated] docs/PLAN.md:583
+- REALITY: deferred-asks pass TODOS.md: none triggered by chunk 11; C31 added TODOS.md:46
+- REALITY: pr-count pass one PR for chunk 11 docs/PLAN.md:31
+
+`PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=2 verdict=complete`
+
+## Implementation Tasks (CEO review, chunk 11)
+
+Synthesized from this review's findings. Each task derives from a finding above. Checkbox as you ship.
+
+- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — data — Schema with zod/mini, Node-runnable
+  - Surfaced by: Section 7 — C40; 0H — C30 Node imports
+  - Files: `package.json`, `pnpm-lock.yaml`, `src/data/schema.ts`, `src/data/schema.test.ts`
+  - Verify: `vp test`; PR lists main-bundle gzip before/after within +15 KB
+- [ ] **T2 (P1, human: ~3h / CC: ~15min)** — data — Pure seeded mock with fictional names
+  - Surfaced by: Section 1 — C33 (K-F1, K-F2); Section 3 — C37 (K-F8)
+  - Files: `src/data/mock.ts`, `src/data/mock.test.ts`
+  - Verify: `vp test`: same seed same events, split ranges concatenate exactly, every `projectKey` under `/work/`
+- [ ] **T3 (P1, human: ~2h / CC: ~15min)** — data — Source interface and MockSource with status
+  - Surfaced by: Section 1 — C33, C34 (K-F5); Section 2 — C36 clock rule
+  - Files: `src/data/schema.ts` (the `Source` type), `src/data/mock.ts`, `src/data/mock.test.ts` (eng EQ1 smaller arrangement)
+  - Verify: `vp test` with a fake clock: catch-up then ticks, `catching_up -> live`, stop twice, nothing after stop, non-advancing clock ignored
+- [ ] **T4 (P1, human: ~4h / CC: ~25min)** — store — Data slice: validate, dedupe, order, commit, health
+  - Surfaced by: Section 2 — C36 (K-F7); Section 4 — C38 (K-F4); Section 8 — C41; eng Q1, P3; Section 1 — C35
+  - Files: `src/data/reduce.ts`, `src/data/reduce.test.ts`, `src/app/store/data.ts`, `src/app/store/index.ts`
+  - Verify: `vp test`: fixture totals; invalid among 499; throw leaves state; same batch twice; shuffled batch; ring eviction; one `[data]` line per transition
+- [ ] **T5 (P2, human: ~30min / CC: ~5min)** — params — Allowlist `source` and `scenario`
+  - Surfaced by: Section 1 — S-RW2 hardening
+  - Files: `src/app/params.ts`, `src/app/params.test.ts`
+  - Verify: `vp test`: `mock`, `steady` accepted; one rejected value each warns and falls back
+- [ ] **T6 (P2, human: ~3h / CC: ~20min)** — dev HUD — Data section, health row, capped list, peek, render counter
+  - Surfaced by: Section 11 — C42; Section 6 — C39 (K-F6); Section 8 — C41; 0G — C32
+  - Files: `src/scene/PerfHud.tsx` (or a `DataSection.tsx` beside it), `src/scene/devHooks.ts`, `src/app/App.tsx`, `src/app/globals.d.ts`, `src/data/reduce.ts` (peek selector), `src/data/reduce.test.ts`, `e2e/data.spec.ts` (eng EQ1)
+  - Verify: `vp test` peek selector; Playwright under `dev=1`: at most 25 renders in 5 s, 0 when stopped, 50 rows plus "+10 more", empty text, row click shows events
+- [ ] **T7 (P2, human: ~1h / CC: ~5min)** — scripts — `mock:dump`
+  - Surfaced by: 0G — C30
+  - Files: `scripts/mock-dump.ts`, `scripts/mock-dump.test.ts`, `package.json`
+  - Verify: `vp test`: dump equals generator after `JSON.parse`; bad flags exit non-zero
+- [ ] **T8 (P2, human: ~1h / CC: ~10min)** — docs — Frozen store image and Data sources section
+  - Surfaced by: Section 1 — C33 (K-F1); Section 11 — C42
+  - Files: `scripts/shots.config.ts`, `docs/img/11-store-debug.png`, `README.md`
+  - Verify: `vp run e2e:local`: two frozen captures of `11-store-debug.png` match
+
+Effort assumption: features ~30x, tests ~50x human/CC ratio; total human ~16h / CC ~1h45m.
+
+### Completion summary (chunk 11)
+
+```
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | src/data empty; zod absent; source/scenario |
+  |                      | params unused and not allowlisted           |
+  | Step 0               | scope chunk 11 (KQ0); C30, C32 added; C31   |
+  |                      | deferred; docs approved (KQ5)               |
+  | Section 1  (Arch)    | 3 issues found (C33, C34, C35) + S-RW2 fix  |
+  | Section 2  (Errors)  | 7 error paths mapped, 3 GAPS (closed, C36)  |
+  | Section 3  (Security)| 1 issue found (C37), 0 High severity        |
+  | Section 4  (Data/UX) | 6 edge cases mapped, 0 unhandled (C38, C42) |
+  | Section 5  (Quality) | 0 issues found (1 guidance note)            |
+  | Section 6  (Tests)   | Diagram produced, 1 gap (closed, C39)       |
+  | Section 7  (Perf)    | 1 issue found (C40)                         |
+  | Section 8  (Observ)  | 1 gap found (closed, C41)                   |
+  | Section 9  (Deploy)  | 0 risks flagged                             |
+  | Section 10 (Future)  | Reversibility: 4/5, debt items: 1           |
+  | Section 11 (Design)  | 1 issue (C42)                               |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (3 items)                           |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 7 rows, 0 CRITICAL GAPS                     |
+  | Failure modes        | 10 total, 0 CRITICAL GAPS                   |
+  | TODOS.md updates     | 1 item proposed (C31, added)                |
+  | Scope proposals      | 3 proposed, 2 accepted                      |
+  | CEO plan             | written                                     |
+  | Outside voice        | codex, disabled                             |
+  | Lake Score           | 5/5 recommendations chose complete option   |
+  | Diagrams produced    | 5 (architecture, state, data flow, error,   |
+  |                      | UI states)                                  |
+  | Stale diagrams found | 0                                           |
+  | Unresolved decisions | 0                                           |
+  | Reality rows         | 7/7 rows (PLAN_REALITY), 2 unverified       |
+  +====================================================================+
+```
+
+Lake Score basis: KQ6, KQ9, KQ10, KQ11 and KQ12 offered a 10/10 option and each chose it (5/5). KQ7, KQ13, KQ14 and KQ15 had no 10/10 option (top scores 9); each still chose its top option.
+
+### Unresolved decisions (chunk 11)
+
+None.
+
+## Eng review record: Chunk 11 (/plan-eng-review, 2026-10-15)
+
+Target: chunk 11 of `docs/PLAN.md` as amended by "CEO review record: Chunk 11" (C30-C42), branch `main` at `460b7d8`. Report file: this plan. Design doc: `docs/designs/chunk-11-store-mock.md`. Reviewer: Claude (in-host). Questions are numbered EQ1, EQ2... (D1, D2... in chat); ledger rows continue the eng series as E30 onward. Findings are K-E1, K-E2...
+
+### Scope Challenge (eng, chunk 11)
+
+- What exists: store module and `resetStore` (`src/app/store/index.ts:7-17`), RNG (`src/sim/rng.ts:9-38`), params allowlist (`src/app/params.ts:23-71`), dev HUD sections (`src/scene/PerfHud.tsx:39-60`), `window.__sceneDev` typing (`src/app/globals.d.ts:64`), shots config, Playwright helpers in `e2e/helpers/`.
+- Complexity: about 19 changed files [estimated, from CEO tasks T1-T8], new modules `schema`, `source`, `mock`, `reduce` (plus `peek`): gate trips (8+ files, 2+ new modules). No feature cut proposed: every part maps to an approved CEO decision.
+- Search: zod 4 ships a tree-shakable `zod/mini` entry [Layer 1]; no published gzip size found, so C40's measurement stays required.
+- TODOS: nothing blocks chunk 11; E18 (before chunk 14) and C31 (chunk 18) are later.
+- Distribution: no new artifact; `mock:dump` is a dev script.
+- History: no reverts in `src/app/store`, `src/sim`, `src/app/params.ts`.
+
+Scope record: feature answers: none asked (no cuts proposed); structure: B "Smaller arrangement" (EQ1, 2026-10-15); accepted scope: chunk 11 as amended by C30-C42, laid out as `src/data/schema.ts` (schema and the `Source` type), `src/data/mock.ts` (`mockEvents` and `MockSource`), `src/data/reduce.ts` (reducers, ring buffer, seen-id set, peek selector), each with a `.test.ts`, plus `src/app/store/data.ts` and the Data section in `src/scene/PerfHud.tsx`; pending remedies: none. Scope Challenge result: scope accepted as-is (a smaller arrangement that keeps scope).
+
+Scope Challenge findings: none beyond the complexity gate.
+
+### Decision ledger (eng, chunk 11)
+
+#### E30: Who starts and stops the source (StrictMode)
+Finding: K-E1, P2, confidence 8/10, `src/main.tsx:12` `<StrictMode>`, Claude (in-host)
+Plan baseline: chunk 11 Tasks "Dev menu source switch" and C34 (stop idempotent, nothing after stop); no owner for start/stop.
+Runtime evidence: `src/main.tsx:12` renders `<StrictMode>`, so dev effects run mount, cleanup, mount; `src/app/App.tsx:40,48` already use effects with cleanup.
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| Owner of source lifecycle | unspecified | store action `connect(source)`: stops any previous source, clears the data slice (aggregates, ring, seen ids, health), then starts the new one; `disconnect()` stops and clears; `App.tsx` effect calls connect and returns disconnect | `App.tsx` effect starts and stops the source directly; data kept across restarts |
+| StrictMode remount | catch-up sent twice | clean state, 0 duplicates | catch-up skipped as duplicates, duplicates count shows its size |
+| C34, C38 contracts | approved | unchanged | unchanged |
+Question D2:
+D2 — E30: Who starts the source, so StrictMode does not fake duplicates?
+Header: Lifecycle
+Options:
+A) Store connect/disconnect (recommended)
+Effort S (human ~1h / CC ~10 min), risk low. connect(source) stops any previous source, clears aggregates, ring buffer, seen ids and health, then starts; disconnect() stops and clears; App.tsx effect calls connect and returns disconnect. Unit test: connect, disconnect, connect gives the same state as one connect with 0 duplicates.
+B) Effect starts source directly
+Effort S, risk medium. App.tsx effect calls source.start() and source.stop(); data persists across restarts.
+State: approved
+Actual answer: A) "Store connect/disconnect", EQ2 (D2), 2026-10-15
+Accepted scope: option A: `connect(source)` and `disconnect()` store actions, the `App.tsx` effect wiring, and the connect-disconnect-connect unit test
+History: none
+
+#### E31: Check src/data under Node types
+Finding: K-E2, P2, confidence 8/10, `tsconfig.node.json` include `["vite.config.ts", "playwright.config.ts", "scripts", "e2e", "sidecar"]`, Claude (in-host)
+Plan baseline: chunk 11 C30 "the generator and schema import only Node-runnable modules (explicit `.ts` extensions, no Vite aliases)"; no check enforces it.
+Runtime evidence: `tsconfig.app.json` includes `src` with `"lib": ["ES2023", "DOM"]` and `"types": ["vite/client"]`; `tsconfig.node.json` has `"lib": ["ES2023"]`, `"types": ["node"]` and does not include `src`.
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| Node check for `src/data` | none | add `"src/data"` to `tsconfig.node.json` include, so `tsc -b` (in `vp run build` and CI) rejects DOM or Vite-only APIs there | rely on the C30 dump test running under Node |
+| C30 Node-runnable rule | approved | unchanged | unchanged |
+Question D3:
+D3 — E31: Type-check src/data as Node code too?
+Header: Node check
+Options:
+A) Add src/data to node tsconfig (recommended)
+Effort S (human ~10 min / CC ~2 min), risk low. tsconfig.node.json include gains "src/data"; tsc -b fails on window, document or import.meta.env there.
+B) Rely on the dump test
+Effort S (zero work), risk medium. Only code the dump script happens to import is exercised under Node.
+State: approved
+Actual answer: A) "Add src/data to node tsconfig", EQ3 (D3), 2026-10-15
+Accepted scope: option A: `"src/data"` added to `tsconfig.node.json` include
+History: none
+
+#### E32: Batch size for the catch-up
+Finding: K-E3, P2, confidence 7/10, chunk 11 Tasks "sends the first 10 sim minutes as one catch-up batch" against eng P3 "batch on the wire (up to 500 per message)", Claude (in-host)
+Plan baseline: C33 (one catch-up batch; under `freeze=1` the store holds exactly the catch-up batch); eng P3 (500 per wire message, one store update per batch).
+Runtime evidence: none (mock not built); steady scenario event volume per 10 sim minutes unknown.
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| Max events per delivered batch | 500 on the wire only (P3) | every source delivers batches of at most 500 events (`MAX_BATCH` in `schema.ts`); the mock splits the catch-up into consecutive batches, stays `catching_up` until the last, then `live`; under `freeze=1` the store holds exactly the catch-up events (all its batches) | the cap stays a wire rule; the mock's catch-up is one batch of any size |
+| C33 freeze contract | approved | wording changes from "the catch-up batch" to "the catch-up events", same content | unchanged |
+Question D4:
+D4 — E32: Cap every source's batches at 500 events?
+Header: Batch cap
+Options:
+A) 500 cap for every source (recommended)
+Effort S (human ~30 min / CC ~5 min), risk low. MAX_BATCH = 500 in schema.ts; the mock splits its catch-up; unit test: a catch-up of 1,200 events arrives as 500, 500, 200 with status catching_up until the last.
+B) Cap only on the wire
+Effort S (zero work), risk low. The mock sends any size; chunk 14 alone applies 500.
+State: approved
+Actual answer: A) "500 cap for every source", EQ4 (D4), 2026-10-15
+Accepted scope: option A: `MAX_BATCH = 500` in `schema.ts` for every source, the mock splitting its catch-up, the split test, and C33 freeze wording changed to "the catch-up events"
+History: none
+
+### 1. Architecture review (eng, chunk 11)
+
+Findings (most severe first):
+- [P2] (confidence: 8/10) `src/main.tsx:12` `<StrictMode>` — double mount would re-send the catch-up and fake duplicates. Disposition: accepted, E30 A (EQ2).
+- [P2] (confidence: 8/10) `tsconfig.node.json` include lacks `src/data` — browser-only code in shared modules would pass `tsc -b`. Disposition: accepted, E31 A (EQ3).
+- [P2] (confidence: 7/10) chunk 11 "one catch-up batch" vs eng P3 500 cap. Disposition: accepted, E32 A (EQ4).
+
+Production failure per new path: source throws in a tick (C36 status `error`); Node import of a DOM API (E31 build error); huge replay batch (E32 cap). Distribution: no new artifact.
+
+### 2. Code quality review (eng, chunk 11)
+
+Findings:
+- [P3] (confidence: 7/10) chunk 11 C36 "the first per path per minute logs one `[data]` warning" — the limiter needs a clock; if it reads `Date.now()` the test needs real time. Implementation note (no behaviour change): the limiter takes an injectable clock defaulting to `performance.now()`; tests pass a fake. Disposition: recorded as required proof of C36, no question.
+- [P3] (confidence: 8/10) `src/app/globals.d.ts:64` `__sceneDev?: SceneDevHooks;` — the new `__dataDev` hook needs the same typing and the same `dev=1`-only install as `src/scene/devHooks.ts`. Disposition: implementation note, no question.
+- Shared code: none worth extracting; the Data section follows the existing PerfHud section pattern (`src/scene/PerfHud.tsx:46-51`), and the RNG is reused.
+- Diagrams in touched files: section 3 of this plan still accurate.
+
+No new decisions.
+
+#### E33: What happens after a failed batch
+Finding: K-E4, P2, confidence 8/10, chunk 11 C36 "if it throws, nothing commits ... and `source.status` becomes `error`", Claude (in-host)
+Plan baseline: C36 (all-or-nothing batch, status `error` on a throw); nothing says whether later batches apply or when `error` clears.
+Runtime evidence: none (not built).
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| Later batches after a throw | unspecified | still applied, each all-or-nothing | dropped until `connect()` again |
+| Status after a throw | `error` (C36) | stays `error` (detail: first failed event id and time) until the next `connect()`; `dataHealth.failedBatches` counts failures | stays `error` until `connect()` |
+| C36 contract | approved | unchanged | unchanged |
+Question D5:
+D5 — E33: After a batch fails, keep applying the next ones?
+Header: After error
+Options:
+A) Keep applying, sticky error (recommended)
+Effort S (human ~30 min / CC ~5 min), risk low. Later batches apply as usual; status stays error with the first failure's detail until the next connect(); dataHealth.failedBatches counts them. Unit test: batch 2 of 3 throws; batches 1 and 3 apply, failedBatches 1, status error.
+B) Stop applying until reconnect
+Effort S, risk medium. After a throw the slice ignores batches until connect(); status error.
+State: approved
+Actual answer: A) "Keep applying, sticky error", EQ5 (D5), 2026-10-15
+Accepted scope: option A: later batches apply; status stays `error` (first failure detail) until the next `connect()`, ignoring later `live` reports from the source; `dataHealth.failedBatches`; the batch-2-of-3 unit test
+History: none
+
+Approval readiness (eng): PASS. Checked E30 (EQ2), E31 (EQ3), E32 (EQ4), E33 (EQ5); structure EQ1. Implementation notes (warning-limiter clock, `__dataDev` typing, circular ring buffer) change no behaviour and implement approved C36, C39 and eng P4. Each plan edit matches its answer's scope.
+
+### 3. Test review (eng, chunk 11)
+
+Framework: Vitest through `vp test` (node environment, no DOM; `vite.config.ts:21-23`), Playwright for e2e (`playwright.config.ts`, `e2e/`).
+
+```text
+CODE PATHS (proposed)                                         USER FLOWS
+[+] src/data/schema.ts                                        [+] dev=1&source=mock
+  ├── [★★★ PLANNED] safeParse valid/invalid (C36)               ├── [★★ PLANNED] [→E2E] Data section fills, <=25 renders/5 s (C39)
+  └── [★★  PLANNED] Node type check via tsc -b (E31)            ├── [★★ PLANNED] [→E2E] row click shows peek (C32)
+[+] src/data/mock.ts                                            ├── [★★ PLANNED] [→E2E] freeze=1 image stable (C33)
+  ├── mockEvents: [★★★ PLANNED] seed, split ranges, /work/      └── [★★ PLANNED] 60 sessions: 50 rows + "+10 more" (C42)
+  └── MockSource: [★★★ PLANNED] catch-up split (E32), status,  [+] StrictMode dev load
+      stop twice, after-stop, clock back (C34, C36)             └── [★★ PLANNED] connect/disconnect/connect clean (E30)
+[+] src/data/reduce.ts + src/app/store/data.ts
+  ├── [★★★ PLANNED] fixture totals, duplicate, shuffle (C38)
+  ├── [★★★ PLANNED] invalid among 499; throw -> no commit (C36)
+  ├── [★★★ PLANNED] batch 2 of 3 throws, sticky error (E33)
+  ├── [★★  PLANNED] ring eviction keeps aggregates (eng Q1)
+  └── [★★  PLANNED] peek: own events, max 20, evicted text (C32)
+[+] scripts/mock-dump.ts  [★★★ PLANNED] equals generator; bad flags exit 1 (C30)
+COVERAGE: 18/18 paths planned | unit 13, Playwright 5 | GAPS: 0 after E33
+```
+
+Findings:
+- [P2] (confidence: 8/10) chunk 11 C36 — behaviour after a failed batch undefined, so untestable. Disposition: accepted, E33 A (EQ5).
+
+Value cards (critical paths):
+- Value: protects=totals equal distinct valid events in any order; fails_when=dedupe or max-ts rule removed; why_new=no data tests exist; seam=none; no_claim=real log shapes (mock fixture; unit only)
+- Value: protects=no event or status after stop; fails_when=generation check removed; why_new=new source; seam=fake clock injected by constructor; no_claim=chunk 14 WebSocket timing
+- Value: protects=panel renders bounded under steady mock; fails_when=throttle removed or selector returns new objects; why_new=replaces manual Profiler check; seam=__dataDev.renders (dev=1 only); no_claim=backfill scale (chunk 14)
+
+Tests made obsolete: none. Test plan artifact: written below the record (path in the completion summary).
+
+### 4. Performance review (eng, chunk 11)
+
+Findings:
+- [P3] (confidence: 8/10) chunk 11 "a capped ring buffer" with eng P4 cap 50,000 — an `Array.shift()` per eviction moves up to 50,000 entries, and a full 500-event batch would move about 25 million [estimated]. Implementation note applied (no behaviour change): a circular array with a head index, evicting ids from the C38 seen-id set as it goes.
+- [P3] (confidence: 6/10) Medium confidence, verify this is actually an issue: copying the sessions map on every batch is O(sessions); at the steady mock's tens of sessions it is negligible, and chunk 14's backfill scale is unknown [not measured]. Guidance: copy only the touched entries' containers; measure in chunk 14.
+- Memory: ring about 25 MB, seen ids about 2 MB [estimated, CEO Section 7]. Bundle: C40 budget.
+
+No new decisions.
+
+### Outside voice (eng, chunk 11)
+
+Codex disabled (`codex_reviews` = disabled); recorded as skipped; no native replacement.
+
+### TODOS.md (eng, chunk 11)
+
+No new TODO proposals. C31 (CEO) already recorded.
+
+### NOT in scope (eng, chunk 11)
+
+- Measuring map-copy cost at backfill scale: chunk 14, where the scale exists.
+- Everything listed in the CEO record's NOT in scope (C31, jobs to chunk 13, later chunks).
+
+### What already exists (eng, chunk 11)
+
+Reused, not rebuilt: `useStore`/`resetStore` (`src/app/store/index.ts`), `createRng`/`hash01` (`src/sim/rng.ts`), `parseParams` (`src/app/params.ts`), PerfHud section pattern (`src/scene/PerfHud.tsx`), dev hook pattern and typing (`src/scene/devHooks.ts`, `src/app/globals.d.ts`), shots pipeline (`scripts/shots.config.ts`). No shared-code extraction proposed.
+
+### Failure modes (eng, chunk 11)
+
+| Path | Realistic failure | Test | Handling | User sees |
+|---|---|---|---|---|
+| StrictMode double mount | catch-up sent twice | E30 unit | `connect` clears | clean state |
+| shared module uses `window` | Node crash in dump or sidecar | E31 `tsc -b` | build fails | build error |
+| oversize batch | long store update | E32 unit | split at 500 | nothing |
+| reducer throw mid-stream | later data lost or view frozen | E33 unit | later batches apply | sticky `error`, counter |
+| ring eviction at cap | slow eviction | (perf note) | circular array | nothing |
+
+Critical gaps: 0.
+
+### Worktree parallelization strategy (eng, chunk 11)
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| Schema and Source type | `src/data/` | — |
+| Mock and MockSource | `src/data/` | schema |
+| Reducers and slice | `src/data/`, `src/app/store/` | schema |
+| Params allowlist | `src/app/` | — |
+| Data section and e2e | `src/scene/`, `src/app/`, `e2e/` | slice, mock |
+| Dump script, shots, README | `scripts/`, `docs/`, `README.md` | mock, Data section |
+
+Lane A: schema → mock → reducers/slice → Data section → dump, shots, README (shared `src/data/`). Lane B: params allowlist (independent). Execution order: launch A and B; merge B any time; A is sequential. Conflict flag: `src/app/App.tsx` is touched by the Data section wiring only (lane A). One PR (D18), so lanes are for local ordering only.
+
+## Implementation Tasks (eng review, chunk 11)
+
+Adds to the CEO tasks T1-T8 above; each derives from a finding in this record.
+
+- [ ] **T1 (P1, human: ~1h / CC: ~10min)** — store — `connect`/`disconnect` own the source lifecycle
+  - Surfaced by: Architecture — E30, `src/main.tsx:12` StrictMode
+  - Files: `src/app/store/data.ts`, `src/app/App.tsx`, `src/data/reduce.test.ts`
+  - Verify: `vp test`: connect, disconnect, connect equals one connect with 0 duplicates
+- [ ] **T2 (P2, human: ~10min / CC: ~2min)** — tooling — Type-check `src/data` under Node
+  - Surfaced by: Architecture — E31, `tsconfig.node.json` include
+  - Files: `tsconfig.node.json`
+  - Verify: `vp run build` passes; adding `window` to a `src/data` file fails `tsc -b`
+- [ ] **T3 (P2, human: ~30min / CC: ~5min)** — data — `MAX_BATCH` 500 for every source; mock splits catch-up
+  - Surfaced by: Architecture — E32
+  - Files: `src/data/schema.ts`, `src/data/mock.ts`, `src/data/mock.test.ts`
+  - Verify: `vp test`: 1,200-event catch-up arrives as 500, 500, 200 with `catching_up` until the last
+- [ ] **T4 (P2, human: ~30min / CC: ~5min)** — store — Sticky `error`, later batches apply, `failedBatches`
+  - Surfaced by: Test review — E33
+  - Files: `src/app/store/data.ts`, `src/data/reduce.ts`, `src/data/reduce.test.ts`
+  - Verify: `vp test`: batch 2 of 3 throws; 1 and 3 apply, `failedBatches` 1, status `error`
+- [ ] **T5 (P3, human: ~30min / CC: ~5min)** — data — Circular ring buffer with id eviction
+  - Surfaced by: Performance — ring buffer note
+  - Files: `src/data/reduce.ts`, `src/data/reduce.test.ts`
+  - Verify: `vp test`: eviction at an injected cap keeps aggregates and drops evicted ids from the seen set
+
+Effort assumption: features ~30x, tests ~50x; about human ~3h / CC ~30 min on top of the CEO tasks.
+
+### Unresolved decisions (eng, chunk 11)
+
+None.
+
+### Completion summary (eng, chunk 11)
+
+- Step 0: Scope Challenge — scope accepted as-is (EQ1: smaller arrangement, same features)
+- Reality rows: 7/7 applicable rows emitted (see below), 1 unverified premise
+- Architecture Review: 3 issues found (E30, E31, E32, all accepted)
+- Code Quality Review: 2 issues found (implementation notes, no decision)
+- Test Review: diagram produced, 1 gap identified (E33, accepted)
+- Performance Review: 2 issues found (ring buffer note applied; map-copy guidance)
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to user
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (`codex_reviews` config); no native replacement
+- Parallelization: 2 lanes, 1 parallel / 1 sequential
+- Lake Score: 2/2 (EQ2 and EQ3 offered a 10/10 option and chose it; EQ4 and EQ5 had no 10/10 option and chose their top-scored option)
+- Test plan artifact: `~/.gstack/projects/bjorkgard-ai-center/nathanael-main-eng-review-test-plan-20261015-085035.md`
+
+Reality rows (eng):
+- REALITY: premise-table finding unverified=1 (zod/mini gzip size; no published number found) docs/PLAN.md:583
+- REALITY: already-done pass `git log origin/main -- src/data` empty; no reverts in touched paths src/app/store/index.ts:7
+- REALITY: surface-check pass `vp test` node environment (vite.config.ts:21), `tsc -b` in `build` (package.json:8), `zod/mini` entry exists (JSR @zod/mini) package.json:8
+- REALITY: binding-decisions pass CEO C30-C42 and eng P3, P4, Q1 honoured; E32 extends P3 to every source docs/PLAN.md:950
+- REALITY: numbers finding 1,200/500 split and 25 M moves are worked examples [estimated] docs/PLAN.md:583
+- REALITY: deferred-asks pass none for chunk 11 TODOS.md:5
+- REALITY: pr-count pass one PR (D18) docs/PLAN.md:31
+
+`PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=1 verdict=complete`
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | ISSUES OPEN | 4 proposals, 4 accepted, 0 deferred (Phase 3, logged 2026-10-14T11:06:55Z; its UI-4 to UI-7 were settled by the design review) |
-| Outside Review | codex via `/plan-ceo-review` and `/plan-eng-review`; Claude subagent via `/plan-design-review` | Independent 2nd opinion | 3 | disabled | `codex_reviews` disabled for the CEO and eng reviews; design phase: native Claude subagent completed (12 findings; native, not outside coverage) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES OPEN | 11 issues, 0 critical gaps (this run: Phase 3, logged after this report) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 4/10 → 7/10, 17 decisions (Phase 3, logged 2026-10-14T11:48:17Z) |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 3 proposals, 2 accepted, 1 deferred (chunk 11, 2026-10-15) |
+| Outside Review | codex via `/plan-ceo-review` and `/plan-eng-review` | Independent 2nd opinion | 5 | disabled | `codex_reviews` disabled; no completed external review |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 3 | ISSUES OPEN | 8 issues, 0 critical gaps (this run: chunk 11; all mapped to E30-E33 or implementation notes, 0 unresolved) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES OPEN | score: 2/10 → 7/10, 22 decisions (2026-10-12) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled for the Phase 3 CEO review (2026-10-14T11:03:53Z) and eng review (this run); design phase: codex disabled, native Claude subagent completed with 12 findings (2026-10-14T11:19:21Z, `source: in-host`), not outside coverage.
-- **VERDICT:** No review is CLEAR. Eng Review ISSUES OPEN means 11 mapped findings with 0 unresolved decisions and 0 critical gaps (all resolved by D1-D5 or recorded as guidance); Design Review ISSUES OPEN reflects its 7/10 AI-slop pass held by the accepted neon-glass look.
+- **OUTSIDE COVERAGE:** codex, plan-review phase: disabled for the chunk 11 CEO review (2026-10-15T06:39:20Z) and this eng review; no native replacement. The CEO 0H spec reviews were same-harness Claude subagents, not outside coverage.
+- **VERDICT:** CEO CLEARED for chunk 11. Eng Review ISSUES OPEN means 8 mapped findings with 0 unresolved decisions and 0 critical gaps, all resolved by E30-E33 or recorded as implementation notes; chunk 11 is ready to implement. eng review required.
 
-**UNRESOLVED DECISIONS:**
-- + 4 unresolved from prior reviews (the CEO log row's UI-4 to UI-7, settled by the design review after that row was written)
+NO UNRESOLVED DECISIONS
