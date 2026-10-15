@@ -95,7 +95,7 @@ Each item has an id: a hash of the session, the tool, the item's text (trimmed, 
 - **Quoted words never match**: `echo "git commit"`, `'git' commit` and `"vitest" run` are `other`.
 - Everything else (`Read`, `Grep`, MCP tools, ...) is `other`.
 
-**toolClass v1 limits (E15):** it does not look inside `bash -c '...'` or `$(...)`, reads each line of a heredoc body as a command (a newline separates commands like `;`), and is not user-extendable (X10: the trigger is a first missed-runner report). A runner it does not list is `other`.
+**toolClass v1 limits (E15):** it does not look inside `bash -c '...'` or `$(...)`, and is not user-extendable (X10: the trigger is a first missed-runner report). A runner it does not list is `other`.
 
 `filesTouched` comes from one tool-to-path table: `file_path` (`Edit`, `Write`, `MultiEdit`), `notebook_path` (`NotebookEdit`) and the `*** Update File:` / `*** Add File:` / `*** Delete File:` / `*** Move to:` headers of an `apply_patch` body. Only the headers are read; the body is not kept. Paths use the path rule below.
 

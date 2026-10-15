@@ -139,8 +139,27 @@ describe("documented v1 limits", () => {
     expect(classifyCommand('echo "a\nvitest"')).toBe("other");
   });
 
-  test("a heredoc body is read as commands (v1 limit)", () => {
-    expect(classifyCommand("cat <<'EOF' > a.sh\ngit commit -m x\nEOF")).toBe("git_commit");
+  test("heredoc bodies are not commands", () => {
+    expect(classifyCommand("cat <<'EOF'\ngit commit -m x\nEOF")).toBe("other");
+    expect(classifyCommand('cat <<"EOF"\nvitest\nEOF')).toBe("other");
+    expect(classifyCommand("cat <<EOF > a.sh\nvitest\nEOF")).toBe("other");
+    expect(classifyCommand("cat <<-EOF\n\tvitest\n\tEOF")).toBe("other");
+    expect(classifyCommand("cat <<'EOF'\nvitest\nEOF\nvitest run")).toBe("test");
+  });
+
+  test("a commit with a heredoc message is a commit, whatever the message says", () => {
+    const cmd = `git commit -m "$(cat <<'EOF'\nfix: thing\n\nvp test passes\nEOF\n)"`;
+    expect(classifyCommand(cmd)).toBe("git_commit");
+    expect(classifyCommand(`git add . && ${cmd}`)).toBe("git_commit");
+    expect(classifyCommand("echo hi\ncat <<'EOF'\nvp check\nEOF")).toBe("other");
+  });
+
+  test("a heredoc with no terminator drops the rest", () => {
+    expect(classifyCommand("cat <<'EOF'\ngit commit -m x\nvitest")).toBe("other");
+  });
+
+  test("a here-string is not a heredoc", () => {
+    expect(classifyCommand("cat <<< x\nvitest")).toBe("test");
   });
 });
 

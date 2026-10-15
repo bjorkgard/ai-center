@@ -49,8 +49,32 @@ interface Word {
   quoted: boolean;
 }
 
+const HEREDOC = /(?<!<)<<(-?)\s*(['"]?)([A-Za-z_]\w*)\2/;
+
+/**
+ * Drops heredoc bodies: after `<<WORD` (also `<<'WORD'`, `<<"WORD"`, `<<-WORD`) every line up to
+ * and including the one that is WORD (trimmed for `<<-`) is text, not commands. Without a
+ * terminator the rest of the command goes.
+ */
+function withoutHeredocs(command: string): string {
+  if (!command.includes("<<")) return command;
+  const kept: string[] = [];
+  let end: { word: string; dash: boolean } | undefined;
+  for (const line of command.split("\n")) {
+    if (end) {
+      if ((end.dash ? line.trim() : line) === end.word) end = undefined;
+      continue;
+    }
+    kept.push(line);
+    const m = HEREDOC.exec(line);
+    if (m) end = { word: m[3], dash: m[1] === "-" };
+  }
+  return kept.join("\n");
+}
+
 /** Splits at unquoted `&&`, `||`, `;` and `|`; words keep a flag for any quoting in them. */
-function segments(command: string): Word[][] {
+function segments(rawCommand: string): Word[][] {
+  const command = withoutHeredocs(rawCommand);
   const out: Word[][] = [];
   let words: Word[] = [];
   let text = "";
