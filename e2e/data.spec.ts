@@ -168,7 +168,8 @@ test("burst at 10x: the applied count rises, Pause stops it over 1 s, Play resum
   page,
 }) => {
   test.setTimeout(90_000);
-  await openData(page, "dev=1&source=mock&scenario=burst&speed=10");
+  // No scene (webgl=0): on GPU-less CI the live scene keeps the page from settling.
+  await openData(page, "dev=1&webgl=0&source=mock&scenario=burst&speed=10");
   await expect(health(page)).toContainText("live");
   await expect(health(page)).toContainText("10x");
   const first = await applied(page);
