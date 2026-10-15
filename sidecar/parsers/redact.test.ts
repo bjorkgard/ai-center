@@ -144,6 +144,31 @@ describe("secret-shaped segments inside the root", () => {
   });
 });
 
+describe("paths with spaces", () => {
+  test("a quoted path is one path", () => {
+    const out = redact('open "/Users/Alice Smith/private/file.txt" now', "/repo");
+    expect(out).toBe(`open "${OUTSIDE}" now`);
+    expect(redact("open '/Users/Alice Smith/private/file.txt'", "/repo")).toBe(`open '${OUTSIDE}'`);
+    expect(redact('cat "/repo/my dir/a b.ts"', "/repo")).toBe('cat "my dir/a b.ts"');
+    expect(redact('cat "C:\\Users\\Alice Smith\\x.txt"', "/repo")).toBe(`cat "${OUTSIDE}"`);
+  });
+
+  test("a quoted string that is not a path is left alone", () => {
+    expect(redact("say \"hello big world\" and 'it is'", "/repo")).toBe(
+      "say \"hello big world\" and 'it is'",
+    );
+  });
+
+  test("a working root with spaces is mapped before tokenising", () => {
+    const root = "/Users/Alice Smith/my project";
+    expect(redact(`edit ${root}/src/a b.ts please`, root)).toBe("edit src/a b.ts please");
+    expect(redact(`cd ${root}`, root)).toBe("cd .");
+    const out = redact(`edit ${root}/src/a.ts and /Users/Alice Smith/other/x`, root);
+    expect(out).not.toContain("my project");
+    expect(out.startsWith("edit src/a.ts and ")).toBe(true);
+  });
+});
+
 describe("colon separates words (URLs, file:, at:)", () => {
   test.each([
     ["file:///Users/someone/x", `file://${OUTSIDE}`],

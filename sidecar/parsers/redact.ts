@@ -100,13 +100,35 @@ function cut(text: string): string {
   return text.slice(0, end >= 0xd800 && end <= 0xdbff ? CUT - 1 : CUT);
 }
 
+const QUOTED = /"([^"\n]*)"|'([^'\n]*)'/g;
+
+/**
+ * Paths with spaces cannot be found word by word, so two cases are mapped first: a working root
+ * that itself holds whitespace (its prefix is dropped, leaving a relative path), and a quoted
+ * string whose content is a path (mapped as one path). Both are linear.
+ */
+function withoutSpacedPaths(window: string, root: string | undefined): string {
+  let text = window;
+  if (root !== undefined && root.length > 1 && /\s/.test(root)) {
+    const bare = root.replace(/\/+$/, "");
+    text = text.split(`${bare}/`).join("").split(bare).join(".");
+  }
+  if (!text.includes('"') && !text.includes("'")) return text;
+  return text.replace(QUOTED, (whole: string, double?: string, single?: string) => {
+    const content = double ?? single ?? "";
+    return looksLikePath(content) || isRoot(content, root)
+      ? `${whole[0]}${mapPath(content, root)}${whole[0]}`
+      : whole;
+  });
+}
+
 /**
  * Task text and other free text on its way into an event (R2, D16, E10, E11): examined up to
  * 4 KiB, secrets become `[redacted]`, absolute paths outside `root` become `[outside project]`
  * and inside it relative, then the result is cut to 120 characters.
  */
 export function redact(text: string, root: string | undefined): string {
-  const window = text.length > WINDOW ? text.slice(0, WINDOW) : text;
+  const window = withoutSpacedPaths(text.length > WINDOW ? text.slice(0, WINDOW) : text, root);
   let out = "";
   let last = 0;
   let previous = "";

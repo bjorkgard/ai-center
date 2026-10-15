@@ -2,6 +2,7 @@ import { createReadStream, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { resolveRoots } from "../sidecar/roots.ts";
+import { homeLabel } from "./home-label.ts";
 
 // `vp run logs:probe -- [--log-root <dir>] [--file <path>] [--json] [--all]` prints the shape of
 // the log lines under the log roots the server would watch (PLAN chunk 15a, X2): line types,
@@ -48,10 +49,7 @@ for (let i = 0; i < argv.length; i++) {
   } else fail(`unknown flag ${arg} (use --log-root <dir>, --file <path>, --json, --all)`);
 }
 
-const tilde = (p: string) => {
-  const home = homedir();
-  return p === home || p.startsWith(home + "/") ? `~${p.slice(home.length)}` : p;
-};
+const tilde = (p: string) => homeLabel(p, homedir());
 
 if (file !== undefined) {
   const { parseClaudeText } = await import("../sidecar/parsers/claude.ts");

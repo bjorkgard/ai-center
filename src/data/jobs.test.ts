@@ -148,3 +148,36 @@ test("a stale in-progress or completed todo event does not change the active tod
   // Nothing went to a turn job.
   expect([...s.jobs.values()].some((j) => j.kind === "turn")).toBe(false);
 });
+
+test("a cancelled todo closes its job as cancelled, not done", () => {
+  const s = run(
+    ev({ sec: 0, type: "status", todo: { id: "a", status: "pending" } }),
+    ev({ sec: 1, type: "status", todo: { id: "a", status: "cancelled" } }),
+  );
+  expect(stage(s, "todo:a")).toBe("cancelled");
+});
+
+test("cancelling the active todo hands tool calls back to the turn", () => {
+  const s = run(
+    ev({ sec: 0, type: "turn_start" }),
+    ev({ sec: 1, type: "status", todo: { id: "a", status: "in_progress" } }),
+    ev({ sec: 2, type: "status", todo: { id: "a", status: "cancelled" } }),
+    ev({ sec: 3, toolClass: "lint" }),
+  );
+  expect(stage(s, "todo:a")).toBe("cancelled");
+  expect(stage(s, "turn")).toBe("evaluating");
+});
+
+test("a stale cancel does not close a newer in-progress todo", () => {
+  const s = run(
+    ev({ sec: 5, type: "status", todo: { id: "a", status: "in_progress" } }),
+    ev({ sec: 2, type: "status", todo: { id: "a", status: "cancelled" } }),
+    ev({ sec: 6, toolClass: "test" }),
+  );
+  expect(stage(s, "todo:a")).toBe("evaluating");
+});
+
+test("a cancelled item that was never seen still gets a closed job", () => {
+  const s = run(ev({ sec: 0, type: "status", todo: { id: "z", status: "cancelled" } }));
+  expect(stage(s, "todo:z")).toBe("cancelled");
+});
