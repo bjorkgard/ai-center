@@ -42,7 +42,7 @@ Measured with `vp run logs:probe -- --all` (every file, counts are lines):
 
 Also ignored, as a known gap: in a **main** file, a `user`/`assistant`/`system` line with `isSidechain: true` (an in-file sidechain). It is counted `sidechain` and makes no event. In a subagent file `isSidechain` is true on every line and means nothing.
 
-A line that is not JSON (or is JSON but not an object) is counted `malformed` (`W-MALFORMED`). A line over 32 MiB is skipped and counted `oversize` (`W-OVERSIZE`); the longest line measured is 1.36 MB. A blank line is skipped without a count. The health counters (`lines`, `malformed`, `unknown`, `oversize`, `ignored`, `drift`, `sidechain`, `noTimestamp`, the first byte offset of each class, unknown type names) are on the file state: `vp run logs:probe -- --file <path>` prints them with the token totals.
+A line that is not JSON (or is JSON but not an object) is counted `malformed` (`W-MALFORMED`). A line over 32 MiB is skipped and counted `oversize` (`W-OVERSIZE`); the longest line measured is 1.36 MB. A blank line is skipped without a count. The health counters (`lines`, `malformed`, `unknown`, `oversize`, `ignored`, `drift`, `sidechain`, `noTimestamp`, the first byte offset of each class, unknown type names) are on the file state: `vp run logs:probe -- --file <path>` prints them with the token totals. It does not print the file's path (that holds your user name, repo and session id).
 
 ## From lines to events
 
@@ -95,7 +95,7 @@ Each item has an id: a hash of the session, the tool, the item's text (trimmed, 
 - **Quoted words never match**: `echo "git commit"`, `'git' commit` and `"vitest" run` are `other`.
 - Everything else (`Read`, `Grep`, MCP tools, ...) is `other`.
 
-**toolClass v1 limits (E15):** it does not look inside `bash -c '...'`, `$(...)` or heredoc bodies, does not split on newlines, and is not user-extendable (X10: the trigger is a first missed-runner report). A runner it does not list is `other`.
+**toolClass v1 limits (E15):** it does not look inside `bash -c '...'` or `$(...)`, reads each line of a heredoc body as a command (a newline separates commands like `;`), and is not user-extendable (X10: the trigger is a first missed-runner report). A runner it does not list is `other`.
 
 `filesTouched` comes from one tool-to-path table: `file_path` (`Edit`, `Write`, `MultiEdit`), `notebook_path` (`NotebookEdit`) and the `*** Update File:` / `*** Add File:` / `*** Delete File:` / `*** Move to:` headers of an `apply_patch` body. Only the headers are read; the body is not kept. Paths use the path rule below.
 
@@ -107,10 +107,10 @@ A file `<session>/subagents/agent-<id>.jsonl` gives `sessionId` = `<id>` (the `a
 
 Free text that reaches an event (`currentTask`, tool names, model names) goes through `redact`; `filesTouched` goes through `redactPath`. It looks at the first 4 KiB only and every pattern is linear (a 1 MiB adversarial string takes under 50 ms), then cuts to 120 characters.
 
-- Words are split at whitespace, quotes, brackets, `,`, `;` and `=` (so `KEY=value` judges the value).
+- Words are split at whitespace, quotes, brackets, `,`, `;`, `=` and `:` (so `KEY=value` judges the value, and `file:///Users/x` or `at:/Users/x` reach the path rule; a drive prefix such as `C:\` stays whole).
 - Becomes `[redacted]`: a known key prefix (`sk-`/`pk-`/`rk-` keys, GitHub `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_` and `github_pat_`, Slack `xox*-`, AWS `AKIA`/`ASIA`, Google `AIza`, GitLab `glpat-`, npm `npm_`, JWTs), the word after `Bearer`, a **hex string of 32 or more characters except exactly 40 or 64** (git SHA-1 and SHA-256 lengths), and any word of 32 or more characters that mixes letters and digits with Shannon entropy of at least 4.0 bits per character.
 - **Residual risk (E11):** a 40-hex legacy token is not redacted, because 40 hex characters is also a git SHA. So is any 64-hex secret.
-- An absolute path outside the session's working root becomes `[outside project]`; inside it, it is made relative to it. The working root is the first `cwd` the file reports (a monorepo subdirectory as `cwd` makes sibling packages "outside": known gap, X11). `~/...` and `C:\...` count as outside. A lone `/commit` is a command, not a path.
+- An absolute path outside the session's working root becomes `[outside project]`; inside it, it is made relative to it, and each segment of the relative path is checked for secrets like any other word. The working root is the first `cwd` the file reports (a monorepo subdirectory as `cwd` makes sibling packages "outside": known gap, X11). `~/...` and `C:\...` count as outside. A lone `/commit` is a command, not a path.
 
 ### Ids (E4)
 

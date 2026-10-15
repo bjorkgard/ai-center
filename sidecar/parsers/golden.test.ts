@@ -118,6 +118,55 @@ describe.each(names)("golden fixture %s", (name) => {
   });
 });
 
+describe("a message whose usage rises across lines (synthetic)", () => {
+  const line = (id: string, n: number, usage: Record<string, number>) =>
+    JSON.stringify({
+      type: "assistant",
+      sessionId: "s",
+      cwd: "/repo",
+      timestamp: `2026-10-14T08:00:0${n}.000Z`,
+      message: {
+        id,
+        role: "assistant",
+        model: "claude-opus-5-5",
+        stop_reason: null,
+        usage,
+        content: [{ type: "text", text: "placeholder" }],
+      },
+    });
+  const u = (inp: number, out: number, cr: number, cw: number) => ({
+    input_tokens: inp,
+    output_tokens: out,
+    cache_read_input_tokens: cr,
+    cache_creation_input_tokens: cw,
+  });
+  const text =
+    [
+      line("m1", 1, u(3, 10, 100, 7)),
+      line("m1", 2, u(3, 250, 100, 7)),
+      line("m1", 3, u(2, 40, 120, 7)),
+      line("m2", 4, u(1, 5, 0, 0)),
+      line("m2", 5, u(1, 9, 0, 3)),
+    ].join("\n") + "\n";
+  const parsed = parseClaudeText(text, { path: "/x/s.jsonl", identity: "1:1" }, deps);
+
+  test("the parser total is the per-field max, equal to the reference counter", () => {
+    expect(referenceTotal(text)).toEqual({ in: 4, out: 259, cacheRead: 120, cacheWrite: 10 });
+    expect(sumUsage(parsed.events)).toEqual(referenceTotal(text));
+    expect(parsed.state.health.tokens).toEqual(referenceTotal(text));
+    expect(applyBatch(emptyData(), parsed.events).tokens).toEqual(referenceTotal(text));
+  });
+
+  test.skipIf(!hasJq)("and equals the jq command", () => {
+    const res = spawnSync("jq", ["-s", JQ], { input: text, encoding: "utf8" });
+    expect(JSON.parse(res.stdout)).toEqual(referenceTotal(text));
+  });
+
+  test("the line that fell below the maximum is drift", () => {
+    expect(parsed.state.health.drift).toBe(1);
+  });
+});
+
 describe("what each fixture shows (counts are of events by type)", () => {
   const count = (events: AgentEvent[], type: string) =>
     events.filter((e) => e.type === type).length;

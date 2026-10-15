@@ -68,7 +68,8 @@ if (file !== undefined) {
   const health = state.health;
   if (json) console.log(JSON.stringify(health, null, 2));
   else {
-    console.log(`file: ${tilde(file)}`);
+    // Not the path: it holds the user name, the repo and the session id.
+    console.log("file: <given>");
     console.log(`lines: ${health.lines}`);
     console.log(
       `malformed: ${health.malformed}  unknown: ${health.unknown}  oversize: ${health.oversize}  ignored: ${health.ignored}  usage drift: ${health.drift}`,

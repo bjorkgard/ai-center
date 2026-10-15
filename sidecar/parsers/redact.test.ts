@@ -134,6 +134,34 @@ describe("paths (E10, D16)", () => {
   });
 });
 
+describe("secret-shaped segments inside the root", () => {
+  const sk = "sk-ABCDEFGHIJKLMNOPQRSTUVWX";
+  test("an absolute path inside the root is checked per segment, in filesTouched and in text", () => {
+    expect(redactPath(`/repo/${sk}/f.txt`, "/repo")).toBe(`${REDACTED}/f.txt`);
+    expect(redact(`see /repo/${hex(32)}/x`, "/repo")).toBe(`see ${REDACTED}/x`);
+    expect(redact(`/repo/src/${sk}`, "/repo")).toBe(`src/${REDACTED}`);
+    expect(redactPath("/repo/src/a.ts", "/repo")).toBe("src/a.ts");
+  });
+});
+
+describe("colon separates words (URLs, file:, at:)", () => {
+  test.each([
+    ["file:///Users/someone/x", `file://${OUTSIDE}`],
+    ["at:/Users/someone/x", `at:${OUTSIDE}`],
+    ["see file:///repo/src/a.ts ok", "see file://src/a.ts ok"],
+    ["error:/etc/passwd", `error:${OUTSIDE}`],
+  ])("%s becomes %s", (text, expected) => {
+    expect(redact(text, "/repo")).toBe(expected);
+  });
+
+  test("a URL keeps its scheme and host, a drive path and a clock time survive", () => {
+    expect(redact("see https://example.com/a/b at 12:30", "/repo")).toBe(
+      "see https://example.com/a/b at 12:30",
+    );
+    expect(redact("C:\\Users\\someone\\x", "/repo")).toBe(OUTSIDE);
+  });
+});
+
 describe("redactPath for filesTouched", () => {
   test.each([
     ["/repo/src/a.ts", "src/a.ts"],

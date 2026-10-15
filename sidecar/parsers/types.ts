@@ -28,7 +28,7 @@ export interface ParserHealth {
   unknown: number;
   oversize: number;
   ignored: number;
-  /** Lines whose usage differed from the first line of the same message (the first is kept). */
+  /** Lines with a token field below the largest value already counted for the same message. */
   drift: number;
   /** Lines in a main file that belong to an in-file sidechain (ignored, a known gap). */
   sidechain: number;

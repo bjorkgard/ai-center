@@ -126,7 +126,21 @@ describe("documented v1 limits", () => {
   test("bash -c, $(...) and heredocs are not looked into", () => {
     expect(classifyCommand("bash -c 'vitest run'")).toBe("other");
     expect(classifyCommand("echo $(git commit -m x)")).toBe("other");
-    expect(classifyCommand("cat <<'EOF' > a.sh\ngit commit -m x\nEOF")).toBe("other");
+  });
+
+  test("a subshell is looked into", () => {
+    expect(classifyCommand("(cd app && vitest run)")).toBe("test");
+    expect(classifyCommand("(vitest)")).toBe("test");
+  });
+
+  test("a newline separates commands like ;", () => {
+    expect(classifyCommand("cd app\nvitest run")).toBe("test");
+    expect(classifyCommand("echo hi\ngit commit -m x")).toBe("git_commit");
+    expect(classifyCommand('echo "a\nvitest"')).toBe("other");
+  });
+
+  test("a heredoc body is read as commands (v1 limit)", () => {
+    expect(classifyCommand("cat <<'EOF' > a.sh\ngit commit -m x\nEOF")).toBe("git_commit");
   });
 });
 

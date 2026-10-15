@@ -206,6 +206,25 @@ describe("--file", () => {
   });
 });
 
+describe("--file does not print where the file is", () => {
+  const uuid = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
+  const folder = join(dir, `planteduser-secretrepo-${uuid}`);
+  mkdirSync(folder, { recursive: true });
+  const file = join(folder, `${uuid}.jsonl`);
+  writeFileSync(file, JSON.stringify(lines[0]) + "\n");
+
+  test.each([[[]], [["--json"]]])(
+    "with %j neither the path, the user, the repo nor the id appear",
+    (extra) => {
+      const res = run(["--file", file, ...extra]);
+      expect(res.status).toBe(0);
+      for (const planted of ["planteduser", "secretrepo", uuid, dir]) {
+        expect(res.stdout, planted).not.toContain(planted);
+      }
+    },
+  );
+});
+
 describe("bad invocations", () => {
   test.each([
     [["--bogus"], "--bogus"],

@@ -9,9 +9,10 @@ const WINDOW = 4096;
 const CUT = 120;
 const MIN_SECRET = 32;
 const MIN_ENTROPY = 4.0;
-// Split on whitespace, quotes, brackets, commas, semicolons and `=` so `KEY=value` is judged by
-// its value. Every pattern below is anchored on one token, so the whole pass is linear.
-const TOKEN = /[^\s"'`<>()[\]{},;=]+/g;
+// Split on whitespace, quotes, brackets, commas, semicolons, `=` and `:` so `KEY=value` is judged
+// by its value and `file:///Users/x` or `at:/Users/x` reach the path rule; a drive prefix (`C:\`)
+// stays whole. Every pattern below is anchored on one token, so the whole pass is linear.
+const TOKEN = /(?:[A-Za-z]:[\\/])?[^\s"'`<>()[\]{},;=:]+/g;
 const TRAILING = /[.,:!?]+$/;
 const KEY_PREFIXES: RegExp[] = [
   /^(?:sk|pk|rk)[-_][A-Za-z0-9_-]{16,}/,
@@ -59,7 +60,20 @@ const looksLikePath = (word: string): boolean =>
 const isRoot = (word: string, root: string | undefined): boolean =>
   root !== undefined && root.length > 1 && word === root.replace(/\/+$/, "");
 
+/** A path made relative may still hold a secret-shaped segment. */
+function cleanSegments(path: string): string {
+  if (path === OUTSIDE || path === ".") return path;
+  return path
+    .split("/")
+    .map((segment) => (isSecret(segment) ? REDACTED : segment))
+    .join("/");
+}
+
 function mapPath(word: string, root: string | undefined): string {
+  return cleanSegments(mapPathRaw(word, root));
+}
+
+function mapPathRaw(word: string, root: string | undefined): string {
   if (word.startsWith("~") || DRIVE.test(word)) {
     // A drive path can still be inside a Windows root.
     if (!DRIVE.test(word) || root === undefined || !DRIVE.test(root)) return OUTSIDE;
@@ -102,7 +116,8 @@ export function redact(text: string, root: string | undefined): string {
     const trailing = TRAILING.exec(raw)?.[0] ?? "";
     const word = trailing === "" ? raw : raw.slice(0, raw.length - trailing.length);
     let next = word;
-    if (looksLikePath(word) || isRoot(word, root)) next = mapPath(word, root);
+    if (word.startsWith("///")) next = `//${mapPath(word.slice(2), root)}`;
+    else if (looksLikePath(word) || isRoot(word, root)) next = mapPath(word, root);
     else if (previous === "bearer" && word.length >= 8) next = REDACTED;
     else if (isSecret(word)) next = REDACTED;
     previous = word.toLowerCase();

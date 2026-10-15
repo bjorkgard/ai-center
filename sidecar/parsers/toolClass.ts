@@ -81,8 +81,8 @@ function segments(command: string): Word[][] {
     } else if (ch === "\\" && i + 1 < command.length) {
       text += command[++i];
       open = true;
-    } else if (ch === ";" || ch === "|" || (ch === "&" && command[i + 1] === "&")) {
-      if (ch !== ";" && command[i + 1] === ch) i++;
+    } else if (ch === ";" || ch === "\n" || ch === "|" || (ch === "&" && command[i + 1] === "&")) {
+      if (ch !== ";" && ch !== "\n" && command[i + 1] === ch) i++;
       endSegment();
     } else if (/\s/.test(ch)) endWord();
     else {
@@ -152,7 +152,13 @@ const CHECKERS = new Set(["eslint", "tsc", "ruff", "biome"]);
 const TEST_PAIRS = new Set(["vp", "go", "cargo", "playwright", "deno", "make", "just", "bun"]);
 
 function classifySegment(words: Word[]): ToolClass {
-  const rest = stripWrappers(words);
+  // A subshell `(cd app && vitest)`: the opening bracket belongs to the first command word.
+  const head = words[0];
+  const unwrapped =
+    head && !head.quoted && head.text.startsWith("(") && head.text.length > 1
+      ? [{ ...head, text: head.text.replace(/^\(+/, "").replace(/\)+$/, "") }, ...words.slice(1)]
+      : words;
+  const rest = stripWrappers(unwrapped);
   if (rest.length === 0 || rest[0].quoted) return "other";
   const name = basename(rest[0].text);
   const args = rest.slice(1);
