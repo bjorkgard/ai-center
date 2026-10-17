@@ -685,8 +685,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
   - A missing or unreadable log root shows its reason in the pill and does not crash (G5).
 - **README:** Quick start (DX voice M4): `vp dev` for development, `vp run serve` for the built app; the log server runs under `vp dev`, `vp preview` (used by Playwright) and the binary alike. "Data sources and privacy" section (CEO F10, spec 5.3): what is read, localhost only; what reaches the browser now (per-file line counts and root paths only) and what chunk 15 will add (session ids, model, token counts, tool names, `currentTask` truncated to 120 chars and redacted, D16); the token is defence in depth for browsers (Origin checks stop cross-origin pages, the Host gate stops DNS rebinding), and any local process can read `/api/session` or the page, so it does not defend against local processes, which can read the log files directly. Links to the "Configuration" section from 14a.
 
-#### [-] 14b. Downloadable builds for 4 platforms (deferred, D001)
-- **Deferred:** personal tool; the Mac binary from 02b is enough.
+#### [ ] 14b. Downloadable builds for 4 platforms
 - **Goal:** Every release attaches single-executable builds a user can download and run with no dev setup (D19, moved here from 02b by CEO C1). It follows chunk 15 (now 15a and 15b) so the first public binary shows real Claude Code sessions, not only line counts (UC2).
 - **Depends on:** 02b, 14a, 14c, 15b (14c owns `LiveSource` and the live-by-default page, so without it the binary would still show no sessions).
 - **Tasks:**
