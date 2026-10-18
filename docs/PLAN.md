@@ -3,7 +3,7 @@
 A live 3D AI data-centre dashboard that tracks Claude and Codex agents and subagents, styled like a strategy game.
 This file is the ordered build plan. Each chunk is small enough for one sitting, ends in something runnable, and has acceptance checks to pass before the next chunk starts.
 
-Status legend per chunk: `[ ]` todo, `[~]` in progress, `[x]` accepted.
+Status legend per chunk: `[ ]` todo, `[~]` in progress, `[x]` accepted, `[-]` deferred (see 5a).
 
 ---
 
@@ -370,6 +370,18 @@ Weather and day/night share one top-bar button that shows the current weather ic
 
 Shortcuts D and W are unchanged.
 
+## 5a. Re-scope 2026-10-18: limit-burn view
+
+Decision D001 (personal tool). Chunks below marked `[-]` are deferred, not deleted.
+
+- **Goal:** see which session, model or project is eating the 5-hour usage limit right now.
+- **Burn** = API-equivalent cost (`cost()`, `src/data/metrics.ts`) over 5 h blocks (D004). Cache reads are weighted by price, not counted as raw tokens. Provenance is `estimated`, and the basis names the calibration constant `LIMIT_USD_PER_5H`.
+- **Build order:** 15b, B1, 19, 18, 28, 26+29, 32.
+- **Halls (D003, D007):** hall A = up to 16 top-ranked sessions of the top-burn project; hall B = the next 16 highest-ranked sessions of any project (including the top project's overflow). The hottest session always has a rack. Blocks are account-wide (D007).
+- **Process:** an eng review on B1 only. No CEO or design reviews on these chunks.
+- **Decision rule:** after 2 weeks of daily use, did the hot rack or the alert make the user /clear, switch model or delegate at least once? If yes, add the next piece. If no, stop growing it.
+- **Codex is deferred:** 8 Codex log files vs 1,858 Claude files in the last 14 days.
+
 ## 5. Chunks
 
 Each chunk: Goal, Depends on, Tasks, Acceptance, README step.
@@ -605,7 +617,7 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **Depends on:** 12.
 - **Tasks:**
   - **Metric type and enforcement (CEO C75, design D19):** `Metric` is `{ value: number | null, unit, provenance, basis }`; `null` means unknown and every formatter renders it as "unknown" (G7: an unknown model's cost is `null`, never 0). Selectors return `Metric` only, and dashboard formatters and `<MetricValue metric=...>` accept only `Metric` (no `number` overload), so a raw number fails `vp check`. Every rendered metric carries `data-metric` (eng review D5). A composite metric's provenance is the highest of its inputs on real < derived < estimated (E-voice M7): cost, hall heat and cooling duty are `estimated`, tokens/min is `derived`.
-  - **`ProvenanceBadge`** per section 4b: 8 px top-right glyph (solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated), tooltip on hover and focus showing `basis`; "(est.)" only on panel row labels (design D19). In this chunk the badge is shown only in the `dev=1` HUD Data section, which lists each metric with value, unit, badge and basis (spec 3.6, pass-2 2.1); the "(est.)" panel-label check moves to chunk 29.
+  - **`ProvenanceBadge`** per section 4b: 8 px top-right glyph (solid dot `#6B7385` = real, ring `#8A93A6` = derived, dashed ring `#C9A86A` = estimated), tooltip on hover and focus showing `basis`; "(est.)" only on panel row labels (design D19). In this chunk the badge is shown only in the `dev=1` HUD Data section, which lists each metric with value, unit, badge and basis (spec 3.6, pass-2 2.1); the "(est.)" panel-label check moves to chunk 26+29.
   - **Schema and jobs slice:** Jobs slice (authoritative, eng Q1) and the optional `AgentEvent` fields for jobs, added to `src/data/schema.ts` (additive; CEO C35): `todo?: { id: string, status: "pending" | "in_progress" | "completed" }` (TodoWrite item; its text goes through `currentTask`, redacted) and `toolClass?: "edit" | "git_commit" | "test" | "lint" | "other"` (classified in Node by the parsers; raw commands never reach the browser, D16) (spec 3.5). Job stage derivation per the section 2 job model. The mock generator is unchanged (steady digests stay byte-identical, chunk 12 E36); job-stage tests use hand-written fixture events in `src/data/jobs.test.ts` (E56).
   - **Estimation constants:** `src/config/estimation.ts` names every constant with its value and an `[estimated]` comment: `IDLE_KW = 0.8`, `KW_PER_TOKEN_PER_MIN = 0.004`, `RACK_MAX_KW = 40`, `INLET_BASE_C = 22`, `INLET_C_PER_KW = 0.25`, `HOT_AISLE_DELTA_C = 12`, `LAG_TAU_S = 30`, `HALL_COOLING_CAPACITY_KW = 400`, `IDLE_END_MS = 30 * 60_000`.
   - **Price table and cost (CEO F3, X4, F7, spec 1.1):** the price table is keyed by model and token class (`in`, `out`, `cacheRead`, `cacheWrite`, per million tokens) and carries `asOf` (YYYY-MM); cost is the sum over the four classes. The metric's label is "API-equivalent cost" and its `basis` names `asOf` and says it is not a subscription bill (for example "tokens x claude-opus price, prices as of 2026-10"). A cost total over sessions where some models are unknown sums only the known ones and its `basis` says "excludes N sessions with unknown model"; it is `null` only when every session is unknown. In live mode every token or cost total names its window in `basis` ("last 24 h, backfill window"), so totals never read as all-time.
@@ -711,27 +723,37 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **README:** "Supported logs" (C97, DX7): what the parsers feed, run-this-see-that lines, versions, known gaps (n=1, monorepo, in-file sidechains, desktop plan tool best-effort), the 40-hex residual risk.
 
 #### [ ] 15b. Claude Code parser in the log server
-- **Goal:** the log server parses real Claude Code logs and the app shows the user's own sessions with exact tokens, one hall per repository (UC1, split from chunk 15).
+- **Goal:** the log server parses real Claude Code logs and the app shows the user's own sessions with exact tokens, sessions labelled by repository (D003) (UC1, split from chunk 15).
 - **Depends on:** 15a, 14a, 14c.
 - **Tasks:**
+  - **Message id (D007):** add optional `messageId` to `AgentEvent` (`src/data/schema.ts`) and set it on usage events in `mapAssistant` (`sidecar/parsers/claude.ts`) from `message.id`, so B1 can count requests. Fixture test: a message split over 3 lines with growing usage emits usage events that all carry the same `messageId`.
   - **Registry (C91):** the log server picks a parser by root and path; only `*.jsonl` is tailed. Parser state is built by reading each file from 0 on start and for any file first seen later; events from lines older than 24 h at that moment are suppressed (C80). A file's parser state is dropped 2 h after its last append and rebuilt on the next append (E17).
   - **Session keys (C81, C95, E5, E8):** `sidecar/sessionKeys.ts` owns the session-to-key map: key = git toplevel of the session's first cwd (a worktree `.git` file followed to the main root, T1), else the first cwd; one upgrade if the first cwd has no git root and a later one does; subagents always read their root session's current key (measured 84 of 300 subagents start in another cwd); a parent not parsed yet is resolved from its file head, at most 256 KiB, else `W-PARENT-MISSING`; the `.git` walk stops at the root or 32 levels; results cached by session id.
   - **Store (C100, E7):** `applyBatch` moves a session whose event carries a new `projectKey`, with its subagents and every per-project aggregate (counts, tokens, jobs slice derived from the session's current key); totals stay exact; ring events keep their original key.
   - **Wire and delivery (C89, E2, E3, E9):** `src/data/wire.ts` gains `{ type: "events", path, fileId, cursor, backfill, events }` (at most `MAX_BATCH`); `cursor` = start of the first line not fully sent; `LiveSource` advances a file's cursor only after `onEvents` returns. The server keeps a per-file event log of the 24 h window (cap 250,000 events, `W-LOG-CAP`, T8) and serves any client from any cursor; a slow client is paused per file at its cursor (nothing dropped). Events are validated before send (`W-INVALID-EVENT`); a batch whose apply throws twice is quarantined, counted invalid and its cursor advanced.
   - **Health and drift (X1, DX8, DX9, DX14, C92, DX5, DX13):** per file `{ lines, events, ignored, unknown, malformed, oversize, newestVersion, firstMalformedOffset, firstOversizeOffset }` ride the 14a `lines` message, which keeps `total`; the 14c `logLines` slice holds them and the `dev=1` HUD row is labelled "Parser health". Drift shows in the pill tooltip, one line per vendor and cause. A version above `TESTED_VERSIONS`: "Log format changed: <vendor> <version> is newer than tested (<range>); counts may be incomplete. Run vp run logs:probe and report its output." Unknown line types at a version inside the tested range: "Unrecognised <vendor> log lines: <n> lines of types <type list> were skipped; counts may be incomplete. Run vp run logs:probe and report its output." When both apply, both lines show. Tests: a newer version alone, an unknown type at a tested version alone (no "newer than tested" text), and both.
-  - **Log lines (DX12, DX1, DX2, C96):** every parser `[logs]` line is `[logs] <CODE> <vendor> <file> @<offset>: <problem>. <cause>. <fix>. See README#supported-logs` with codes `I-SUMMARY`, `W-STALE-ROOT`, `W-UNKNOWN-TYPE`, `W-NEW-VERSION`, `W-MALFORMED`, `W-OVERSIZE`, `W-INVALID-EVENT`, `W-USAGE-DRIFT`, `W-BASELINE-RESET`, `W-CODEX-FACT`, `W-PARENT-MISSING`, `W-LOG-CAP`. After backfill one `I-SUMMARY` per vendor: files, sessions, projects in the last 24 h and duration. A root with files but none in 24 h: `<vendor>: <n> files, none in the last 24 h (newest <age> ago); start a <vendor> session to see it here.`
+  - **Log lines (DX12, DX1, DX2, C96):** every parser `[logs]` line is `[logs] <CODE> <vendor> <file> @<offset>: <problem>. <cause>. <fix>. See README#supported-logs` with codes `I-SUMMARY`, `W-STALE-ROOT`, `W-UNKNOWN-TYPE`, `W-NEW-VERSION`, `W-MALFORMED`, `W-OVERSIZE`, `W-INVALID-EVENT`, `W-USAGE-DRIFT`, `W-BASELINE-RESET`, `W-CODEX-FACT` (deferred, D001; Codex only), `W-PARENT-MISSING`, `W-LOG-CAP`. After backfill one `I-SUMMARY` per vendor: files, sessions, projects in the last 24 h and duration. A root with files but none in 24 h: `<vendor>: <n> files, none in the last 24 h (newest <age> ago); start a <vendor> session to see it here.`
   - **Plan text (spec review):** PLAN.md section 2 states the per-session repo-rooted `projectKey` (D5 now reads "repository root of the session's first working directory"), the E4 id and the `toolError` field; the `src/data/schema.ts` comment matches.
-- **Acceptance:** drop the socket after send and before apply, and split a line's events across two batches with a drop between: totals equal an uninterrupted run, 0 duplicates; two clients (reconnecting and fresh) give identical totals; the cap path re-parses; a stalled client in a 10,000-event backfill stays bounded and gets every event once; truncate and rewrite then restart the server with the tab open: new events arrive; rename a file: no double count; more than 50,000 backfill events then a resend applies nothing twice; a throwing apply is quarantined. `sessionKeys` unit tests (subdirectory, worktree, missing path, upgrade from `~`, subagent before and after the parent's upgrade ends in one hall, head cap). `reduce.test.ts`: move with subagents and every aggregate; a no-status event leaves status unchanged; existing reduce, steady-digest and scenario tests pass unchanged. One test per log code; `I-SUMMARY` on a synthetic 200-file root; drift tooltip once per version; parser-state eviction with a fake clock. Manual on the Mac: own sessions in the `dev=1` HUD with correct halls; one file's HUD total within 1% of the `jq` reference; backfill of the last 24 h under 15 s (measured 2026-10-15: 175 files, 186 MB), recorded in the format doc.
+- **Acceptance:** totals match `vp run logs:probe` on the user's own files; one reconnect mid-backfill gives 0 duplicates and equal totals; the cap path re-parses.
+- The two-client and 10,000-event stall tests are dropped (single user, D001).
 - **README:** codes table in "Supported logs"; Quick start points to it.
 
-#### [ ] 16. Codex CLI parser
+#### [ ] B1. Burn model (pure logic)
+- **Goal:** API-equivalent cost in 5 h blocks (D004) per session, model and project, built from `cost()` (D001). Blocks are account-wide (D007): one block sequence over all events, and per-session, per-model and per-project figures are their sums inside the shared current block. A block starts at the first event (of any session) after the previous block ends. Outputs: block start, reset time = start + 5 h, cost so far in the block, burn rate per minute, projected time to limit, and a burn rank over sessions.
+- **Depends on:** 15b, 13.
+- **Tasks:** Pure functions in `src/data/burn.ts`. A calibration constant `LIMIT_USD_PER_5H` in `src/config/estimation.ts` (the user sets it from one /usage reading). Provenance `estimated` with a basis that names the constant. Definitions (D005): a request is an assistant message with usage, deduped by `AgentEvent.messageId` (added in 15b, D007; one API response split over several lines counts once); burn rate = block cost over the last 15 min divided by 15 ($/min); burn rank key = block cost so far. Outputs a request count per session.
+- **Acceptance:** Vitest table tests for: two sessions starting 2 h apart share one block and one reset time (D007); a message split over 3 lines counts as 1 request; block boundary (an event 1 ms after the block end opens a new block); no events, no block; cache-read weighting (priced, not raw tokens); a model with no price (excluded and counted as unknown); projected time to limit with zero burn (shows none, not Infinity).
+
+#### [-] 16. Codex CLI parser (deferred, D001)
+- **Deferred:** 8 Codex logs vs 1,858 Claude in 14 days.
 - **Goal:** Codex rollout JSONL becomes AgentEvents in the same halls as Claude sessions.
 - **Depends on:** 15b.
 - **Tasks:** Record the observed format in `docs/log-formats/codex.md` (Codex 0.145-0.160 on this Mac), first settling with recorded sample values whether `input_tokens` includes `cached_input_tokens` and whether subagent lines before `subagent_history_start_ordinal` repeat parent history; implement only the evidenced branch and log `W-CODEX-FACT` on a contradiction (C98). Map `session_meta` (sessionId, cwd, `session_start`), `turn_context.model`, `event_msg` `task_started`/`task_complete` (turns), `function_call`/`custom_tool_call` (`exec_command`, `exec`, `apply_patch`, `update_plan`) and their outputs (failures give `toolError`, E1), `apply_patch` headers to `filesTouched`, Codex `update_plan` (`plan[]` of `{step, status}`) through the 15a plan-tool table, and user messages not starting with an injected tag (`<recommended_plugins`, `<user_action`, `<environment_context`) to `currentTask`. Usage per `token_count` from `info.last_token_usage`, skipping a total equal to the immediately preceding one; `info: null` ignored; missing fields count 0; `in` = input minus cached when evidenced, clamped at 0; a lower total starts a new baseline (`W-BASELINE-RESET`) (C84). Subagents: `parentSessionId` = `parent_thread_id` with `parentKnown` true, else false; they take the parent's key through `sessionKeys` (rollout found by its thread-id file name); inherited history emits nothing when evidenced (C85). Ignored: `world_state`, `token_usage_record`, `reasoning`, other `event_msg` payloads. Golden fixture via `vp run logs:fixture -- --vendor codex`. Update the section 2 feasibility table with what was found.
 - **Acceptance:** fixtures as in 15a plus: repeated `token_count` (A, B, A after a reset) counts as pinned; null `info`; class mapping on recorded samples; restart mid-file equals one uninterrupted read (eng review Q4); subagent with and without `parent_thread_id`; subagent parsed before its parent shares its hall. Manual: run one `codex exec` in this repo (no Codex file was modified in the last 24 h on 2026-10-15), then its session appears in the same hall as this repo's Claude sessions (D5).
 - **README:** Codex notes in "Supported logs", updated feasibility table.
 
-#### [ ] 17. Drag-and-drop file import replay
+#### [-] 17. Drag-and-drop file import replay (deferred, D001)
+- **Deferred:** Codex is deferred and a personal tool reads live logs, so file import replay is not needed.
 - **Goal:** Drop log files on the page and replay them through the local log server (eng review D1).
 - **Depends on:** 16, 14c (the `POST /api/import` gate stub is from 14a; the D9 card and live default are from 14c).
 - **Tasks:** Drop zone and file picker accepting `.jsonl` (multiple files). Drop switches the mode chip to `REPLAY` and shows the replay bar (design D8). Upload to `POST /api/import` (streamed, size-capped), parse in Node with the same parsers, return events to the replay clock from 12. When the server is not running, the drop zone says so instead of failing silently.
@@ -741,41 +763,45 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 ### Phase 5: Data-driven scene and hall lifecycle
 
 #### [ ] 18. Store-to-scene binding for racks
-- **Goal:** Racks reflect real sessions.
-- **Depends on:** 08, 13 (CEO C26; was 10, 13).
-- **Tasks:** Transient store subscription writes rack instance data each frame: one rack per main session in its project hall, the rack's status strip in the session's status colour, blade LEDs lit per active subagent (up to 12; more keep all 12 lit; chunk 07, design-review Phase 3 D11), LED pulse rate and brightness from tokens/min, vendor colour trim, status colours from the section 4b status palette (design D17), and a slow amber-white beacon above racks in `waiting_user` (design D6), at the top of the Phase 3 emissive ladder, 4.0 (design-review Phase 3 D7, WD2). Hall billboard labels (`aria-hidden`, eng re-review E7; project, session count, worst status) show below the zoom threshold (`SEMANTIC_ZOOM`, chunk 06, CEO W-RW5) and fade to rack detail above it (section 4b, design D7); a hall's billboard also shows above the threshold whenever its sign panel is hidden by chunk 06's pose rule, so each hall has exactly one label at every pose (design-review Phase 3 D8, WD3). Dormant halls use the section 4b style: LEDs off, desaturated through the hall's colour attribute (chunk 06 `setHallTint`, never a per-hall material; CEO W-RW6, W-RW22), grey "No sessions" sign (design D9). Static halls A and B only for now (overflow next chunk).
-- **Acceptance:** `steady` mock shows racks matching the debug panel counts. `burst` lights 10 blades in one rack. Zero React re-renders of scene components per frame, asserted by a render-count test hook in a Vitest test of the binding (G11).
+- **Goal:** Racks reflect real sessions. Rack heat (kW) is driven by burn rate (cost per minute) instead of tokens/min (D001).
+- **Depends on:** 08, 13, B1, 19 (CEO C26; was 10, 13).
+- **Tasks:** Transient store subscription writes rack instance data each frame: racks assigned to sessions by burn rank across halls A and B (D003), the rack's status strip in the session's status colour, blade LEDs lit per active subagent (up to 12; more keep all 12 lit; chunk 07, design-review Phase 3 D11), LED pulse rate and brightness from tokens/min, vendor colour trim, status colours from the section 4b status palette (design D17), and a slow amber-white beacon above racks in `waiting_user` (design D6), at the top of the Phase 3 emissive ladder, 4.0 (design-review Phase 3 D7, WD2). Hall billboard labels (`aria-hidden`, eng re-review E7; project, session count, worst status) show below the zoom threshold (`SEMANTIC_ZOOM`, chunk 06, CEO W-RW5) and fade to rack detail above it (section 4b, design D7); a hall's billboard also shows above the threshold whenever its sign panel is hidden by chunk 06's pose rule, so each hall has exactly one label at every pose (design-review Phase 3 D8, WD3). Dormant halls use the section 4b style: LEDs off, desaturated through the hall's colour attribute (chunk 06 `setHallTint`, never a per-hall material; CEO W-RW6, W-RW22), grey "No sessions" sign (design D9). Halls follow D003: hall A = up to 16 top-ranked sessions of the top-burn project, hall B = the next 16 highest-ranked sessions of any project (D003, D007); racks are assigned by session burn rank, 32 racks total. Rack kW is driven by burn rate (cost per minute) from B1 (D001) through the constant `KW_PER_USD_PER_MIN` in `src/config/estimation.ts` (value 39.2: idle 0.8 kW + $1/min reaches the 40 kW clamp; $1/min for a heavy Opus session is an estimate, provenance "estimated", D005) (replaces `KW_PER_TOKEN_PER_MIN` for heat). The hall B billboard reads "Other projects + overflow".
+- **Acceptance:** `steady` mock shows racks matching the debug panel counts. With 3 projects active, the hottest session has a rack and its hall matches D003. `burst` lights 10 blades in one rack. Zero React re-renders of scene components per frame, asserted by a render-count test hook in a Vitest test of the binding (G11).
 - **README:** Image `18-live-racks.png`.
 
 #### [ ] 19. Hall reconciler (pure logic)
-- **Goal:** Deterministic mapping from projects to halls, tested without rendering.
-- **Depends on:** 13.
-- **Tasks:** `reconcileHalls(prevLayout, projects, now) → nextLayout` pure function. Rules: halls A and B always present; new project takes the next free letter in order of first appearance; more than 16 racks adds overflow `A2`, `A3` in the lowest free slot, with a parent link (eng review D3); shrinking back removes overflow halls last-in-first-out; a project with no active session for 10 min enters `retiring`, then `removed`; letters are stable while a hall exists; freed letters are reused only after removal. Output carries `entering | active | retiring` states for animation.
-- **Acceptance:** Table-driven unit tests for: first project, two projects, 40 sessions (3 halls), shrink back, retire after grace, project returning during grace (cancels retire), letter reuse, 12-hall cap behaviour (defined: excess projects queue on an "Unassigned" board and raise an alert), per-project cap of 3 halls with a "+N" badge for sessions past 48 (60 sessions gives 3 halls + "+12"; badge clears when load drops) (eng review D4).
-- **README:** "Hall lifecycle" section with the rules as a short list.
+- **Goal:** Pure logic for the D003/D007 mapping: session to hall and rack by burn rank, with stable assignment per hall (a session keeps its rack while it stays inside its hall's allocation).
+- **Depends on:** 13, B1.
+- **Tasks:** `reconcileHalls(prevLayout, projects, sessions, now) → nextLayout` pure function. Hall A takes up to 16 top-ranked sessions of the project with the highest block burn; hall B takes the next 16 highest-ranked sessions of any project, including the top project's overflow past 16 (D007, respects D8's 16 racks per hall). Racks (32 total) go to sessions by B1's burn rank; a session that already has a rack keeps it while it stays inside its hall's allocation (hall A: the top project's top 16; hall B: the top 16 of all other ranked sessions), so a new hottest session takes a free rack in its hall, or, when that hall is full, displaces the lowest-ranked holder there. Runtime halls, overflow halls (`A2`, `A3`), letter reuse, retire timers and the 10-min grace are deferred (D001, D003).
+- **Acceptance:** Table-driven unit tests for: 1 project; 3 projects (hottest in hall A, others in B); top project with 20 sessions (16 in A, its other 4 compete for B by rank); the top project stays top, hall B is full, and a new hottest session starts in another project (it gets a hall B rack and the lowest-ranked B holder loses one); the new session's project becomes top (it lands in hall A on a free rack); the 33rd session gets no rack; rank churn keeps existing racks stable.
+- **README:** "Hall mapping" section with the D003 rules as a short list.
 
-#### [ ] 20. Scene reconciliation, animations, and leak test
+#### [-] 20. Scene reconciliation, animations, and leak test (deferred, D001)
+- **Deferred:** hall animations and the leak test wait until the limit-burn view proves useful.
 - **Goal:** Halls appear, overflow, and disappear at runtime with no leaks.
 - **Depends on:** 18, 19, 10 (CEO C26: fibre rebuild needs chunk 10).
 - **Tasks:** Scene layer diffs layouts: `entering` halls rise from the ground (1.5 s), `retiring` halls power down LEDs then sink and fade (3 s), then all owned geometry, materials, and textures are disposed. The fade darkens through the hall's colour attribute or happens by sinking below the ground, never through a per-hall transparent material, since hall bodies share one opaque material (CEO W-RW6, W-RW22). Fibre lines, signs and overflow conduit lines (cyan, parent to overflow) rebuilt per change; existing halls never move. Delivery truck drives gate to dock to hall door on rack or hall creation (D12), queued if several at once. When the store `sourceEpoch` changes (every `connect` and `disconnect`, chunk 12 UC1), all halls are torn down through the same dispose path before the new source's halls appear (eng re-review E3). Automated leak test: Playwright runs `churn` at 60x for 5 min, reads `renderer.info` and heap (Chromium) via a debug hook.
 - **Acceptance:** `overflow` scenario creates `A2` and `A3` and removes them when load drops (chunk 12 C65: the growing project reaches 40 sessions at 1,065 sim s, falls to 32 live at 1,320 s, 16 at 1,560 s and 8 at 1,680 s, about 18 real s after connect at 60x). Leak test: geometry and texture counts return to baseline (plus or minus 0) after churn; Chromium heap growth under 10%. Runs in all three browsers via `vp run e2e:local` on the Mac (eng review D6). A project that returns while its hall is sinking cancels the retire and the hall rises again with no leaked objects (G10); `churn`'s `/work/delta-ops` does this at 10x and 60x (retire at 720 sim s, return at 730 s, chunk 12 C67), and `/work/pine-sdk` retires fully every 960 sim s. G12 scene half (moved here by chunk 12 UC1): a live fake, then the mock, then the live fake again leaves only the live source's halls, with geometry and texture counts back to that baseline.
 - **README:** Image `20-overflow.png` (hall with overflow). Short GIF optional, same folder.
 
-#### [ ] 21. Agents and subagents
+#### [-] 21. Agents and subagents (deferred, D001)
+- **Deferred:** avatars do not help find what eats the limit.
 - **Goal:** Visible agents with clear parent links.
 - **Depends on:** 20.
 - **Tasks:** Instanced low-poly capsule avatars: main agents stand at their rack, vendor-coloured. Subagents spawn at the loading dock, ride a cart or walk to the parent's hall, and return to the dock and despawn when finished (loaded and unloaded). Each subagent wears its parent's colour-coded tag; selecting either shows a tether line. `parentKnown=false` subagents get a grey "?" tag and wait at the dock.
 - **Acceptance:** `burst` shows 10 subagents leaving the dock for the right hall and returning. Instance count tracks store count exactly. 400 agents keep 60 fps in Chrome on the target machine.
 - **README:** Image `21-agents.png`.
 
-#### [ ] 22. Ambient life from real signals
+#### [-] 22. Ambient life from real signals (deferred, D001)
+- **Deferred:** ambient effects are not part of the limit-burn view.
 - **Goal:** Packets, heat, cooling ramp, technician cart.
 - **Depends on:** 21, 09 (CEO C26: cooling ramp needs chunk 09; chunk 10 arrives through 20).
 - **Tasks:** Packets along fibre lines with rate proportional to that hall's tokens/min. Heat wash: tint on aisle tiles from hot-aisle °C (amber to red), written to the aisle tiles' colour attribute through chunk 06's `setAisleTint` (CEO W-RW6, W-RW22). Cooling tower duty bound to total hall heat. Technician cart: on agent error, drives the waypoint graph to the rack, plays a node-swap animation, stays until the error clears (D12). Multiple errors queue with a cap of 3 carts.
 - **Acceptance:** `errors` scenario dispatches carts to the right racks and they leave when errors clear. Heat wash and tower vapour visibly follow load in `burst`. Every animated effect reads only store values (no hidden randomness), so frozen screenshots are deterministic.
 - **README:** Image `22-life.png`.
 
-#### [ ] 23. Job flow
+#### [-] 23. Job flow (deferred, D001)
+- **Deferred:** job flow is not part of the limit-burn view.
 - **Goal:** Jobs visibly move from queue to racks and complete.
 - **Depends on:** 22.
 - **Tasks:** Queue board near the dock showing pending jobs as small tokens. A job entering Running flies to its rack; Checkpoint flashes the rack; Evaluating shows a scanning ring; Done pops a cyan pulse. Cap visible tokens (e.g. 60) and aggregate the rest.
@@ -784,30 +810,33 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 
 ### Phase 6: Interaction
 
-#### [ ] 24. Picking, selection ring, labels, glide
+#### [-] 24. Picking, selection ring, labels, glide (deferred, D001)
+- **Deferred:** rack-only picking moved into 26+29 (D002); agent picking, rings, labels and glide deferred.
 - **Goal:** Click anything important and the camera goes there.
 - **Depends on:** 23.
 - **Tasks:** Raycasting with instance IDs for racks, agents, carts; object picking for halls, towers, generators. Selection model in the store (`{kind, id}`). Moving instanced meshes (agents, carts, job tokens) recompute their bounding sphere each frame they move, or picking uses store positions on the CPU, so raycasts never miss moved instances (eng review P2). Selection ring (cyan, animated) and HTML label above target. Click = select + glide, double-click = zoom close (cancelling any home glide from chunk 05, CEO S-RW25), Esc = deselect and return focus to the canvas. The live campus summary replaces chunk 05's static canvas `aria-label` (keeping its key-help description, design-review DR15) (design D22; chunk 05 makes the canvas focusable with `role="application"`, CEO C19, S-RW14). Hover highlight. URL hash sync for selection and camera area.
 - **Acceptance:** Every entity kind is selectable in all three browsers. Reloading with a hash restores the selection. Picking a moving agent tracks it with the ring. Picking cost under 1 ms per click with 400 agents. Clicking an agent that has walked away from its spawn point still selects it (G8, perf P2). Removing the selected entity (hall retires) closes the panel cleanly (G9).
 - **README:** "Interaction" section. Image `24-selection.png`.
 
-#### [ ] 25. Area switcher and shortcuts
+#### [-] 25. Area switcher and shortcuts (deferred, D001)
+- **Deferred:** area switcher is not needed for the limit-burn view.
 - **Goal:** Fly between Halls, Cooling, Power, Network.
 - **Depends on:** 24.
 - **Tasks:** Camera presets per area computed from current layout (Halls preset reframes as halls are added). Keyboard: 1-4 areas, `/` search focus, D day/night, W weather cycle, Esc deselect. Shortcut help overlay on `?`, combined with the scene legend and listing chunk 05's camera keys (CEO C19); the legend auto-shows once on first visit (section 4b, design D13). With localStorage blocked, the legend still works and shows once per page load without errors (G19).
 - **Acceptance:** Each preset frames its area fully inside the safe area (section 4b) at 1280x720 and 1920x1080, with the right panel open and closed. Shortcuts do not fire while typing in inputs.
 - **README:** Shortcut table.
 
-#### [ ] 26. Agent live presentation panel
-- **Goal:** Clicking an agent shows what it is doing, live.
-- **Depends on:** 24.
-- **Tasks:** Agent view inside the right-panel slot, using `GlassPanel` from chunk 04 (design D18): "Copy session ID" and "Copy project path" buttons (design D13), vendor, model, status with duration, current task, tokens/min sparkline (30 min), token and cost totals, last 10 tool calls as a timeline of plain rows (section 4b, design D15), files touched list, subagent tree with parent link (clickable), and a "View full session" button that expands the tab strip to the Sessions tab filtered to this session, with a clearable filter chip recorded in the URL hash (design D24). All numbers through `MetricValue` with badges.
-- **Acceptance:** Values update live without layout jumps. Clicking a subagent in the tree selects it in the scene. Panel handles `parentKnown=false`, no tokens yet, and ended sessions.
+#### [ ] 26+29. Rack/session detail panel
+- **Goal:** Clicking a rack shows its session, model, tokens by class, burn and request count (B1's request count).
+- **Depends on:** 18, B1.
+- **Tasks:** Rack-only click picking: raycast against rack instances, select one, no agents, rings, labels or glide (D002). Agent view inside the right-panel slot, using `GlassPanel` from chunk 04 (design D18): "Copy session ID" and "Copy project path" buttons (design D13), vendor, model, status with duration, current task, token and cost totals. The tokens/min sparkline, the tool-call timeline and the files-touched list are deferred (D001). The panel shows session, model, tokens by class, burn and request count. The subagent tree and the "View full session" link to 31 are deferred (D001). All numbers through `MetricValue` with badges.
+- **Acceptance:** Values update live without layout jumps. Panel handles `parentKnown=false`, no tokens yet, and ended sessions. Provenance badges are correct per the feasibility table. Every estimated number shows the (est.) label.
 - **README:** Image `26-agent-panel.png`.
 
 ### Phase 7: Dashboard
 
-#### [ ] 27. Top bar contents
+#### [-] 27. Top bar contents (deferred, D001)
+- **Deferred:** top bar contents wait until the limit-burn view proves useful.
 - **Goal:** Fill the top bar slot from chunk 04 (design D18).
 - **Depends on:** 25.
 - **Tasks:** Landmarks and Tab order per section 4b (design D22). Top bar (inside the chunk 04 shell, using `GlassPanel`): logo, search box (wired in 32), area switcher, data-mode chip with replay bar (design D8), attention chip ("<n> waiting · <m> error", section 4b, design D6), Ambience menu (weather + day/night in one dropdown, wired in 34/35, design D25) and live clock, user avatar with local username. No separate alerts bell: the attention chip is the single alert entry point (design D26). 
@@ -815,41 +844,39 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 - **README:** Image `27-topbar.png`.
 
 #### [ ] 28. KPI cards
-- **Goal:** Three KPI cards.
-- **Depends on:** 27.
-- **Tasks:** Claude card and Codex card: active sessions, 30-min stacked sparkline by status, tokens/min, estimated cost today. Total card: running agents and subagents, split main/sub, unknown-parent count. All three tiles show a shimmer skeleton until backfill completes (design D10).
+- **Goal:** Three KPI cards: % of current 5 h block used (est.), hottest session now, Opus share of burn.
+- **Depends on:** B1, 18.
+- **Tasks:** The three cards from the Goal (% of current 5 h block used, hottest session now, Opus share of burn), each with a provenance badge. The Claude/Codex vendor cards are deferred (D001). All three tiles show a shimmer skeleton until backfill completes (design D10).
 - **Acceptance:** Card numbers equal debug panel numbers for a fixed seed (unit test on selectors, e2e on DOM). Badges present on every number.
 - **README:** Image `28-kpis.png`.
 
-#### [ ] 29. Right-hand detail panel per entity
-- **Goal:** One detail panel that adapts to the selected kind.
-- **Depends on:** 26, 27.
-- **Tasks:** Views for rack (ID like `A-R07`, session, kW, inlet/hot-aisle °C, blades), hall (project, racks used/16, heat, overflow chain), cooling tower (duty, approach temp), generator (state, fuel %, last test), cart (assigned rack, ETA), agent (reuse 26). All estimated values badged.
-- **Acceptance:** Each kind renders with no empty fields in `steady`. Provenance badges correct per the feasibility table.
-- **README:** Image `29-detail.png`.
+#### [-] 29. Merged into 26+29 (D001)
 
-#### [ ] 30. Job tracker
+#### [-] 30. Job tracker (deferred, D001)
+- **Deferred:** job tracker is not part of the limit-burn view.
 - **Goal:** Bottom-left tracker with six stages.
 - **Depends on:** 27.
 - **Tasks:** Columns Queued, Scheduled, Running, Checkpoint, Evaluating, Done, showing counts with dot rows as in the mockup. Click, or Enter when focused, on a stage opens a popover above it listing up to 10 jobs (project, agent, age, mono IDs); "View all" opens the Sessions tab filtered by stage; clicking a job selects its agent. Done list capped to last 20 (design D23).
 - **Acceptance:** Counts match the store for a fixture. Stage labels marked `derived`. Popover lists the right jobs per stage and is keyboard reachable.
 - **README:** Image `30-jobs.png`.
 
-#### [ ] 31. Tabbed agent data table
+#### [-] 31. Tabbed agent data table (deferred, D001)
+- **Deferred:** the data table is not part of the limit-burn view.
 - **Goal:** Dense data view.
 - **Depends on:** 27.
 - **Tasks:** Tabs: Sessions, Subagents, Tool calls, Token usage by model, Errors, Projects. Sortable, virtualised rows (TanStack Table + virtual or equivalent), row click selects in scene. Sessions tab supports a session filter chip set by "View full session" (design D24). Rows are focusable: Up/Down to move, Enter to select and glide (design D22). The tool-call tab reads the ring buffer, so its cap (default 50,000 events) must cover the 5,000-row target (eng review P4). Collapsible.
 - **Acceptance:** 5,000 tool-call rows scroll at 60 fps. Sorting is stable. Row click flies the camera.
 - **README:** Image `31-table.png`.
 
-#### [ ] 32. Search and alerts
-- **Goal:** Find anything; get told when something needs you.
-- **Depends on:** 29, 31.
-- **Tasks:** Fuzzy search over projects, session IDs, rack IDs, agents, tool names; dropdown and toast behaviour per section 4b (design D12), extending the 04b toast host (CEO C15); Enter flies to the result. Alert rules: agent error, waiting on user over 2 min, estimated rack temp over 35 °C, overflow hall created, log parse failure, hall cap reached. Only live (non-backfill) events raise toasts or announcements (E4); outside live mode toasts and alert rows carry a `REPLAY` or `MOCK` tag (E5); tests for both (G14). Keyboard-only e2e: Tab to the table, Down, Enter selects and glides to the entity (G16). Attention chip counts match the store and clicking it flies to the oldest waiting agent (G17). Alerts announced via `aria-live` (polite for info/waiting, assertive for errors) (design D22). Alert list with acknowledge, toasts capped at 3 with "+N more alerts" overflow (design D12), alert counts in the top-bar attention chip, the single alert entry point, with an alert panel tabbed "Needs you" / "All alerts" (design D6, D26).
-- **Acceptance:** Each rule fires in the matching mock scenario (`errors`, `waiting`, `overflow`) and clears when the condition ends. Search returns a rack ID match in under 50 ms with 400 agents.
+#### [ ] 32. Limit alert
+- **Goal:** One alert: projected time to limit is shorter than the time until the block resets (B1 reset time). Optional second rule: a session past 150 requests (B1's request count) suggests /clear.
+- **Depends on:** B1, 26+29.
+- **Tasks:** The one alert rule (projected time to limit shorter than time until the block resets, from B1's reset time) plus the optional 150-request rule on B1's request count. Fuzzy search and the other alert rules (agent error, waiting on user over 2 min, rack temp, overflow hall, log parse failure, hall cap) are deferred (D001). Toast behaviour per section 4b (design D12), extending the 04b toast host (CEO C15). Only live (non-backfill) events raise toasts or announcements (E4); outside live mode toasts and alert rows carry a `REPLAY` or `MOCK` tag (E5); tests for both (G14). Alerts announced via `aria-live` (design D22); toasts capped at 3. The table keyboard e2e, attention chip and "Needs you" panel are deferred (D001).
+- **Acceptance:** The alert fires and clears on a fixture.
 - **README:** Alerts list.
 
-#### [ ] 33. Extra agent visualisations
+#### [-] 33. Extra agent visualisations (deferred, D001)
+- **Deferred:** extra visualisations wait for the 2-week decision rule.
 - **Goal:** Surface more agent information where it adds value.
 - **Depends on:** 31.
 - **Tasks:** Pick from these proposals (each is a small panel or tab, each independently shippable):
@@ -866,28 +893,32 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 
 ### Phase 8: Extras and polish
 
-#### [ ] 34. Day/night cycle
+#### [-] 34. Day/night cycle (deferred, D001)
+- **Deferred:** cosmetic; no effect on the limit-burn view.
 - **Goal:** Animated lighting cycle.
 - **Depends on:** 27.
 - **Tasks:** Sun angle and colour from local time, sky gradient, night mode raises emissive LEDs, hall lights, road lamps. Day / Night / Auto (local clock) / Fast cycle (1 day = 2 min) live in the top-bar Ambience menu (design D25); shortcut D still cycles.
 - **Acceptance:** Smooth transition, no frame drops. Scene stays readable at night. Contrast check passes in forced-day, dusk and forced-night (dusk is the 0.30 glass level, CEO S-RW30): panel text at least 4.5:1, large numerals at least 3:1 against the rendered backdrop (design D21). Screenshot views fixed at noon via `freeze`.
 - **README:** Day and night images `34-day.png`, `34-night.png`.
 
-#### [ ] 35. Weather states
+#### [-] 35. Weather states (deferred, D001)
+- **Deferred:** cosmetic; no effect on the limit-burn view.
 - **Goal:** Clear, Heatwave, Monsoon, Storm, visual and panel only.
 - **Depends on:** 34.
 - **Tasks:** Weather section of the Ambience menu (design D25) with manual select and auto-cycle (configurable interval); shortcut W still cycles. Heatwave: heat shimmer, towers shown at max duty, warmer grade. Monsoon: instanced rain, wet ground tint. Storm: rain, lightning flashes, wind on vapour, generator test sequence (generators spin up, lights flicker 1 s, test log in panel). Weather panel with condition, outside temp (estimated), and generator test log. Assert simulation independence (D13).
 - **Acceptance:** Unit test: switching weather changes no store value outside the `weather` slice. Rain costs one draw call. Each state looks distinct in screenshots. The 04b contrast helper passes in forced day + heatwave at the 72% glass level (design D21, CEO S-RW9).
 - **README:** Image per state `35-<state>.png`.
 
-#### [ ] 36. Cross-browser performance pass
+#### [-] 36. Cross-browser performance pass (deferred, D001)
+- **Deferred:** cross-browser perf pass is for a shipped product, not a personal tool.
 - **Goal:** Meet the budget in all three browsers.
 - **Depends on:** 35.
 - **Tasks:** Perf scenario: 12 halls, 200 racks, 400 agents, storm, night, with `calm=0` so the 60 fps cap holds (CEO C16). Measure fps and p95 frame time in Chrome, Safari, Firefox on the target machine (an M1 Air-class Mac; required here because chunk 03 measured on an M1 Max, CEO C11). Auto quality tiering (shadows, bloom, pixel ratio, vapour density, glass fallback) driven by measured fps with hysteresis, extending the 04a frame monitor (CEO S-RW5) rather than adding a second one. Draw-call and triangle budgets enforced by a test that fails CI when exceeded, starting from Phase 3's per-part caps and 150k campus total (eng-review Phase 3 D4, E28).
 - **Acceptance:** Measured on the Mac via `vp run e2e:local` (eng review D6). 60 fps median at high or auto-dropped tier in all three; never under 30 fps p95. Results table appended to `docs/adr/0002-perf.md`.
 - **README:** "Performance" section with the results table.
 
-#### [ ] 37. Provenance audit, accessibility, final README
+#### [-] 37. Provenance audit, accessibility, final README (deferred, D001)
+- **Deferred:** public-release polish; this is a personal tool.
 - **Goal:** Ship-ready polish.
 - **Depends on:** 36.
 - **Tasks:** Walk every panel and confirm every number has the right badge versus the feasibility table. Keyboard focus order, visible focus rings, colour contrast on glass. A colour-blindness simulation (protanopia, deuteranopia) of the campus confirms the error cart and waiting beacon read without colour (Phase 3 design review D19, WD13). Audit that every animated chunk honours the reduced-motion flag from chunk 04 (design D20). Error states: log server down, empty logs, parse failures. Final README pass: hero image, full gallery, architecture diagram, configuration, known limits.
@@ -897,6 +928,8 @@ File arrangement (eng-review Phase 3 D1): pure, unit-tested modules each get the
 ---
 
 ## 6. Dependency summary
+
+Re-scoped build order: see section 5a.
 
 ```text
 01 → 02 → 02b (release) ; 02 → 03 (gate) → 04a → 04b → 05 → 06 → 07 → 08 → 09
