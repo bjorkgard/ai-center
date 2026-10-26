@@ -21,19 +21,19 @@
     "e2e:local": "playwright test && vp run shots"
   },
   "dependencies": {
-    "@react-three/fiber": "9.8.1",
-    "@react-three/postprocessing": "3.2.0",
-    "geist": "^1.7.2",
+    "@react-three/fiber": "9.8.2",
+    "@react-three/postprocessing": "3.2.2",
+    "geist": "^1.8.2",
     "postprocessing": "6.39.5",
-    "react": "~19.3.0",
-    "react-dom": "~19.3.0",
+    "react": "~19.3.1",
+    "react-dom": "~19.3.1",
     "three": "0.186.1",
     "ws": "^8.22.0",
     "zod": "^4.6.7",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
